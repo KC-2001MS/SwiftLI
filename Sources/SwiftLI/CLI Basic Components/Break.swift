@@ -7,6 +7,12 @@
 
 
 /// View to start a new line
+/// 
+/// A line break can be added.
+/// ```swift
+/// let break = Break()
+/// break.render()
+/// ```
 public struct Break: View {
     private let count: Int
     /// Creates a break view that is displayed in the terminal.

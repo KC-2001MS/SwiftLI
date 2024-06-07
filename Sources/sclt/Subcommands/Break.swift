@@ -27,13 +27,11 @@ struct BreakCommand: ParsableCommand {
                 .background(Color.white)
                 .forgroundColor(Color.blue)
                 .bold()
-            
-            Break(1)
+                .newLine()
             
             Text("init()")
                 .forgroundColor(Color.cyan)
-            
-            Break(1)
+                .newLine()
             
             Text("Break() →")
             
@@ -41,8 +39,7 @@ struct BreakCommand: ParsableCommand {
             
             Text("init(_ count: Int)")
                 .forgroundColor(Color.cyan)
-            
-            Break(1)
+                .newLine()
             
             Text("Break(1) →")
             

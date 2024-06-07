@@ -37,9 +37,8 @@ struct GroupCommand: ParsableCommand {
                 Group {
                     Text("Group")
                 }
-                
-                Break()
             }
+            .newLine()
         }
         
         group.render()

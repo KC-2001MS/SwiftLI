@@ -33,31 +33,27 @@ struct SpacerCommand: ParsableCommand {
             Group {
                 Text("init()")
                     .forgroundColor(Color.cyan)
-                
-                Break(1)
+                    .newLine()
                 
                 Group {
-                    Spacer(1)
+                    Spacer()
                     
                     Text("← Spacer()")
                 }
-                
-                Break(1)
+                .newLine()
             }
             
             Group {
                 Text("init(_ count: Int)")
                     .forgroundColor(Color.cyan)
-                
-                Break(1)
+                    .newLine()
                 
                 Group {
                     Spacer(2)
                     
                     Text("← Spacer(2)")
                 }
-                
-                Break(1)
+                .newLine()
             }
         }
         

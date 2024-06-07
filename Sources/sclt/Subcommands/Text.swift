@@ -27,82 +27,66 @@ struct TextCommand: ParsableCommand {
                 .background(Color.white)
                 .forgroundColor(Color.blue)
                 .bold()
+                .newLine()
             
-            Break(1)
-            
-            Text("Text.forgroundColor(_ color: Color)")
-                .forgroundColor(.red)
-            
-            Break(1)
-            
-            Text("Text.backgroundColor(_ color: Color)")
-                .background(.red)
-            
-            Break(1)
-            
-            Text("Text.bold()")
-                .bold()
-            
-            Break(1)
-            
-            Text("Text.bold(_ isActive: Bool)")
-                .bold(false)
-            
-            Break(1)
-            
-            Text("Text.fontWeight(_ weight: Weight)")
-                .fontWeight(.thin)
-            
-            Break(1)
-            
-            Text("Text.italic()")
-                .italic()
-            
-            Break(1)
-            
-            Text("Text.italic(_ isActive: Bool)")
-                .italic(false)
-            
-            Break(1)
-            
-            Text("Text.underline()")
-                .underline()
-            
-            Break(1)
-            
-            Text("Text.underline(_ isActive: Bool)")
-                .underline(false)
-            
-            Break(1)
-            
-            Text("Text.blink(_ style: BlinkStyle)")
-                .blink(.default)
-            
-            Break(1)
-            
-            Text("Text.hidden()")
-                .hidden()
-            
-            Break(1)
-            
-            Text("Text.hidden(_ isActive: Bool)")
-                .hidden(false)
-            
-            Break(1)
-            
-            Text("Text.strikethrough()")
-                .strikethrough()
-            
-            Break(1)
-            
-            Text("Text.strikethrough(_ isActive: Bool)")
-                .strikethrough(false)
-            
-            Break(1)
-            
-            Text("\u{100205}")
-            
-            Break(1)
+            Group {
+                Text("Text.forgroundColor(_ color: Color)")
+                    .forgroundColor(.red)
+                    .newLine()
+                
+                Text("Text.backgroundColor(_ color: Color)")
+                    .background(.red)
+                    .newLine()
+                
+                Text("Text.bold()")
+                    .bold()
+                    .newLine()
+                
+                Text("Text.bold(_ isActive: Bool)")
+                    .bold(false)
+                
+                Break(1)
+                
+                Text("Text.fontWeight(_ weight: Weight)")
+                    .fontWeight(.thin)
+                    .newLine()
+                
+                Text("Text.italic()")
+                    .italic()
+                    .newLine()
+                
+                Text("Text.italic(_ isActive: Bool)")
+                    .italic(false)
+                    .newLine()
+                
+                Text("Text.underline()")
+                    .underline()
+                    .newLine()
+                
+                Text("Text.underline(_ isActive: Bool)")
+                    .underline(false)
+                    .newLine()
+                
+                Text("Text.blink(_ style: BlinkStyle)")
+                    .blink(.default)
+                    .newLine()
+                
+                Text("Text.hidden()")
+                    .hidden()
+                    .newLine()
+                
+                Text("Text.hidden(_ isActive: Bool)")
+                    .hidden(false)
+                    .newLine()
+                
+                Text("Text.strikethrough()")
+                    .strikethrough()
+                    .newLine()
+                
+                Text("Text.strikethrough(_ isActive: Bool)")
+                    .strikethrough(false)
+                    .newLine()
+            }
         }
         
         group.render()

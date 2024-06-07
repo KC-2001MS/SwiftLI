@@ -27,22 +27,19 @@ struct HDividerCommand: ParsableCommand {
                 .background(Color.white)
                 .forgroundColor(Color.blue)
                 .bold()
-            
-            Break(1)
+                .newLine()
             
             Group {
                 Text("init(_ count: Int)")
                     .forgroundColor(Color.cyan)
-                
-                Break(1)
+                    .newLine()
                 
                 Group {
-                    HDivider(1).forgroundColor(Color.red)
+                    HDivider(1)
                     
                     Text("← HDivider(1)")
                 }
-                
-                Break(1)
+                .newLine()
             }
         }
         
