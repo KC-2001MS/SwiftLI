@@ -6,6 +6,7 @@
 //
 
 
+/// View for grouping multiple views together
 public struct Group: View {
     private var contents: [View]
     /// Creates a group of views.

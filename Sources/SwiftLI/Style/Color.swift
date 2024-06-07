@@ -21,7 +21,7 @@ public enum Color {
 //    case rgb(r:Int,g:Int,b:Int)
     case primary
     
-    var name: String {
+    internal var ansi: String {
         switch self {
         case .black:
             "0"
@@ -41,6 +41,7 @@ public enum Color {
             "7"
         case .eight_bit(let bit):
             "8;5;\(bit)"
+//    Removed because it does not work with macOS terminal app
 //        case .rgb(let r, let g, let b):
 //            "8;2;\(r);\(g);\(b)"
         case .primary:

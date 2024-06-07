@@ -6,6 +6,7 @@
 //
 
 
+/// View to start a new line
 public struct Break: View {
     private let count: Int
     /// Creates a break view that is displayed in the terminal.

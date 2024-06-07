@@ -10,5 +10,6 @@
 public enum BlinkStyle: String {
     case none = "0"
     case `default` = "5"
-    case fast = "6"
+//    Removed because it does not work with macOS terminal app
+//    case fast = "6"
 }
