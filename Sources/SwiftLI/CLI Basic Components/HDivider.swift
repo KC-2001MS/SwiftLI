@@ -15,13 +15,13 @@
 /// ```
 /// Modifiers can be added to change the style.
 public struct HDivider: View {
-    private let header: String
+    let header: String
     
-    private let character: Character
+    let character: Character
     
-    private let count: Int
+    let count: Int
     
-    private let footer: Bool
+    let footer: Bool
     /// Creates a space view that is displayed in the terminal.
     /// - Parameter count: Space Width
     public init(_ count: Int) {
@@ -31,7 +31,7 @@ public struct HDivider: View {
         self.footer = false
     }
     
-    private init(
+    init(
         header: String,
         character: Character,
         count: Int,
@@ -117,9 +117,4 @@ public struct HDivider: View {
     public func newLine(_ newLine: Bool = true) -> HDivider {
         return .init(header: header,character: character,count: count , footer: newLine)
     }
-}
-/// Specify the line type of the Divider
-public enum LineStyle {
-    case `default`
-    case double_line
 }

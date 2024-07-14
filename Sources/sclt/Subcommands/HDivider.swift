@@ -16,7 +16,7 @@ struct HDividerCommand: ParsableCommand {
         discussion: """
         Command to check the display of HDivider structure
         """,
-        version: "0.0.1",
+        version: "0.0.2",
         shouldDisplay: true,
         helpNames: [.long, .short]
     )
@@ -30,14 +30,24 @@ struct HDividerCommand: ParsableCommand {
                 .newLine()
             
             Group {
-                Text("init(_ count: Int)")
-                    .forgroundColor(Color.cyan)
-                    .newLine()
+                Group {
+                    Text("init(_ count: Int)")
+                        .forgroundColor(Color.cyan)
+                    
+                    Spacer()
+                    
+                    Text("1")
+                        .fontWeight(.thin)
+                        .forgroundColor(.red)
+                }
+                .newLine()
                 
                 Group {
                     HDivider(1)
                     
                     Text("← HDivider(1)")
+                        .fontWeight(.thin)
+                        .forgroundColor(.red)
                 }
                 .newLine()
             }

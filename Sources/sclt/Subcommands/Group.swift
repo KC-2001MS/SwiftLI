@@ -16,7 +16,7 @@ struct GroupCommand: ParsableCommand {
         discussion: """
         Command to check the display of Group structure
         """,
-        version: "0.0.1",
+        version: "0.0.2",
         shouldDisplay: true,
         helpNames: [.long, .short]
     )
@@ -31,8 +31,17 @@ struct GroupCommand: ParsableCommand {
             Break(1)
             
             Group {
-                Text("Group(@ViewBuilder contents: () -> [View])")
-                    .forgroundColor(Color.cyan)
+                Group {
+                    Text("Group(@ViewBuilder contents: () -> [View])")
+                        .forgroundColor(Color.cyan)
+                    
+                    Spacer()
+                    
+                    Text("Text(\"Group\")")
+                        .fontWeight(.thin)
+                        .forgroundColor(.red)
+                }
+                .newLine()
                 
                 Group {
                     Text("Group")

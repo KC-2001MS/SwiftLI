@@ -14,7 +14,7 @@
 /// break.render()
 /// ```
 public struct Break: View {
-    private let count: Int
+    let count: Int
     /// Creates a break view that is displayed in the terminal.
     /// - Parameter count: Space Width
     public init(_ count: Int) {

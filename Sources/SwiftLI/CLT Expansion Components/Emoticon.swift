@@ -22,11 +22,11 @@
 /// ```
 /// Modifiers can be added to change the style.
 public struct Emoticon: View {
-    private let header: String
+    let header: String
     
-    private let content: String
+    let content: String
     
-    private let footer: Bool
+    let footer: Bool
     /// Default Emoticon View
     public init() {
         self.header = ""
@@ -60,14 +60,14 @@ public struct Emoticon: View {
         self.footer = false
     }
     
-    private init(
+    init(
         header: String,
         content: String,
         footer: Bool = false
     ) {
         self.header = header
         self.content = content
-        self.footer = false
+        self.footer = footer
     }
     /// What the view displays
     public var body: [View] {
@@ -135,7 +135,7 @@ public struct Emoticon: View {
     }
 }
 /// Specify the Emoticon eye text
-public enum EyesStyle: String {
+public enum EyesStyle: String, CaseIterable {
     case `default` = ":"
     case open = "="
     case wideOpen = "8"
@@ -143,13 +143,13 @@ public enum EyesStyle: String {
     case x = "X"
 }
 /// Specify the Emoticon nose text
-public enum NoseStyle: String {
+public enum NoseStyle: String, CaseIterable {
     case none = ""
     case standard = "‑"
     case high = "^"
 }
 /// Specify the Emoticon mouth text
-public enum MouthStyle: String {
+public enum MouthStyle: String, CaseIterable {
     case `default` = ")"
     case open = "D"
     case turnedUp = ">"

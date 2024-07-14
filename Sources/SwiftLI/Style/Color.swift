@@ -8,6 +8,7 @@
 
 /// A representation of a color that adapts to a given context.
 public enum Color {
+    
     case black
     case red
     case green

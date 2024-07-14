@@ -7,7 +7,7 @@ The following environment is required to use this library.
 
 <p align="center">
     <img src="https://img.shields.io/badge/macOS-11.0+-red.svg" />
-    <img src="https://img.shields.io/badge/Swift-5.9-DE5D43.svg" />
+    <img src="https://img.shields.io/badge/Swift-5.10-DE5D43.svg" />
     <a href="https://twitter.com/IroIro1234work">
         <img src="https://img.shields.io/badge/Contact-@IroIro1234work-lightgrey.svg?style=flat" alt="Twitter: @IroIro1234work" />
     </a>
@@ -29,76 +29,147 @@ struct TextCommand: ParsableCommand {
         discussion: """
         Command to check the display of Text structure
         """,
-        version: "0.0.1",
+        version: "0.0.2",
         shouldDisplay: true,
         helpNames: [.long, .short]
     )
     
     mutating func run() {
         let group = Group {
-            Text("Break View")
+            Text("Text View")
                 .background(Color.white)
                 .forgroundColor(Color.blue)
                 .bold()
                 .newLine()
             
             Group {
-                Text("Text.forgroundColor(_ color: Color)")
-                    .forgroundColor(.red)
-                    .newLine()
+                Group {
+                    Text("Text.forgroundColor(_ color: Color)")
+                        .forgroundColor(.red)
+                    
+                    Spacer()
+                    
+                    Text(".red")
+                        .fontWeight(.thin)
+                        .forgroundColor(.red)
+                }
+                .newLine()
                 
-                Text("Text.backgroundColor(_ color: Color)")
-                    .background(.red)
-                    .newLine()
+                Group {
+                    Text("Text.backgroundColor(_ color: Color)")
+                        .background(.red)
+                    
+                    Spacer()
+                    
+                    Text(".red")
+                        .fontWeight(.thin)
+                        .forgroundColor(.red)
+                }
+                .newLine()
                 
                 Text("Text.bold()")
                     .bold()
                     .newLine()
                 
-                Text("Text.bold(_ isActive: Bool)")
-                    .bold(false)
+                Group {
+                    Text("Text.bold(_ isActive: Bool)")
+                        .bold(false)
+                    
+                    Spacer()
+                    
+                    Text("false")
+                        .fontWeight(.thin)
+                        .forgroundColor(.red)
+                }
+                .newLine()
                 
-                Break(1)
-                
-                Text("Text.fontWeight(_ weight: Weight)")
-                    .fontWeight(.thin)
-                    .newLine()
+                Group {
+                    Text("Text.fontWeight(_ weight: Weight)")
+                        .fontWeight(.thin)
+                    
+                    Spacer()
+                    
+                    Text(".thin")
+                        .fontWeight(.thin)
+                        .forgroundColor(.red)
+                }
+                .newLine()
                 
                 Text("Text.italic()")
                     .italic()
                     .newLine()
                 
-                Text("Text.italic(_ isActive: Bool)")
-                    .italic(false)
-                    .newLine()
+                Group {
+                    Text("Text.italic(_ isActive: Bool)")
+                        .italic(false)
+                    
+                    Spacer()
+                    
+                    Text("false")
+                        .fontWeight(.thin)
+                        .forgroundColor(.red)
+                }
+                .newLine()
                 
                 Text("Text.underline()")
                     .underline()
                     .newLine()
                 
-                Text("Text.underline(_ isActive: Bool)")
-                    .underline(false)
-                    .newLine()
+                Group {
+                    Text("Text.underline(_ isActive: Bool)")
+                        .underline(false)
+                    
+                    Spacer()
+                    
+                    Text("false")
+                        .fontWeight(.thin)
+                        .forgroundColor(.red)
+                }
+                .newLine()
                 
-                Text("Text.blink(_ style: BlinkStyle)")
-                    .blink(.default)
-                    .newLine()
+                Group {
+                    Text("Text.blink(_ style: BlinkStyle)")
+                        .blink(.default)
+                    
+                    Spacer()
+                    
+                    Text(".default")
+                        .fontWeight(.thin)
+                        .forgroundColor(.red)
+                }
+                .newLine()
                 
                 Text("Text.hidden()")
                     .hidden()
                     .newLine()
                 
-                Text("Text.hidden(_ isActive: Bool)")
-                    .hidden(false)
-                    .newLine()
+                Group {
+                    Text("Text.hidden(_ isActive: Bool)")
+                        .hidden(false)
+                    
+                    Spacer()
+                    
+                    Text("false")
+                        .fontWeight(.thin)
+                        .forgroundColor(.red)
+                }
+                .newLine()
                 
                 Text("Text.strikethrough()")
                     .strikethrough()
                     .newLine()
                 
-                Text("Text.strikethrough(_ isActive: Bool)")
-                    .strikethrough(false)
-                    .newLine()
+                Group {
+                    Text("Text.strikethrough(_ isActive: Bool)")
+                        .strikethrough(false)
+                    
+                    Spacer()
+                    
+                    Text("false")
+                        .fontWeight(.thin)
+                        .forgroundColor(.red)
+                }
+                .newLine()
             }
         }
         

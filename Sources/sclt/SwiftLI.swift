@@ -17,7 +17,7 @@ struct scltCommand: ParsableCommand {
         discussion: """
         A set of commands to check the behavior of various UI components
         """,
-        version: "0.0.1",
+        version: "0.0.2",
         subcommands: [
             TextCommand.self,
             SpacerCommand.self,

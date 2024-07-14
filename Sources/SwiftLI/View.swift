@@ -26,11 +26,11 @@
 /// text.render()
 /// ```
 public struct Text: View {
-    private let header: String
+    internal let header: String
     
-    private let content: String
+    let content: String
     
-    private let footer: Bool
+    let footer: Bool
     /// Creates a text view that is displayed in the terminal.
     /// - Parameter string: String to be displayed in the terminal
     public init(_ string: String) {

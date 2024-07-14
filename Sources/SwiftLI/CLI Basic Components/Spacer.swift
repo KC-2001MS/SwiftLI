@@ -17,11 +17,11 @@
 /// ```
 /// Modifiers can be added to change the style.
 public struct Spacer: View {
-    private let header: String
+    let header: String
     
-    private let count: Int
+    let count: Int
     
-    private let footer: Bool
+    let footer: Bool
     /// Creates a space view that is displayed in the terminal.
     /// - Parameter count: Space Width
     public init(_ count: Int) {
@@ -36,7 +36,7 @@ public struct Spacer: View {
         self.footer = false
     }
     
-    private init(
+    init(
         header: String,
         count: Int,
         footer: Bool = false

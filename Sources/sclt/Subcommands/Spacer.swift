@@ -14,9 +14,9 @@ struct SpacerCommand: ParsableCommand {
         commandName: "spacer",
         abstract: "Display of HSpacer structure",
         discussion: """
-        Command to check the display of HSpacer structure
+        Command to check the display of Spacer structure
         """,
-        version: "0.0.1",
+        version: "0.0.2",
         shouldDisplay: true,
         helpNames: [.long, .short]
     )
@@ -39,19 +39,31 @@ struct SpacerCommand: ParsableCommand {
                     Spacer()
                     
                     Text("← Spacer()")
+                        .fontWeight(.thin)
+                        .forgroundColor(.red)
                 }
                 .newLine()
             }
             
             Group {
-                Text("init(_ count: Int)")
-                    .forgroundColor(Color.cyan)
-                    .newLine()
+                Group {
+                    Text("init(_ count: Int)")
+                        .forgroundColor(Color.cyan)
+                    
+                    Spacer()
+                    
+                    Text("2")
+                        .fontWeight(.thin)
+                        .forgroundColor(.red)
+                }
+                .newLine()
                 
                 Group {
                     Spacer(2)
                     
                     Text("← Spacer(2)")
+                        .fontWeight(.thin)
+                        .forgroundColor(.red)
                 }
                 .newLine()
             }

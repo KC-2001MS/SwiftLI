@@ -32,9 +32,9 @@
 /// group.render()
 /// ```
 public struct Group: View {
-    private let contents: [View]
+    let contents: [View]
     
-    private let footer: Bool
+    let footer: Bool
     /// Creates a group of views.
     /// - Parameter contents: A ViewBuilder that produces the views to group.
     public init(@ViewBuilder contents: () -> [View]) {
@@ -42,7 +42,7 @@ public struct Group: View {
         self.footer = false
     }
     
-    private init(contents: [View], footer: Bool) {
+    init(contents: [View], footer: Bool) {
         self.contents = contents
         self.footer = footer
     }

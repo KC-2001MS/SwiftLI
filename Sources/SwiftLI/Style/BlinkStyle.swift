@@ -7,7 +7,7 @@
 
 
 /// Blinking Method
-public enum BlinkStyle: String {
+public enum BlinkStyle: String, CaseIterable {
     case none = "0"
     case `default` = "5"
 //    Removed because it does not work with macOS terminal app

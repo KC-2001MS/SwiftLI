@@ -16,7 +16,7 @@ struct BreakCommand: ParsableCommand {
         discussion: """
         Command to check the display of Break structure
         """,
-        version: "0.0.1",
+        version: "0.0.2",
         shouldDisplay: true,
         helpNames: [.long, .short]
     )
@@ -33,17 +33,35 @@ struct BreakCommand: ParsableCommand {
                 .forgroundColor(Color.cyan)
                 .newLine()
             
-            Text("Break() →")
+            Group {
+                Break()
+                
+                Text("Break() ↑")
+                    .fontWeight(.thin)
+                    .forgroundColor(.red)
+            }
+            .newLine()
             
-            Break()
+            Group {
+                Text("init(_ count: Int)")
+                    .forgroundColor(Color.cyan)
+                
+                Spacer()
+                
+                Text("1")
+                    .fontWeight(.thin)
+                    .forgroundColor(.red)
+            }
+            .newLine()
             
-            Text("init(_ count: Int)")
-                .forgroundColor(Color.cyan)
-                .newLine()
-            
-            Text("Break(1) →")
-            
-            Break(1)
+            Group {
+                Break(1)
+                
+                Text("Break(1) ↑")
+                    .fontWeight(.thin)
+                    .forgroundColor(.red)
+            }
+            .newLine()
         }
         
         group.render()
