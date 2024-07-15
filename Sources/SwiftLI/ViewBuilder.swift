@@ -13,23 +13,23 @@ public struct ViewBuilder {
         return components
     }
     /// Produces content
-    public static func buildOptional(_ component: [View]?) -> [View] {
-           component ?? []
+    public static func buildOptional(_ component: [View]?) -> View {
+        Group(contents: component ?? [], footer: false)
     }
     /// Produces content for a conditional statement in a multi-statement closure when the condition is true.
-    public static func buildEither(first component: [View]) -> [View] {
-        component
+    public static func buildEither(first component: [View]) -> View {
+        Group(contents: component, footer: false)
     }
     /// Produces content for a conditional statement in a multi-statement closure when the condition is false.
-    public static func buildEither(second component: [View]) -> [View] {
-        component
+    public static func buildEither(second component: [View]) -> View {
+        Group(contents: component, footer: false)
     }
     /// Produces content
-    public static func buildArray(_ components: [[View]]) -> [View]  {
-        components.flatMap({ $0 })
+    public static func buildArray(_ components: [[View]]) -> View  {
+        Group(contents: components.flatMap({ $0 }), footer: false)
     }
     /// Processes view content for a conditional compiler-control statement that performs an availability check.
     public static func buildLimitedAvailability(_ component: [View]) -> [View] {
-           component
+        component
     }
 }
