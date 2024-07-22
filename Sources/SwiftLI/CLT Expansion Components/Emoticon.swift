@@ -21,7 +21,7 @@
 /// emoticon.render()
 /// ```
 /// Modifiers can be added to change the style.
-public struct Emoticon: View {
+public struct Emoticon: View, Sendable, Equatable {
     let header: String
     
     let content: String

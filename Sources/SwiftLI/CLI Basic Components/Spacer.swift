@@ -16,7 +16,7 @@
 /// spacer.render()
 /// ```
 /// Modifiers can be added to change the style.
-public struct Spacer: View {
+public struct Spacer: View, Sendable, Equatable {
     let header: String
     
     let count: Int
@@ -48,6 +48,10 @@ public struct Spacer: View {
     /// What the view displays
     public var body: [View] {
         Text(repeating: " ", count: count)
+    }
+    
+    public func addHeader(_ header: String) -> Self {
+        return Spacer(header: header + self.header, count: self.count, footer: self.footer)
     }
     /// Modifier to adapt background color to existing text
     /// - Parameter color: Color to be specified as background color

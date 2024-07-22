@@ -23,7 +23,8 @@ struct scltCommand: ParsableCommand {
             SpacerCommand.self,
             BreakCommand.self,
             GroupCommand.self,
-            HDividerCommand.self
+            HDividerCommand.self,
+            SwiftLogoCommand.self
         ],
         defaultSubcommand: TextCommand.self,
         helpNames: [.long, .short]

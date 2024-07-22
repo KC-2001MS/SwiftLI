@@ -27,8 +27,7 @@ struct GroupCommand: ParsableCommand {
                 .background(Color.white)
                 .forgroundColor(Color.blue)
                 .bold()
-            
-            Break(1)
+                .newLine()
             
             Group {
                 Group {

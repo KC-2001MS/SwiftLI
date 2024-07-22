@@ -44,7 +44,11 @@ public struct HDivider: View {
     }
     /// What the view displays
     public var body: [View] {
-        Text(header: header,repeating: character, count: count, footer: footer)
+        Text(header: self.header,repeating: self.character, count: self.count, footer: self.footer)
+    }
+    
+    public func addHeader(_ header: String) -> Self {
+        return HDivider(header: header + self.header,character: self.character, count: self.count, footer: self.footer)
     }
     /// Specifies the line type of the Divider
     /// - Parameter style: Type of line used as divider
@@ -52,9 +56,9 @@ public struct HDivider: View {
     public func lineStyle(_ style: LineStyle) -> HDivider {
         switch style {
         case .default:
-            return .init(header: header, character: "-", count: count,footer:  footer)
+            return .init(header: self.header, character: "-", count: self.count,footer:  self.footer)
         case .double_line:
-            return .init(header: header, character: "=", count: count,footer:  footer)
+            return .init(header: self.header, character: "=", count: self.count,footer:  self.footer)
         }
     }
     /// Modifier to adapt foreground color to existing text

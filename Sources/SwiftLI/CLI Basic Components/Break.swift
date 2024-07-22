@@ -13,7 +13,7 @@
 /// let break = Break()
 /// break.render()
 /// ```
-public struct Break: View {
+public struct Break: View, Sendable, Equatable {
     let count: Int
     /// Creates a break view that is displayed in the terminal.
     /// - Parameter count: Space Width
@@ -27,5 +27,9 @@ public struct Break: View {
     /// What the view displays
     public var body: [View] {
         Text(repeating: "\n", count: count)
+    }
+    
+    public func addHeader(_ header: String) -> Self {
+        return Break(count)
     }
 }
