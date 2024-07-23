@@ -29,9 +29,16 @@ struct SwiftLogoCommand: ParsableCommand {
                 .bold()
                 .newLine()
             
-            SwiftLogo()
-            
-            Break()
+            Group {
+                Text("init()")
+                    .forgroundColor(Color.cyan)
+                    .newLine()
+                
+                    SwiftLogo()
+                    
+                    Break()
+            }
+            .newLine()
             
             Text("* This library was created by Swift.")
                 .fontWeight(.thin)

@@ -110,30 +110,30 @@ public struct Text: View, Sendable, Equatable {
     /// Modifier to adapt foreground color to existing text
     /// - Parameter color: Color to be specified as foreground color
     /// - Returns: Text view with foreground color adaptation
-    public func forgroundColor(_ color: Color) -> Text {
+    public func forgroundColor(_ color: Color) -> Self {
         return .init(header: "\(header)\u{001B}[3\(color.ansi)m", contents: contents, footer: footer)
     }
     /// Modifier to adapt background color to existing text
     /// - Parameter color: Color to be specified as background color
     /// - Returns: Text view with background color adaptation
-    public func background(_ color: Color) -> Text {
+    public func background(_ color: Color) -> Self {
         return .init(header: "\(header)\u{001B}[4\(color.ansi)m", contents: contents, footer: footer)
     }
     /// Applies a bold font weight to the text.
     /// - Returns: Bold text.
-    public func bold() -> Text {
+    public func bold() -> Self {
         return .init(header: "\(header)\u{001B}[1m", contents: contents, footer: footer)
     }
     /// Applies a bold font weight to the text.
     /// - Parameter isActive: A Boolean value that indicates whether text has bold styling.
     /// - Returns: Bold text.
-    public func bold(_ isActive: Bool) -> Text {
+    public func bold(_ isActive: Bool) -> Self {
         return .init(header: isActive ? "\(header)\u{001B}[1m" : "\(header)", contents: contents, footer: footer)
     }
     /// Sets the font weight of the text.
     /// - Parameter weight: One of the available font weights.
     /// - Returns: Text view with adapted text weighting
-    public func fontWeight(_ weight: Weight) -> Text {
+    public func fontWeight(_ weight: Weight) -> Self {
         if weight == .default {
             return .init(header: header, contents: contents, footer: footer)
         } else {
@@ -142,30 +142,30 @@ public struct Text: View, Sendable, Equatable {
     }
     /// Applies italics to the text.
     /// - Returns: Italic text.
-    public func italic() -> Text {
+    public func italic() -> Self {
         return .init(header: "\(header)\u{001B}[3m", contents: contents, footer: footer)
     }
     /// Applies italics to the text.
     /// - Parameter isActive: A Boolean value that indicates whether italic styling is added.
     /// - Returns: Italic text.
-    public func italic(_ isActive: Bool) -> Text {
+    public func italic(_ isActive: Bool) -> Self {
         return .init(header: isActive ? "\(header)\u{001B}[3m" : "\(header)", contents: contents, footer: footer)
     }
     /// Applies an underline to the text.
     /// - Returns: Text with a line.
-    public func underline() -> Text {
+    public func underline() -> Self {
         return .init(header: "\(header)\u{001B}[4m", contents: contents, footer: footer)
     }
     /// Applies an underline to the text.
     /// - Parameter isActive: A Boolean value that indicates whether underline styling is added. The default value is true.
     /// - Returns: Text with a line.
-    public func underline(_ isActive: Bool) -> Text {
+    public func underline(_ isActive: Bool) -> Self {
         return .init(header: isActive ? "\(header)\u{001B}[4m" : "\(header)", contents: contents, footer: footer)
     }
     /// Applies a blink to the text.
     /// - Parameter style: Flashing Method
     /// - Returns: Blinking text.
-    public func blink(_ style: BlinkStyle) -> Text {
+    public func blink(_ style: BlinkStyle) -> Self {
         if style == .none {
             return .init(header: header, contents: contents, footer: footer)
         } else {
@@ -174,30 +174,30 @@ public struct Text: View, Sendable, Equatable {
     }
     /// Hides this view unconditionally.
     /// - Returns: A hidden view.
-    public func hidden() -> Text {
+    public func hidden() -> Self {
         return .init(header: "\(header)\u{001B}[8m", contents: contents, footer: footer)
     }
     /// Hides this view unconditionally.
     /// - Parameter isActive: A Boolean value that indicates whether text has hiden.
     /// - Returns: A hidden view.
-    public func hidden(_ isActive: Bool) -> Text {
+    public func hidden(_ isActive: Bool) -> Self {
         return .init(header: isActive ? "\(header)\u{001B}[8m" : "\(header)", contents: contents, footer: footer)
     }
     /// Applies a strikethrough to the text.
     /// - Returns: Text with a line through its center.
-    public func strikethrough() -> Text {
+    public func strikethrough() -> Self {
         return .init(header: "\(header)\u{001B}[9m", contents: contents, footer: footer)
     }
     /// Applies a strikethrough to the text.
     /// - Parameter isActive: A Boolean value that indicates whether the text has a strikethrough applied.
     /// - Returns: Text with a line through its center.
-    public func strikethrough(_ isActive: Bool) -> Text {
+    public func strikethrough(_ isActive: Bool) -> Self {
         return .init(header: isActive ? "\(header)\u{001B}[9m" : "\(header)", contents: contents, footer: footer)
     }
     /// Whether to break the View at the end
     /// - Parameter newLine: whether or not to start a new line
     /// - Returns: Adapted view
-    public func newLine(_ newLine: Bool = true) -> Text {
+    public func newLine(_ newLine: Bool = true) -> Self {
         return .init(header: header, contents: contents, footer: newLine)
     }
 }
