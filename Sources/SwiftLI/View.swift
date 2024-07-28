@@ -61,10 +61,7 @@ public struct Text: View, Sendable, Equatable {
         self.contents = [String(repeating: repeating, count: count)]
         self.footer = footer
     }
-    /// Initializer to realize method chain
-    /// - Parameters:
-    ///   - header: Hetter to specify display style
-    ///   - contents: String to display
+
     init(
         header: String,
         contents: Array<String>,
@@ -76,7 +73,7 @@ public struct Text: View, Sendable, Equatable {
     }
     
     init(
-        header: String,
+        header: String = "",
         content: String,
         footer: Bool = false
     ) {

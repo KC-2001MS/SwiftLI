@@ -14,6 +14,8 @@ public struct Label: View {
     let title: String
     
     let footer: Bool
+    
+    let style: LabelStyle
 
     /// Initializer to realize method chain
     /// - Parameters:
@@ -23,12 +25,14 @@ public struct Label: View {
         header: String,
         title: String,
         image: String,
-        footer: Bool = false
+        footer: Bool = false,
+        style: LabelStyle = .automatic
     ) {
         self.header = "\(header)"
         self.title = title
         self.image = image
         self.footer = footer
+        self.style = style
     }
     
     public init(
@@ -47,16 +51,32 @@ public struct Label: View {
         self.image = image
         self.title = title
         self.footer = false
+        self.style = .automatic
+    }
+    
+    public init(
+        image: String,
+        title: String
+    ) {
+        self.header = ""
+        self.image = image
+        self.title = title
+        self.footer = false
+        self.style = .automatic
     }
     
     /// What the view displays
     public var body: [any View] {
-        return []
+        return style.makeBody(configuration: LabelStyleConfiguration(icon: Text(content: image), title: Text(content: title)))
     }
 
     /// Methods for rendering text
     public func render() {
-        print("\(header)\(image)\(title)\u{001B}[0m", terminator: footer ? "\n" : "")
+        Group(header: header, contents: body, footer: footer).render()
+    }
+    
+    public func labelStyle(_ style: LabelStyle) -> Self {
+        return .init(header: self.header, title: self.header, image: self.image, footer: self.footer, style: style)
     }
 
     /// Modifier to adapt foreground color to existing text

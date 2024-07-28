@@ -32,18 +32,14 @@ struct LabelCommand: ParsableCommand {
             
             Group {
                 Group {
-                    Text("init(_ title: String,unicodeImage: Int)")
+                    Label("init(_ title: String,unicodeImage: Int)", unicodeImage: 0x2705)
                         .forgroundColor(Color.cyan)
                     
                     Spacer()
                     
-                    Text("\"Label\",0x2705")
+                    Text("\"init(_ title: String,unicodeImage: Int)\",0x2705")
                         .fontWeight(.thin)
                         .forgroundColor(.red)
-                    
-                    Spacer()
-                    
-                    Label("Label", unicodeImage: 0x2705)
                 }
                 .newLine()
             }
