@@ -10,7 +10,7 @@ import ArgumentParser
 import SwiftLI
 
 struct SwiftLogoCommand: ParsableCommand {
-    static var configuration = CommandConfiguration(
+    static let configuration = CommandConfiguration(
         commandName: "swift",
         abstract: "Display of SwiftLogo structure",
         discussion: """

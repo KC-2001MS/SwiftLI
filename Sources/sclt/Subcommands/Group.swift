@@ -10,7 +10,7 @@ import ArgumentParser
 import SwiftLI
 
 struct GroupCommand: ParsableCommand {
-    static var configuration = CommandConfiguration(
+    static let configuration = CommandConfiguration(
         commandName: "group",
         abstract: "Display of Group structure",
         discussion: """

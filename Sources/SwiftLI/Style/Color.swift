@@ -7,7 +7,7 @@
 
 
 /// A representation of a color that adapts to a given context.
-public enum Color {
+public enum Color: Sendable {
     
     case black
     case red

@@ -11,7 +11,7 @@ import ArgumentParser
 //https://100rabh.medium.com/cli-tool-in-swift-using-swift-argument-parser-subcommands-and-flags-77ee31d9ac99
 @main
 struct scltCommand: ParsableCommand {
-    static var configuration = CommandConfiguration(
+    static let configuration = CommandConfiguration(
         commandName: "sclt",
         abstract: "Command line tool to check SwiftLI operation",
         discussion: """

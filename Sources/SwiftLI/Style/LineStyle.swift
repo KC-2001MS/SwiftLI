@@ -7,7 +7,7 @@
 
 
 /// Specify the line type of the Divider
-public enum LineStyle: CaseIterable {
+public enum LineStyle: CaseIterable, Sendable {
     case `default`
     case double_line
 }

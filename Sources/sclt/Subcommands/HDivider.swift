@@ -10,7 +10,7 @@ import ArgumentParser
 import SwiftLI
 
 struct HDividerCommand: ParsableCommand {
-    static var configuration = CommandConfiguration(
+    static let configuration = CommandConfiguration(
         commandName: "hdivider",
         abstract: "Display of HDivider structure",
         discussion: """

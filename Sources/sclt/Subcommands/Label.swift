@@ -11,7 +11,7 @@ import SwiftLI
 
 
 struct LabelCommand: ParsableCommand {
-    static var configuration = CommandConfiguration(
+    static let configuration = CommandConfiguration(
         commandName: "label",
         abstract: "Display of Label structure",
         discussion: """

@@ -10,7 +10,7 @@ import ArgumentParser
 import SwiftLI
 
 struct BreakCommand: ParsableCommand {
-    static var configuration = CommandConfiguration(
+    static let configuration = CommandConfiguration(
         commandName: "break",
         abstract: "Display of Break structure",
         discussion: """

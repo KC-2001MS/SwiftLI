@@ -10,7 +10,7 @@ import ArgumentParser
 import SwiftLI
 
 struct SpacerCommand: ParsableCommand {
-    static var configuration = CommandConfiguration(
+    static let configuration = CommandConfiguration(
         commandName: "spacer",
         abstract: "Display of HSpacer structure",
         discussion: """

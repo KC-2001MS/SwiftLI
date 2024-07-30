@@ -10,7 +10,7 @@ import ArgumentParser
 import SwiftLI
 
 struct TextCommand: ParsableCommand {
-    static var configuration = CommandConfiguration(
+    static let configuration = CommandConfiguration(
         commandName: "text",
         abstract: "Display of Text structure",
         discussion: """

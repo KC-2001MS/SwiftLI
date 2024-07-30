@@ -1,3 +1,4 @@
+#if swift(>=6.0)
 import Testing
 @testable import SwiftLI
 import Foundation
@@ -86,10 +87,10 @@ struct TextTests {
             let text3 = Text(header: string, repeating: character, count: int, footer: false)
             let text4 = Text(header: string, content: string, footer: false)
             
-            #expect(text1.content == string)
-            #expect(text2.content == String(repeating: character, count: int))
-            #expect(text3.content == String(repeating: character, count: int))
-            #expect(text4.content == string)
+            #expect(text1.contents == [string])
+            #expect(text2.contents == [String(repeating: character, count: int)])
+            #expect(text3.contents == [String(repeating: character, count: int)])
+            #expect(text4.contents == [string])
         }
         
         @Test("Is the value of the footer variable correct when initialized?", arguments: [(randomStrings, randomInt, randomCharacter)])
@@ -616,3 +617,4 @@ struct EmoticonTests {
         }
     }
 }
+#endif

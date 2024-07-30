@@ -7,7 +7,7 @@
 
 
 /// A weight to use for fonts.
-public enum Weight: String, CaseIterable {
+public enum Weight: String, CaseIterable, Sendable {
     case `default` = "0"
     case bold = "1"
     case thin = "2"
