@@ -39,7 +39,7 @@ jobs:
       id-token: write
     environment: 
       name: github-pages
-      url: "https://kc-2001ms.github.io/SwiftLI/documentation/swiftli/"
+      url: "https://iroiro.dev/SwiftLI/documentation/swiftli/"
 
     steps:
       - name: Deploy to GitHub Pages
