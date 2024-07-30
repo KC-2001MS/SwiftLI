@@ -14,8 +14,20 @@ The following environment is required to use this library.
 </p>
 
 ## Demo
-This library includes a command line tool that allows you to verify its operation. Please check it out along with the source code for the command line tool.
-
+The library includes a command line tool that allows you to verify its operation. Please use the following method to check the command line tool along with the source code.
+### Using CMake
+1. download this project file
+2. open a terminal
+3. Type the following command
+``` sh
+cd <Path to this project>
+make install
+```
+### Using Homebrew
+1. Type the following command in a terminal
+``` sh
+brew install sclt
+```
 ## Usage
 You can easily build a command line CUI by constructing your code as follows
 ```swift
@@ -178,6 +190,15 @@ struct TextCommand: ParsableCommand {
 }
 ```
 <img src="images/SwiftLI_Sample.png" style="height:400px;object-fit: contain;">
+
+## Install
+Add the following files to the Package.swift file for use. For more information, please visit [swift.org](https://www.swift.org/documentation/package-manager/).
+``` swift
+    dependencies: [
+        // Add this code
+        .package(url: "https://github.com/KC-2001MS/SwiftLI.git", from: "0.3.0"),
+    ],
+```
 
 ## Swift-DocC
 Swift-DocC is currently being implemented.
