@@ -17,16 +17,3 @@ clean:
 	rm -rf .build
 
 .PHONY: build install uninstall clean
-
-docc:
-	swift package --allow-writing-to-directory $(DOCC_DIR) \
-		generate-documentation --target $(DOCC_TARGET) \
-		--disable-indexing \
-		--transform-for-static-hosting \
-		--hosting-base-path $(DOCC_TARGET) \
-		--output-path $(DOCC_DIR)
-
-docc-preview:
-	swift package --disable-sandbox preview-documentation --target $(DOCC_TARGET)
-
-.PHONY: docc-preview docc
