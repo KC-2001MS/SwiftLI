@@ -6,6 +6,7 @@
 //
 
 
+
 /// View to display text in terminal
 ///
 /// This is the most basic view that displays text in the terminal.
