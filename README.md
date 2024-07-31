@@ -26,7 +26,7 @@ make install
 ### Using Homebrew
 1. Type the following command in a terminal
 ``` sh
-brew install sclt
+brew install kc-2001ms/tap/sclt
 ```
 ## Usage
 You can easily build a command line CUI by constructing your code as follows
