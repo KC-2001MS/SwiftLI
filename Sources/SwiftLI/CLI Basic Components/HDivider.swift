@@ -22,6 +22,7 @@ public struct HDivider: View {
     let count: Int
     
     let footer: Bool
+    
     /// Creates a space view that is displayed in the terminal.
     /// - Parameter count: Space Width
     public init(_ count: Int) {

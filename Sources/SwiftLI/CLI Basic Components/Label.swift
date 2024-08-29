@@ -35,8 +35,12 @@ public struct Label: View {
         self.style = style
     }
     
+    /// Creates a label view that is displayed in the terminal.
+    /// - Parameters:
+    ///   - title: Label Title
+    ///   - unicodeImage: Unicode numbers for visual representation
     public init(
-        _ title: String,
+        _ title: LocalizedStringKey,
         unicodeImage: Int
     ) {
         let image: String
@@ -49,18 +53,22 @@ public struct Label: View {
         }
         self.header = ""
         self.image = image
-        self.title = title
+        self.title = String(localized: title.localizationValue)
         self.footer = false
         self.style = .automatic
     }
     
+    /// Creates a label view that is displayed in the terminal.
+    /// - Parameters:
+    ///   - image: String for visual representation
+    ///   - title: Label Title
     public init(
         image: String,
-        title: String
+        title: LocalizedStringKey
     ) {
         self.header = ""
         self.image = image
-        self.title = title
+        self.title = String(localized: title.localizationValue)
         self.footer = false
         self.style = .automatic
     }

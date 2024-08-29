@@ -5,6 +5,8 @@
 //  Created by Keisuke Chinone on 2024/05/27.
 //
 
+import Foundation
+
 
 
 /// View to display text in terminal
@@ -33,10 +35,15 @@ public struct Text: View, Sendable, Equatable {
     
     let footer: Bool
     /// Creates a text view that is displayed in the terminal.
-    /// - Parameter string: String to be displayed in the terminal
-    public init(_ string: String) {
+    /// - Parameter key: String to be displayed in the terminal
+    public init(
+        _ key: LocalizedStringKey,
+        tableName: String? = nil,
+        bundle: Bundle? = nil,
+        comment: StaticString? = nil
+    ) {
         self.header = ""
-        self.contents = [string]
+        self.contents = [String(localized: key.localizationValue, table: tableName, bundle: bundle, comment: comment)]
         self.footer = false
     }
     /// Creates a text view that is displayed in the terminal.

@@ -6,8 +6,9 @@
 //
 
 
+/// View displaying the Swift logo
 public struct SwiftLogo: View, Sendable, Equatable {
-    
+    /// Initializer that initializes the view of the Swift logo
     public init() {}
     
     public var body: [View] {
