@@ -6,6 +6,24 @@
       parallelizeBuildables = "YES"
       buildImplicitDependencies = "YES"
       buildArchitectures = "Automatic">
+      <PostActions>
+         <ExecutionAction
+            ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
+            <ActionContent
+               title = "Run Script"
+               scriptText = "# Type a script or drag a script file from your workspace to insert its path.&#10;# &#x30d1;&#x30c3;&#x30b1;&#x30fc;&#x30b8;&#x540d;&#x3092;&#x8a2d;&#x5b9a;&#10;PACKAGE_NAME=&quot;sclt&quot;&#10;&#10;# &#x30d3;&#x30eb;&#x30c9;&#x30c7;&#x30a3;&#x30ec;&#x30af;&#x30c8;&#x30ea;&#x3092;&#x8a2d;&#x5b9a;&#10;BUILD_DIR=&quot;${BUILT_PRODUCTS_DIR}&quot;&#10;&#10;# &#x5b9f;&#x884c;&#x30d5;&#x30a1;&#x30a4;&#x30eb;&#x306e;&#x30d1;&#x30b9;&#10;EXECUTABLE_PATH=&quot;$BUILD_DIR/$EXECUTABLE_PATH/$PACKAGE_NAME&quot;&#10;&#10;# &#x79fb;&#x52d5;&#x5148;&#x306e;&#x30c7;&#x30a3;&#x30ec;&#x30af;&#x30c8;&#x30ea;&#10;DEST_DIR=&quot;/usr/local/bin&quot;&#10;&#10;cp ${EXECUTABLE_PATH} ${DEST_DIR}&#10;">
+               <EnvironmentBuildable>
+                  <BuildableReference
+                     BuildableIdentifier = "primary"
+                     BlueprintIdentifier = "sclt"
+                     BuildableName = "sclt"
+                     BlueprintName = "sclt"
+                     ReferencedContainer = "container:">
+                  </BuildableReference>
+               </EnvironmentBuildable>
+            </ActionContent>
+         </ExecutionAction>
+      </PostActions>
       <BuildActionEntries>
          <BuildActionEntry
             buildForTesting = "YES"

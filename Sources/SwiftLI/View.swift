@@ -10,9 +10,9 @@ import Foundation
 
 
 /// View to display text in terminal
-///
+///  
 /// This is the most basic view that displays text in the terminal.
-///
+///  
 /// To display the string you want to display, declare it with the init(_ string: String) initializer.
 /// ```swift
 /// let text = Text("Hello SwiftLI!")
@@ -44,6 +44,20 @@ public struct Text: View, Sendable, Equatable {
     ) {
         self.header = ""
         self.contents = [String(localized: key.localizationValue, table: tableName, bundle: bundle, comment: comment)]
+        self.footer = false
+    }
+    /// Creates a text view that displays a string literal without localization.
+    /// - Parameter content: A string to display without localization.
+    public init(verbatim content: String) {
+        self.header = ""
+        self.contents = [content]
+        self.footer = false
+    }
+    /// Creates a text view that displays a string literal without localization.
+    /// - Parameter content: A string to display without localization.
+    public init<S>(_ content: S) where S : StringProtocol {
+        self.header = ""
+        self.contents = [String(content)]
         self.footer = false
     }
     /// Creates a text view that is displayed in the terminal.
