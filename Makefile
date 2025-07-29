@@ -7,8 +7,8 @@ build:
 	swift build -c release --disable-sandbox
 
 install: build
-	install -d "$(bindir)"
-	install ".build/release/sclt" "$(bindir)"
+	sudo install -d "$(bindir)"
+	sudo install ".build/release/sclt" "$(bindir)"
 
 uninstall:
 	rm -rf "$(bindir)/sclt"

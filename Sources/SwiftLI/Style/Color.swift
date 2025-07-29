@@ -18,8 +18,7 @@ public enum Color: Sendable {
     case cyan
     case white
     case eight_bit(_ bit: Int)
-//    Commented out because it is not supported by the standard terminal of macOS
-//    case rgb(r:Int,g:Int,b:Int)
+    case rgb(r:Int,g:Int,b:Int)
     case primary
     
     internal var ansi: String {
@@ -42,9 +41,8 @@ public enum Color: Sendable {
             "7"
         case .eight_bit(let bit):
             "8;5;\(bit)"
-//    Removed because it does not work with macOS terminal app
-//        case .rgb(let r, let g, let b):
-//            "8;2;\(r);\(g);\(b)"
+        case .rgb(let r, let g, let b):
+            "8;2;\(r);\(g);\(b)"
         case .primary:
             "9"
         }
