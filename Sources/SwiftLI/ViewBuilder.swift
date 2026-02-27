@@ -14,19 +14,19 @@ public struct ViewBuilder {
     }
     /// Produces content
     public static func buildOptional(_ component: [View]?) -> View {
-        Group(contents: component ?? [], footer: false)
+        Group(contents: component ?? [])
     }
     /// Produces content for a conditional statement in a multi-statement closure when the condition is true.
     public static func buildEither(first component: [View]) -> View {
-        Group(contents: component, footer: false)
+        Group(contents: component)
     }
     /// Produces content for a conditional statement in a multi-statement closure when the condition is false.
     public static func buildEither(second component: [View]) -> View {
-        Group(contents: component, footer: false)
+        Group(contents: component)
     }
     /// Produces content
     public static func buildArray(_ components: [[View]]) -> View  {
-        Group(contents: components.flatMap({ $0 }), footer: false)
+        Group(contents: components.flatMap({ $0 }))
     }
     /// Processes view content for a conditional compiler-control statement that performs an availability check.
     public static func buildLimitedAvailability(_ component: [View]) -> [View] {

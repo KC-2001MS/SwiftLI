@@ -36,48 +36,71 @@ public struct Group: View {
     
     let contents: [View]
     
-    let footer: Bool
     /// Creates a group of views.
     /// - Parameter contents: A ViewBuilder that produces the views to group.
     public init(@ViewBuilder contents: () -> [View]) {
         self.header = ""
         self.contents = contents()
-        self.footer = false
     }
     
-    init(contents: [View], footer: Bool) {
+    init(contents: [View]) {
         self.header = ""
         self.contents = contents
-        self.footer = footer
     }
     
-    init(header: String, contents: [View], footer: Bool) {
+    init(header: String, contents: [View]) {
         self.header = header
         self.contents = contents
-        self.footer = footer
     }
     /// What the view displays
     public var body: [View] {
-        var display: [View] = contents.map({$0.addHeader(header)})
-        if footer {
-            display.append(Break())
+        var result: [any View] = []
+        for child in contents {
+            result.append(child.addHeader(header))
         }
-        return display
+        return result
     }
     
     public func addHeader(_ header: String) -> Self {
-        return Group(header: header + self.header, contents: self.contents, footer: self.footer)
+        return Group(header: header + self.header, contents: self.contents)
     }
-    /// Modifier to adapt foreground color to existing text
-    /// - Parameter color: Color to be specified as foreground color
-    /// - Returns: Text view with foreground color adaptation
-    public func forgroundColor(_ color: Color) -> Group {
-        return Group(header: "\(header)\u{001B}[3\(color.ansi)m", contents: self.contents, footer: self.footer)
+
+    public func render() {
+        let canvas = TerminalCanvas(width: 0, height: 0)
+        _drawChildren(into: canvas, at: .zero)
+        canvas.flush()
     }
-    /// Whether to break the View at the end
-    /// - Parameter newLine: whether or not to start a new line
-    /// - Returns: Adapted view
-    public func newLine(_ newLine: Bool = true) -> Group {
-        return .init(header: self.header, contents: self.contents, footer: newLine)
+
+    public func renderString() -> String {
+        let canvas = TerminalCanvas(width: 0, height: 0)
+        _drawChildren(into: canvas, at: .zero)
+        return canvas.toString()
+    }
+
+    public func measure() -> Size {
+        let children = body
+        var maxWidth = 0
+        var totalHeight = 0
+        for child in children {
+            let size = child.measure()
+            if size.width > maxWidth { maxWidth = size.width }
+            totalHeight += size.height
+        }
+        return Size(width: maxWidth, height: totalHeight)
+    }
+
+    public func draw(into canvas: TerminalCanvas, at origin: Point) {
+        _drawChildren(into: canvas, at: origin)
+    }
+
+    /// Draws children vertically stacked into the canvas.
+    private func _drawChildren(into canvas: TerminalCanvas, at origin: Point) {
+        var y = origin.row
+        for child in body {
+            let size = child.measure()
+            canvas.expand(toFit: Rect(origin: Point(column: origin.column, row: y), size: size))
+            child.draw(into: canvas, at: Point(column: origin.column, row: y))
+            y += size.height
+        }
     }
 }
