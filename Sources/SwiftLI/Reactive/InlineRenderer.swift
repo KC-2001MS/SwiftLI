@@ -57,7 +57,9 @@ final class InlineRenderer: @unchecked Sendable {
         }
 
         // Wrap in an implicit root VStack so top-level views stack vertically
-        let root = VStack(spacing: 0, children: view.body.isEmpty ? [view] : view.body)
+        let bodyGroup = view.body as? Group
+        let children: [any View] = bodyGroup.map(\.contents) ?? [view]
+        let root = VStack(spacing: 0, children: children.isEmpty ? [view] : children)
         // Capture stdout to count lines
         let lineCount = captureAndPrint(view: root)
         renderedLineCount = lineCount

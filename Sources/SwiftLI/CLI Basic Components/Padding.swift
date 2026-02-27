@@ -30,8 +30,7 @@ public struct PaddingView: View, @unchecked Sendable {
         self.length = length
     }
 
-    @ViewBuilder
-    public var body: [View] { Text(verbatim: "") }
+    public var body: some View { Group(contents: []) }
 
     public func render() {
         let pad = String(repeating: " ", count: length)

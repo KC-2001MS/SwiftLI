@@ -32,7 +32,7 @@ public enum VerticalAlignment: Sendable {
 /// - `.top` (default): all children start at the same row.
 /// - `.bottom`: all children end at the same row.
 public struct HStack: View, @unchecked Sendable {
-    private let children: [View]
+    private let children: [any View]
     private let spacing: Int
     private let alignment: VerticalAlignment
     private let header: String
@@ -45,11 +45,11 @@ public struct HStack: View, @unchecked Sendable {
     public init(
         alignment: VerticalAlignment = .top,
         spacing: Int = 0,
-        @ViewBuilder content: () -> [View]
+        @ViewBuilder content: () -> Group
     ) {
         self.alignment = alignment
         self.spacing = spacing
-        self.children = content()
+        self.children = content().contents
         self.header = ""
     }
 
@@ -65,9 +65,9 @@ public struct HStack: View, @unchecked Sendable {
         self.header = header
     }
 
-    @ViewBuilder
-    public var body: [View] { }
+    public var body: some View { Group(contents: []) }
 
+    @_spi(RenderingInternals)
     public func addHeader(_ newHeader: String) -> HStack {
         HStack(alignment: alignment, spacing: spacing, children: children, header: newHeader + header)
     }
@@ -78,12 +78,14 @@ public struct HStack: View, @unchecked Sendable {
         canvas.flush()
     }
 
+    @_spi(RenderingInternals)
     public func renderString() -> String {
         let canvas = TerminalCanvas(width: 0, height: 0)
         _drawInto(canvas: canvas, at: .zero)
         return canvas.toString()
     }
 
+    @_spi(RenderingInternals)
     public func measure() -> Size {
         let flat = _flattenChildren(children)
         var totalWidth = 0
@@ -101,6 +103,7 @@ public struct HStack: View, @unchecked Sendable {
         return Size(width: totalWidth, height: maxHeight)
     }
 
+    @_spi(RenderingInternals)
     public func draw(into canvas: TerminalCanvas, at origin: Point) {
         _drawInto(canvas: canvas, at: origin)
     }
@@ -114,7 +117,7 @@ public struct HStack: View, @unchecked Sendable {
         let styled: [any View] = header.isEmpty ? views : views.map { $0.addHeader(header) }
         return styled.flatMap { view -> [any View] in
             if let group = view as? Group {
-                return _flattenChildrenNoHeader(group.body)
+                return _flattenChildrenNoHeader(group._resolvedChildren)
             }
             return [view]
         }
@@ -123,7 +126,7 @@ public struct HStack: View, @unchecked Sendable {
     private func _flattenChildrenNoHeader(_ views: [any View]) -> [any View] {
         views.flatMap { view -> [any View] in
             if let group = view as? Group {
-                return _flattenChildrenNoHeader(group.body)
+                return _flattenChildrenNoHeader(group._resolvedChildren)
             }
             return [view]
         }

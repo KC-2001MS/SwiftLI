@@ -42,10 +42,10 @@ public struct OnAppearView: View {
         self.action = action
     }
 
-    public var body: [any View] {
+    public var body: some View {
         // render() is overridden, so body is not used by the runtime.
         // Return the content views so default render() still works if called.
-        return []
+        Group(contents: [])
     }
 
     public func render() {

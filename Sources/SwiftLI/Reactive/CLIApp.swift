@@ -18,7 +18,7 @@
 ///
 /// @main
 /// struct HelloApp: CLIApp {
-///     var body: [View] {
+///     var body: [any View] {
 ///         Text("Hello, SwiftLI!").bold().newLine()
 ///     }
 /// }
@@ -34,7 +34,7 @@
 ///     @State var count = 0
 ///     let timer = CLITimer(interval: 1.0)
 ///
-///     var body: [View] {
+///     var body: [any View] {
 ///         Text("Count: \(count)").newLine()
 ///
 ///         if count >= 5 {
@@ -79,7 +79,7 @@ public protocol CLIApp {
     /// and re-renders the terminal output. Use ``ViewBuilder`` syntax to compose
     /// views declaratively, including `if`/`else` conditional rendering.
     @ViewBuilder
-    var body: [View] { get }
+    var body: [any View] { get }
 }
 
 public extension CLIApp {

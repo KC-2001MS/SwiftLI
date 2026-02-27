@@ -162,10 +162,11 @@ public struct ProgressBar: View, Sendable {
 
     // MARK: - View
 
-    public var body: [any View] {
-        Text(verbatim: "")
+    public var body: some View {
+        Group(contents: [])
     }
 
+    @_spi(RenderingInternals)
     public func addHeader(_ newHeader: String) -> Self {
         Self(
             header: newHeader + header,
@@ -184,8 +185,23 @@ public struct ProgressBar: View, Sendable {
         fflush(stdout)
     }
 
+    @_spi(RenderingInternals)
     public func renderString() -> String {
         barString(value: valueSource.current)
+    }
+
+    @_spi(RenderingInternals)
+    public func measure() -> Size {
+        let s = barString(value: valueSource.current)
+        return _size(of: s.isEmpty ? " " : s)
+    }
+
+    @_spi(RenderingInternals)
+    public func draw(into canvas: TerminalCanvas, at origin: Point) {
+        let s = barString(value: valueSource.current)
+        if s.isEmpty { return }
+        canvas.expand(toFit: Rect(origin: origin, size: _size(of: s)))
+        canvas.write(s, at: origin)
     }
 
     // MARK: - Internal rendering

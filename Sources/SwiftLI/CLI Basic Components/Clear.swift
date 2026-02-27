@@ -5,22 +5,28 @@
 //  Created by Keisuke Chinone on 8/29/24.
 //
 
-// View to delete view
+/// A view that erases all visible content from the terminal screen.
 ///
-/// Deletes a view
+/// Rendering a `Clear` view sends the ANSI `ED` (Erase in Display) escape
+/// sequence `\e[2J`, which clears every cell on the visible screen without
+/// moving the cursor.
+///
 /// ```swift
-/// let clear = Clear()
-/// clear.render()
+/// Clear().render()   // clears the terminal
 /// ```
+///
+/// > Important: `Clear` does not move the cursor to the home position.
+/// > Combine it with other views or ANSI cursor-movement sequences if you
+/// > also need to reposition the cursor.
 public struct Clear: View, Sendable, Equatable {
-    /// Create a view that removes the terminal display.
+    /// Creates a view that clears the terminal screen when rendered.
     public init() {}
-    
-    /// What the view displays
-    public var body: [View] {
-        Text(header: "\u{001B}[2J", content: "")
+
+    public var body: some View {
+        Group(contents: [Text(header: "\u{001B}[2J", content: "")])
     }
-    
+
+    @_spi(RenderingInternals)
     public func addHeader(_ header: String) -> Self {
         return Clear()
     }

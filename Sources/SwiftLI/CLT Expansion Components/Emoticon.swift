@@ -6,21 +6,32 @@
 //
 
 
-/// Structure to build a view of emoticons
+/// A customizable ASCII-art emoticon view.
 ///
-/// This structure allows for easy construction of emoticons used in English-speaking countries.
+/// `Emoticon` renders a three-part face — eyes, optional nose, and mouth —
+/// using characters from the ``EyesStyle``, ``NoseStyle``, and ``MouthStyle``
+/// enumerations.
 ///
-/// You can create default emoticons with the init() initializer:)
 /// ```swift
-/// let emoticon = Emoticon()
-/// emoticon.render()
+/// // Default emoticon: :-)
+/// Emoticon().render()
+///
+/// // Custom combination
+/// Emoticon(eye: .caret, nose: .none, mouth: .smile).render()
+/// // ^_^
+///
+/// // With explicit nose
+/// Emoticon(eye: .colon, nose: .hyphen, mouth: .smile).render()
+/// // :-)
 /// ```
-/// init(eye: EyesStyle,nose: NoseStyle,mouth: MouthStyle)Initializers can be used to create a variety of emoticons.
-/// ```swift
-/// let emoticon = Emoticon(nose: .wideOpen, nose .standard, mouth: .turnedUp)
-/// emoticon.render()
-/// ```
-/// Modifiers can be added to change the style.
+///
+/// ## Available styles
+///
+/// | Property | Type | Example values |
+/// | -------- | ---- | -------------- |
+/// | `eye`    | ``EyesStyle``  | `.colon`, `.semicolon`, `.caret` |
+/// | `nose`   | ``NoseStyle``  | `.none`, `.hyphen`, `.o` |
+/// | `mouth`  | ``MouthStyle`` | `.smile`, `.frown`, `.open` |
 public struct Emoticon: View, Sendable, Equatable {
     let header: String
     
@@ -64,10 +75,11 @@ public struct Emoticon: View, Sendable, Equatable {
         self.content = content
     }
     /// What the view displays
-    public var body: [View] {
-        Text(header: header, content: content)
+    public var body: some View {
+        Group(contents: [Text(header: header, content: content)])
     }
 
+    @_spi(RenderingInternals)
     public func addHeader(_ header: String) -> Self {
         .init(header: header + self.header, content: content)
     }

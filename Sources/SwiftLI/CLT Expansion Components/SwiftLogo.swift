@@ -6,12 +6,23 @@
 //
 
 
-/// View displaying the Swift logo
+/// A decorative ASCII-art view of the Swift programming language logo.
+///
+/// `SwiftLogo` renders a pre-composed, orange-tinted ASCII representation of
+/// the Swift "swift bird" logo. No configuration is needed — simply create an
+/// instance and call ``render()``.
+///
+/// ```swift
+/// SwiftLogo().render()
+/// ```
+///
+/// The logo is approximately 44 columns wide and 22 rows tall. Its color
+/// is fixed to terminal 256-color palette index 202 (orange).
 public struct SwiftLogo: View, Sendable, Equatable {
-    /// Initializer that initializes the view of the Swift logo
+    /// Creates the Swift logo view.
     public init() {}
     
-    public var body: [View] {
+    public var body: some View {
         Group {
             HStack {
                 Spacer(10)

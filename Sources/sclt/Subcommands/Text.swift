@@ -26,7 +26,7 @@ struct TextCommand: AsyncParsableCommand, ViewableCommand {
 
     var colors: [Color] { [.red, .green, .yellow, .blue, .magenta, .cyan, .white] }
     var colorNames: [String] { ["red", "green", "yellow", "blue", "magenta", "cyan", "white"] }
-    let messages = ["Hello, SwiftLI!", "Text changes!", "Dynamic body!", "Reactive CLI!"]
+    var messages: [String] { ["Hello, SwiftLI!", "Text changes!", "Dynamic body!", "Reactive CLI!"] }
 
     mutating func run() async throws {
         startBodyRendering()

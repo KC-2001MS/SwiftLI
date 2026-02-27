@@ -11,7 +11,7 @@
 /// When placed inside an ``HStack``, `Divider` draws a **vertical** line
 /// (one column wide, as tall as the stack).  In any other context —
 /// ``VStack``, ``Group``, or a top-level `body` — it draws a **horizontal**
-/// line (`character` repeated `count` times).
+/// line (`character` repeated across the full stack width).
 ///
 /// ```swift
 /// // Vertical bar between two texts inside HStack:
@@ -44,7 +44,10 @@ public struct Divider: View, Sendable, Equatable {
 
     // MARK: - Public initialisers
 
-    /// Creates a divider with the default characters (`-` horizontal, `|` vertical) and `count` columns wide.
+    /// Creates a divider with the default characters (`-` horizontal, `|` vertical).
+    ///
+    /// - Parameter count: Reserved for future use; currently ignored in layout
+    ///   (width is always determined by the enclosing stack).
     public init(_ count: Int = 1) {
         self.header = ""
         self.character = "-"
@@ -52,7 +55,12 @@ public struct Divider: View, Sendable, Equatable {
         self.count = count
     }
 
-    /// Creates a divider with explicit characters and width.
+    /// Creates a divider with explicit horizontal and vertical characters.
+    ///
+    /// - Parameters:
+    ///   - character: The character drawn for a horizontal divider.
+    ///   - verticalCharacter: The character drawn for a vertical divider inside ``HStack``.
+    ///   - count: Reserved for future use.
     public init(character: Character, verticalCharacter: Character = "|", count: Int = 1) {
         self.header = ""
         self.character = character
@@ -69,11 +77,11 @@ public struct Divider: View, Sendable, Equatable {
 
     // MARK: - View (horizontal / default context)
 
-    /// Default body: horizontal line (used outside HStack).
-    public var body: [View] {
-        Text(header: self.header, repeating: self.character, count: self.count)
+    public var body: some View {
+        Group(contents: [Text(header: self.header, repeating: self.character, count: self.count)])
     }
 
+    @_spi(RenderingInternals)
     public func addHeader(_ newHeader: String) -> Self {
         Divider(header: newHeader + self.header, character: self.character, verticalCharacter: self.verticalCharacter, count: self.count)
     }
@@ -104,7 +112,12 @@ public struct Divider: View, Sendable, Equatable {
 
     // MARK: - Modifiers
 
-    /// Specifies the line style of the divider.
+    /// Changes the line style of the divider.
+    ///
+    /// - Parameter style: The desired ``LineStyle``.
+    ///   - `.default`: uses `-` (horizontal) and `|` (vertical).
+    ///   - `.double_line`: uses `=` (horizontal) and `‖` (vertical).
+    /// - Returns: A new `Divider` with the updated characters.
     public func lineStyle(_ style: LineStyle) -> Divider {
         switch style {
         case .default:

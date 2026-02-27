@@ -1,6 +1,6 @@
 #if swift(>=6.0)
 import Testing
-@testable import SwiftLI
+@_spi(RenderingInternals) @testable import SwiftLI
 import Foundation
 
 extension Tag {
@@ -43,13 +43,13 @@ struct ViewProtocolTests {
         @Test("The number of elements added to the ViewBuilder matches the number of elements in the array.")
         func elementCountTesting() throws {
             @ViewBuilder
-            var views:  [View] {
+            var views: Group {
                 Text("")
                 Text("")
                 Text("")
             }
             
-            #expect(views.count == 3)
+            #expect(views.contents.count == 3)
         }
     }
 }
@@ -587,10 +587,12 @@ struct StackLayoutTests {
             Divider(5)
             Text("Below")
         }
-        let s = stack.renderString()
-        #expect(s.contains("-----"))
-        #expect(s.contains("Above"))
-        #expect(s.contains("Below"))
+        // Strip all ANSI escape sequences before checking plain text content.
+        let raw = stack.renderString()
+        let plain = raw.replacing(/\u{001B}\[[^m]*m/, with: "")
+        #expect(plain.contains("-----"))
+        #expect(plain.contains("Above"))
+        #expect(plain.contains("Below"))
     }
 
     @Test("VStack trailing alignment offsets shorter row")
