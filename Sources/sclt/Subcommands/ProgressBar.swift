@@ -12,9 +12,9 @@ import SwiftLI
 struct ProgressBarCommand: AsyncParsableCommand, ViewableCommand {
     static let configuration = CommandConfiguration(
         commandName: "progressbar",
-        abstract: "Display of ProgressBar structure",
+        abstract: "Display of ProgressView structure",
         discussion: """
-        Command to check the display of ProgressBar structure
+        Command to check the display of ProgressView structure
         """,
         version: "0.0.3",
         shouldDisplay: true,
@@ -37,7 +37,7 @@ struct ProgressBarCommand: AsyncParsableCommand, ViewableCommand {
 
     var body: some View {
         Group {
-            Text("ProgressBar View")
+            Text("ProgressView")
                 .background(.white)
                 .forgroundColor(.blue)
                 .bold()
@@ -45,11 +45,11 @@ struct ProgressBarCommand: AsyncParsableCommand, ViewableCommand {
             Text("Animated bar (0% → 100%)")
                 .forgroundColor(.cyan)
 
-            ProgressBar(min: min, value: progress, max: max, width: 40)
+            ProgressView(min: min, value: progress, max: max, width: 40)
 
             Spacer()
 
-            Text("Static snapshots")
+            Text("Static snapshots — BarProgressViewStyle (default)")
                 .forgroundColor(.cyan)
 
             Group {
@@ -58,7 +58,58 @@ struct ProgressBarCommand: AsyncParsableCommand, ViewableCommand {
                         Text(String(format: "%3d%% ", pct))
                             .fontWeight(.thin)
                             .forgroundColor(.red)
-                        ProgressBar(min: min, value: Double(pct) / 100.0, max: max, width: 30)
+                        ProgressView(min: min, value: Double(pct) / 100.0, max: max, width: 30)
+                    }
+                }
+            }
+
+            Spacer()
+
+            Text("Static snapshots — LinearProgressViewStyle")
+                .forgroundColor(.cyan)
+
+            Group {
+                for pct in [0, 25, 50, 75, 100] {
+                    HStack(spacing: 1) {
+                        Text(String(format: "%3d%% ", pct))
+                            .fontWeight(.thin)
+                            .forgroundColor(.red)
+                        ProgressView(min: min, value: Double(pct) / 100.0, max: max, width: 30)
+                            .progressViewStyle(LinearProgressViewStyle())
+                    }
+                }
+            }
+
+            Spacer()
+
+            Text("Static snapshots — PercentageProgressViewStyle")
+                .forgroundColor(.cyan)
+
+            Group {
+                for pct in [0, 25, 50, 75, 100] {
+                    HStack(spacing: 1) {
+                        Text(String(format: "%3d%% → ", pct))
+                            .fontWeight(.thin)
+                            .forgroundColor(.red)
+                        ProgressView(min: min, value: Double(pct) / 100.0, max: max, width: 30)
+                            .progressViewStyle(PercentageProgressViewStyle())
+                    }
+                }
+            }
+
+            Spacer()
+
+            Text("Static snapshots — SpinnerProgressViewStyle")
+                .forgroundColor(.cyan)
+
+            Group {
+                for pct in [0, 25, 50, 75, 100] {
+                    HStack(spacing: 1) {
+                        Text(String(format: "%3d%% ", pct))
+                            .fontWeight(.thin)
+                            .forgroundColor(.red)
+                        ProgressView(min: min, value: Double(pct) / 100.0, max: max, width: 30)
+                            .progressViewStyle(SpinnerProgressViewStyle(label: "Processing"))
                     }
                 }
             }
