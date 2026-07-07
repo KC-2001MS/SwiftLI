@@ -8,7 +8,7 @@
 import ArgumentParser
 import SwiftLI
 
-struct VStackCommand: AsyncParsableCommand, ViewableCommand {
+struct VStackCommand: AsyncParsableCommand, FullScreenViewableCommand {
     static let configuration = CommandConfiguration(
         commandName: "vstack",
         abstract: "Display of VStack structure",

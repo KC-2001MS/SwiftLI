@@ -8,7 +8,7 @@
 import ArgumentParser
 import SwiftLI
 
-struct GroupCommand: AsyncParsableCommand, ViewableCommand {
+struct GroupCommand: AsyncParsableCommand, FullScreenViewableCommand {
     static let configuration = CommandConfiguration(
         commandName: "group",
         abstract: "Display of Group structure",

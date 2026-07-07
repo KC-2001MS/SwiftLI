@@ -97,10 +97,27 @@ public final class TerminalCanvas: @unchecked Sendable {
                         activeStyle += seq
                     }
                 } else {
-                    if col < width {
-                        cells[row][col] = activeStyle + String(ch) + "\u{001B}[0m"
+                    // Advance the column by the glyph's visible width so wide
+                    // glyphs (CJK, emoji) stay aligned with the layout, which
+                    // also measures them as two columns.
+                    let w = TextMetrics.width(of: ch)
+                    if w == 0 {
+                        // A lone combining / zero-width mark composes onto the
+                        // previous cell rather than consuming a column.
+                        if col > 0, col - 1 < width {
+                            cells[row][col - 1] += String(ch)
+                        }
+                    } else {
+                        if col < width {
+                            cells[row][col] = activeStyle + String(ch) + "\u{001B}[0m"
+                        }
+                        // A wide glyph owns the next cell too; blank it so the
+                        // real character at `col + w` is not overwritten.
+                        if w >= 2, col + 1 < width {
+                            cells[row][col + 1] = ""
+                        }
+                        col += w
                     }
-                    col += 1
                     i = segment.index(after: i)
                 }
             }
@@ -150,13 +167,21 @@ public final class TerminalCanvas: @unchecked Sendable {
 
     // MARK: - Helpers
 
-    /// Returns the rendered content as a plain `String` (useful for testing).
-    /// Trailing spaces on each row are trimmed.
-    public func toString() -> String {
+    /// Returns the canvas rows as an array of strings, one per row, with
+    /// trailing plain spaces trimmed.
+    ///
+    /// This is the bridge from the mutable canvas to an immutable ``Frame``.
+    public func lines() -> [String] {
         lock.lock()
         let snapshot = cells
         lock.unlock()
-        return snapshot.map { _trimTrailingSpaces($0.joined()) }.joined(separator: "\n")
+        return snapshot.map { _trimTrailingSpaces($0.joined()) }
+    }
+
+    /// Returns the rendered content as a plain `String` (useful for testing).
+    /// Trailing spaces on each row are trimmed.
+    public func toString() -> String {
+        lines().joined(separator: "\n")
     }
 
     /// Strips trailing plain space characters from a string.

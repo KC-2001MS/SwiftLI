@@ -8,7 +8,7 @@
 import ArgumentParser
 import SwiftLI
 
-struct EmoticonCommand: AsyncParsableCommand, ViewableCommand {
+struct EmoticonCommand: AsyncParsableCommand, FullScreenViewableCommand {
     static let configuration = CommandConfiguration(
         commandName: "emoticon",
         abstract: "Display of Emoticon structure",

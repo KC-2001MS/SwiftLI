@@ -9,14 +9,16 @@ import Foundation
 
 /// Manages terminal output for the reactive rendering system.
 ///
-/// `TerminalRenderer` handles cursor positioning and screen management using
-/// ANSI escape sequences. Instead of clearing the entire screen on each update
-/// (which causes visible flicker), it moves the cursor to the top-left corner
-/// and overwrites content in-place, then clears any leftover lines below.
+/// `TerminalRenderer` drives the intermediate-representation pipeline for
+/// full-screen reactive apps. Each update lowers the view tree into a
+/// ``Frame`` and compares it against the previously displayed frame with
+/// ``FrameDiff``, rewriting only the lines that actually changed. Unchanged
+/// lines are skipped entirely, which eliminates the flicker that a
+/// clear-and-redraw approach would produce.
 ///
-/// This approach mirrors how terminal applications like `top` and `htop`
-/// achieve smooth, flicker-free updates.
-public final class TerminalRenderer: Sendable {
+/// This mirrors how terminal applications like `top` and `htop` achieve
+/// smooth, flicker-free updates.
+public final class TerminalRenderer: @unchecked Sendable {
 
     // MARK: - ANSI Escape Codes
 
@@ -36,6 +38,10 @@ public final class TerminalRenderer: Sendable {
         static let reset           = "\u{001B}[0m"
         /// Erase the current line and move cursor to column 1.
         static let eraseLine       = "\u{001B}[2K\r"
+        /// Switch to the alternate screen buffer (saves the current screen).
+        static let enterAltScreen  = "\u{001B}[?1049h"
+        /// Leave the alternate screen buffer (restores the saved screen).
+        static let leaveAltScreen  = "\u{001B}[?1049l"
 
         /// Move the cursor to a specific position (1-indexed row and column).
         static func moveTo(row: Int, col: Int) -> String {
@@ -43,46 +49,114 @@ public final class TerminalRenderer: Sendable {
         }
     }
 
+    // MARK: - State
+
+    /// The most recently displayed frame, or `nil` before the first render.
+    private var previousFrame: Frame?
+    /// The terminal width used for the previous frame, to detect a resize.
+    private var previousColumns: Int?
+    private let lock = NSLock()
+
     public init() {}
 
-    // MARK: - Public API
+    // MARK: - Alternate screen session
 
-    /// Prepares the terminal for reactive rendering.
+    /// Enters the alternate screen buffer for a self-contained full-screen
+    /// session, hiding the cursor and clearing to a blank canvas.
     ///
-    /// Call this once before the first render. It clears the screen and moves
-    /// the cursor to the top-left corner.
-    public func setup() {
+    /// The current screen (and the user's scrollback) is saved by the terminal
+    /// and restored by ``endAlternateScreen()`` — exactly how `vim`, `htop`, and
+    /// `less` take over the screen and hand it back untouched on exit. Because
+    /// every frame is repainted from the home position, this is immune to the
+    /// terminal reflowing content on resize.
+    public func beginAlternateScreen() {
+        lock.lock()
+        previousFrame = nil
+        previousColumns = nil
+        lock.unlock()
+
+        print(ANSICode.enterAltScreen, terminator: "")
+        print(ANSICode.hideCursor, terminator: "")
         print(ANSICode.clearScreen, terminator: "")
         print(ANSICode.cursorHome, terminator: "")
         fflush(stdout)
     }
 
-    /// Renders a view tree in-place without clearing the entire screen.
+    /// Leaves the alternate screen buffer, restoring the screen that was visible
+    /// before ``beginAlternateScreen()`` and showing the cursor again.
+    public func endAlternateScreen() {
+        print(ANSICode.reset, terminator: "")
+        print(ANSICode.showCursor, terminator: "")
+        print(ANSICode.leaveAltScreen, terminator: "")
+        fflush(stdout)
+    }
+
+    // MARK: - Public API
+
+    /// Prepares the terminal for reactive rendering.
+    ///
+    /// Call this once before the first render. It clears the screen, moves the
+    /// cursor to the top-left corner, and resets any stored frame so the next
+    /// render draws everything.
+    public func setup() {
+        lock.lock()
+        previousFrame = nil
+        lock.unlock()
+
+        print(ANSICode.clearScreen, terminator: "")
+        print(ANSICode.cursorHome, terminator: "")
+        fflush(stdout)
+    }
+
+    /// Renders a view tree in-place, updating only the lines that changed.
     ///
     /// The renderer:
     /// 1. Hides the cursor to prevent flicker.
-    /// 2. Moves the cursor to the top-left (home position).
-    /// 3. Calls `render()` on each view (which calls `print()` internally).
-    /// 4. Clears any content remaining below the newly rendered content.
-    /// 5. Shows the cursor again.
+    /// 2. Lowers all views into a single ``RenderNode`` and lays it out.
+    /// 3. Diffs the resulting ``Frame`` against the previous one and emits the
+    ///    minimal escape sequence to reconcile them.
+    /// 4. Shows the cursor again.
     ///
     /// - Parameter views: The array of views to render.
     public func renderFullScreen(_ views: [any View]) {
-        // Suppress cursor movement flicker
-        print(ANSICode.hideCursor, terminator: "")
-        // Reposition to top-left rather than clearing the whole screen
-        print(ANSICode.cursorHome, terminator: "")
+        // Wrap all views in an implicit root VStack so they stack vertically.
+        let root = RenderNode.vstack(alignment: .leading, spacing: 0, children: views.map { $0.makeNode() })
+        var frame = NodeLayout.frame(of: root)
+        // Clip every line to the terminal width so nothing wraps onto a second
+        // physical row, and cap the number of lines to the terminal height so
+        // the frame never overflows and scrolls. Both would break the
+        // line-addressed redraw.
+        let size = TerminalSize.current
+        let columns = size.columns
+        // Full-screen draws each line with absolute cursor positioning (no
+        // trailing newline), so writing the final column can't trigger a wrap —
+        // the whole width is usable. Empty area below simply stays blank.
+        frame.lines = frame.lines.map { TextMetrics.truncate($0, toColumns: columns) }
+        if frame.lines.count > size.rows {
+            frame.lines = Array(frame.lines.prefix(size.rows))
+        }
 
-        // Wrap all views in an implicit root VStack so they stack vertically
-        let root = VStack(spacing: 0, children: views)
-        root.render()
+        // Hold the lock across the whole compute-and-write. The frame bookkeeping
+        // and the stdout write must be one atomic step: redraws can be triggered
+        // from more than one thread (the key-input reader and the resize handler),
+        // and if two of them interleaved their escape output the screen would tear
+        // (a large page-scroll diff is big enough to interleave visibly).
+        lock.lock()
+        defer { lock.unlock() }
 
-        // Erase any stale content below the current output
-        print(ANSICode.clearToEnd, terminator: "")
-        // Restore the cursor
-        print(ANSICode.showCursor, terminator: "")
+        // On a resize the whole canvas must be repainted from scratch, so drop
+        // the previous frame and clear the screen before redrawing.
+        let resized = previousColumns != nil && previousColumns != columns
+        let baseline = resized ? nil : previousFrame
+        let diff = FrameDiff.fullScreenUpdate(from: baseline, to: frame)
+        previousFrame = frame
+        previousColumns = columns
 
-        // Force flush stdout so all output is visible immediately
+        // Emit the frame as a single write so it can't be split by another render.
+        var output = ANSICode.hideCursor
+        if resized { output += ANSICode.clearScreen }
+        output += ANSICode.cursorHome + diff + ANSICode.showCursor
+        print(output, terminator: "")
         fflush(stdout)
     }
 

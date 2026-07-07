@@ -32,53 +32,15 @@ public struct PaddingView: View, @unchecked Sendable {
 
     public var body: some View { Group(contents: []) }
 
-    public func render() {
-        let pad = String(repeating: " ", count: length)
-
-        // top padding: blank lines before content
-        if edges.contains(.top) {
-            for _ in 0..<length {
-                print("")
-            }
-        }
-
-        if edges.contains(.leading) || edges.contains(.trailing) {
-            // Capture wrapped output, then re-emit with leading/trailing padding
-            let pipe = Pipe()
-            let originalFd = dup(STDOUT_FILENO)
-            dup2(pipe.fileHandleForWriting.fileDescriptor, STDOUT_FILENO)
-
-            wrapped.render()
-            fflush(stdout)
-
-            dup2(originalFd, STDOUT_FILENO)
-            close(originalFd)
-            pipe.fileHandleForWriting.closeFile()
-
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            let text = String(data: data, encoding: .utf8) ?? ""
-
-            // Split into lines and re-emit with padding applied
-            var lines = text.components(separatedBy: "\n")
-            // Remove trailing empty element produced by a final \n
-            if lines.last == "" { lines.removeLast() }
-
-            for (i, line) in lines.enumerated() {
-                let leading  = edges.contains(.leading)  ? pad : ""
-                let trailing = edges.contains(.trailing) ? pad : ""
-                let isLast = i == lines.count - 1
-                print("\(leading)\(line)\(trailing)", terminator: isLast ? "" : "\n")
-            }
-        } else {
-            wrapped.render()
-        }
-
-        // bottom padding: blank lines after content
-        if edges.contains(.bottom) {
-            for _ in 0..<length {
-                print("")
-            }
-        }
+    /// Lowers this padding view into a ``RenderNode/padding`` node wrapping the
+    /// child's own lowered node.
+    ///
+    /// The layout engine offsets the child by the requested leading/top space
+    /// and reserves the requested trailing/bottom space — no stdout capture
+    /// required, which is what makes padding compose cleanly inside stacks.
+    @_spi(RenderingInternals)
+    public func makeNode() -> RenderNode {
+        .padding(edges: edges, length: length, child: wrapped.makeNode())
     }
 }
 

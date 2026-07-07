@@ -8,7 +8,7 @@
 import ArgumentParser
 import SwiftLI
 
-struct HStackCommand: AsyncParsableCommand, ViewableCommand {
+struct HStackCommand: AsyncParsableCommand, FullScreenViewableCommand {
     static let configuration = CommandConfiguration(
         commandName: "hstack",
         abstract: "Display of HStack structure",

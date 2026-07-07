@@ -134,43 +134,27 @@ public struct Text: View, Sendable, Equatable {
         return Text(header: header + self.header, contents: contents)
     }
 
-    /// Renders the text directly to standard output.
+    /// Lowers this text view into its intermediate representation.
     ///
-    /// Writes the styled string to `stdout` without appending a newline.
-    /// Call ``render()`` on a top-level view to produce terminal output.
+    /// Instead of touching stdout directly, `Text` emits a ``RenderNode/text``
+    /// leaf that the layout engine measures, positions, and later diffs
+    /// against previous frames.
+    @_spi(RenderingInternals)
+    public func makeNode() -> RenderNode {
+        .text(header: header, contents: contents)
+    }
+
+    /// Concatenates two text views into a single run.
     ///
-    /// ```swift
-    /// Text("Done!").forgroundColor(.green).bold().render()
-    /// ```
-    public func render() {
-        for content in contents {
-            print("\(header)\(content)\u{001B}[0m", terminator: "")
-        }
-    }
-
-    @_spi(RenderingInternals)
-    public func renderString() -> String {
-        var s = ""
-        for content in contents {
-            s += "\(header)\(content)\u{001B}[0m"
-        }
-        return s
-    }
-
-    @_spi(RenderingInternals)
-    public func measure() -> Size {
-        let s = renderString()
-        return _size(of: s.isEmpty ? " " : s)
-    }
-
-    @_spi(RenderingInternals)
-    public func draw(into canvas: TerminalCanvas, at origin: Point) {
-        let s = renderString()
-        if s.isEmpty { return }
-        canvas.expand(toFit: Rect(origin: origin, size: _size(of: s)))
-        canvas.write(s, at: origin)
-    }
-
+    /// - Warning: Deprecated. Place adjacent text views inside an ``HStack``
+    ///   — which defaults to zero spacing — instead:
+    ///   ```swift
+    ///   HStack {
+    ///       Text("Hello, ")
+    ///       Text("SwiftLI").forgroundColor(.orange)
+    ///   }
+    ///   ```
+    @available(*, deprecated, message: "Compose adjacent Text views inside an HStack (which defaults to spacing: 0) instead.")
     static func +(left: Self, right: Self) -> Self {
         let leftContents = left.contents.map({ left.header + $0 })
         let rightContents = right.contents.map({ right.header + $0 })
@@ -226,7 +210,7 @@ public protocol View {
     @ViewBuilder
     var body: Body { get }
 
-    /// Renders the view to standard output without a trailing newline.
+    /// Renders the view to standard output.
     ///
     /// Call this on the root view of your layout to produce terminal output.
     /// For composed layouts, prefer ``HStack``, ``VStack``, or ``Group`` as
@@ -237,6 +221,16 @@ public protocol View {
 
     @_spi(RenderingInternals)
     func addHeader(_ header: String) -> Self
+
+    /// Lowers this view into the intermediate representation (``RenderNode``).
+    ///
+    /// This is the single entry point every view uses to describe itself to
+    /// the rendering pipeline. Leaf views (``Text``, ``Spacer``, ``Divider``)
+    /// return a leaf node; containers recurse into their children. The default
+    /// implementation delegates to ``body``, so composite views only need to
+    /// define `body`.
+    @_spi(RenderingInternals)
+    func makeNode() -> RenderNode
 
     @_spi(RenderingInternals)
     func renderString() -> String
@@ -254,23 +248,31 @@ public extension View {
         return self
     }
 
+    @_spi(RenderingInternals)
+    func makeNode() -> RenderNode {
+        body.makeNode()
+    }
+
     func render() {
-        body.render()
+        let frame = NodeLayout.frame(of: makeNode())
+        var out = frame.preamble
+        out += frame.lines.map { $0 + "\n" }.joined()
+        print(out, terminator: "")
     }
 
     @_spi(RenderingInternals)
     func renderString() -> String {
-        body.renderString()
+        NodeLayout.frame(of: makeNode()).lines.joined(separator: "\n")
     }
 
     @_spi(RenderingInternals)
     func measure() -> Size {
-        body.measure()
+        NodeLayout.measure(makeNode())
     }
 
     @_spi(RenderingInternals)
     func draw(into canvas: TerminalCanvas, at origin: Point) {
-        body.draw(into: canvas, at: origin)
+        NodeLayout.draw(makeNode(), into: canvas, at: origin)
     }
 
     // MARK: - Style modifiers
@@ -351,16 +353,24 @@ public extension View {
         style == .none ? self : addHeader("\u{001B}[\(style.rawValue)m")
     }
 
-    /// Makes the view invisible while preserving its layout space.
+    /// Hides the view's characters while preserving its layout space.
     ///
-    /// > Note: The view still occupies terminal columns even when hidden.
+    /// Every visible glyph is replaced with a space of the same column width,
+    /// so the surrounding layout does not shift — only the characters vanish.
+    /// Blank cells stay blank. Unlike the raw ANSI conceal attribute, this
+    /// works consistently across terminals because the hidden cells are drawn
+    /// as actual spaces.
+    ///
+    /// > Note: The view still occupies the same terminal columns and rows when
+    /// > hidden; only the printed characters are blanked.
     func hidden() -> Self {
         addHeader("\u{001B}[8m")
     }
 
-    /// Makes the view invisible when `isActive` is `true`.
+    /// Hides the view's characters when `isActive` is `true`, blanking the
+    /// glyphs to spaces while keeping the layout unchanged.
     ///
-    /// - Parameter isActive: When `true`, the view is hidden.
+    /// - Parameter isActive: When `true`, the view's characters are hidden.
     func hidden(_ isActive: Bool) -> Self {
         isActive ? addHeader("\u{001B}[8m") : self
     }
@@ -375,57 +385,5 @@ public extension View {
     /// - Parameter isActive: When `true`, strikethrough is applied.
     func strikethrough(_ isActive: Bool) -> Self {
         isActive ? addHeader("\u{001B}[9m") : self
-    }
-
-    // MARK: - Internal layout helpers
-
-    /// Computes the terminal ``Size`` of a rendered string.
-    internal func _size(of text: String) -> Size {
-        let plain = _stripANSI(text)
-        var lines = plain.components(separatedBy: "\n")
-        if lines.last == "" { lines.removeLast() }
-        let height = lines.count
-        let width  = lines.map { _visibleWidth($0) }.max() ?? 0
-        return Size(width: width, height: height)
-    }
-
-    /// Strips ANSI escape sequences from a string, returning printable text only.
-    internal func _stripANSI(_ s: String) -> String {
-        var result = ""
-        var i = s.startIndex
-        while i < s.endIndex {
-            if s[i] == "\u{001B}" {
-                i = s.index(after: i)
-                while i < s.endIndex {
-                    let c = s[i]
-                    i = s.index(after: i)
-                    if c == "m" { break }
-                }
-            } else {
-                result.append(s[i])
-                i = s.index(after: i)
-            }
-        }
-        return result
-    }
-
-    /// Returns the visible column width of a string, accounting for wide Unicode characters.
-    ///
-    /// Characters in CJK, full-width, and other double-width Unicode blocks are
-    /// counted as two columns.
-    internal func _visibleWidth(_ s: String) -> Int {
-        s.unicodeScalars.reduce(0) { acc, scalar in
-            let v = scalar.value
-            let wide = (v >= 0x1100 && v <= 0x115F)
-                || (v >= 0x2E80 && v <= 0x303E)
-                || (v >= 0x3041 && v <= 0x33BF)
-                || (v >= 0x33FF && v <= 0xA4CF)
-                || (v >= 0xAC00 && v <= 0xD7FF)
-                || (v >= 0xF900 && v <= 0xFAFF)
-                || (v >= 0xFE30 && v <= 0xFE6F)
-                || (v >= 0xFF00 && v <= 0xFF60)
-                || (v >= 0xFFE0 && v <= 0xFFE6)
-            return acc + (wide ? 2 : 1)
-        }
     }
 }

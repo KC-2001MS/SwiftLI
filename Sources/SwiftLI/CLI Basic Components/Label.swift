@@ -108,22 +108,15 @@ public struct Label: View {
         .init(header: header + self.header, title: self.title, image: self.image, style: self.style)
     }
 
-    /// Renders the label to standard output using the current ``LabelStyle``.
-    public func render() {
-        let bodyGroup = style.makeBody(configuration: LabelStyleConfiguration(
-            icon: Text(content: image),
-            title: Text(content: title)
-        ))
-        Group(header: header, contents: bodyGroup.contents).render()
-    }
-
+    /// Lowers the label by building its style body, then cascading the label's
+    /// own style header onto the resulting node.
     @_spi(RenderingInternals)
-    public func renderString() -> String {
+    public func makeNode() -> RenderNode {
         let bodyGroup = style.makeBody(configuration: LabelStyleConfiguration(
             icon: Text(content: image),
             title: Text(content: title)
         ))
-        return Group(header: header, contents: bodyGroup.contents).renderString()
+        return Group(header: header, contents: bodyGroup.contents).makeNode()
     }
 
     /// Changes the style used to lay out the icon and title.

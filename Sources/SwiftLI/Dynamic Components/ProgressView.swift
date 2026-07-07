@@ -14,6 +14,11 @@ import Foundation
 /// Conform to `ProgressViewStyle` to create a custom progress view style.
 /// Use ``ProgressView/progressViewStyle(_:)`` to apply a style to a view.
 ///
+/// A style is expressed purely as a composition of existing views and
+/// modifiers — a ``ProgressView`` has no bespoke rendering of its own; it is
+/// entirely *derived* from the primitives (``HStack``, ``Text``,
+/// ``View/forgroundColor(_:)``) its style returns.
+///
 /// ## Built-in styles
 ///
 /// - ``BarProgressViewStyle`` – renders a filled bar (`[████░░░░] 50%`)
@@ -31,6 +36,19 @@ public protocol ProgressViewStyle: Sendable {
     /// - Returns: A ``View`` that renders the progress indicator.
     @ViewBuilder
     func makeBody(configuration: ProgressViewStyleConfiguration) -> Body
+
+    /// The number of columns the style spends on fixed chrome around the
+    /// fillable region (brackets, a percentage label, etc.).
+    ///
+    /// When a ``ProgressView`` is auto-sized to the terminal width, this many
+    /// columns are subtracted so the whole indicator — chrome included — fits
+    /// on one line. Styles that add no chrome can leave the default of `0`.
+    var reservedColumns: Int { get }
+}
+
+public extension ProgressViewStyle {
+    /// Styles reserve no chrome columns by default.
+    var reservedColumns: Int { 0 }
 }
 
 /// The values passed to ``ProgressViewStyle/makeBody(configuration:)`` when rendering.
@@ -43,6 +61,35 @@ public struct ProgressViewStyleConfiguration: Sendable {
     public let filledCharacter: Character
     /// Character used for the empty segment.
     public let emptyCharacter: Character
+    /// A text label to show in the trailing status area, where the percentage
+    /// is displayed. Empty when the ``ProgressView`` has no label.
+    public let label: String
+}
+
+// MARK: - ProgressSpinner
+
+/// The rotating single-character spinner shared by the built-in styles.
+///
+/// A style uses it as its most compact form: when there is no room for a gauge,
+/// it collapses to one spinning glyph plus the label. The frame advances with
+/// the progress fraction, so it animates as the value moves.
+public enum ProgressSpinner {
+    /// The Braille frames cycled through as progress advances.
+    public static let frames: [Character] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"]
+
+    /// The spinner glyph for a given `0…1` fraction (cycles four times end-to-end).
+    public static func character(for fraction: Double) -> Character {
+        let clamped = Swift.max(0.0, Swift.min(1.0, fraction))
+        let index = Int(clamped * Double(frames.count * 4)) % frames.count
+        return frames[index]
+    }
+
+    /// The collapsed representation: the spinner glyph followed by `label`
+    /// (when non-empty). This is the floor of every gauge style's degradation.
+    public static func collapsed(for fraction: Double, label: String) -> String {
+        let glyph = character(for: fraction)
+        return label.isEmpty ? String(glyph) : "\(glyph) \(label)"
+    }
 }
 
 // MARK: - BarProgressViewStyle
@@ -58,23 +105,35 @@ public struct ProgressViewStyleConfiguration: Sendable {
 public struct BarProgressViewStyle: ProgressViewStyle {
     public init() {}
 
+    /// Reserves `[`, `]`, a space, and up to `100%` (7 columns) around the bar.
+    public var reservedColumns: Int { 7 }
+
     public func makeBody(configuration: ProgressViewStyleConfiguration) -> some View {
         let fraction   = Swift.max(0.0, Swift.min(1.0, configuration.fractionCompleted))
-        let filled     = Int(fraction * Double(configuration.width))
-        let empty      = configuration.width - filled
+        let width      = Swift.max(0, configuration.width)
+        let filled     = Int(fraction * Double(width))
+        let empty      = width - filled
         let percentage = Int(fraction * 100)
+        let suffix     = configuration.label.isEmpty ? "" : " \(configuration.label)"
 
+        // When there is no room for a bar, collapse to the style's most compact
+        // form — a rotating spinner glyph plus the label — instead of
+        // truncating a wide gauge.
         HStack(spacing: 0) {
-            Text(verbatim: "[")
-            if filled > 0 {
-                Text(repeating: configuration.filledCharacter, count: filled)
-                    .forgroundColor(.green)
+            if width > 0 {
+                Text(verbatim: "[")
+                if filled > 0 {
+                    Text(repeating: configuration.filledCharacter, count: filled)
+                        .forgroundColor(.green)
+                }
+                if empty > 0 {
+                    Text(repeating: configuration.emptyCharacter, count: empty)
+                        .forgroundColor(.eight_bit(240))
+                }
+                Text(verbatim: "] \(percentage)%\(suffix)")
+            } else {
+                Text(verbatim: ProgressSpinner.collapsed(for: fraction, label: configuration.label))
             }
-            if empty > 0 {
-                Text(repeating: configuration.emptyCharacter, count: empty)
-                    .forgroundColor(.eight_bit(240))
-            }
-            Text(verbatim: "] \(percentage)%")
         }
     }
 }
@@ -94,17 +153,26 @@ public struct LinearProgressViewStyle: ProgressViewStyle {
 
     public func makeBody(configuration: ProgressViewStyleConfiguration) -> some View {
         let fraction = Swift.max(0.0, Swift.min(1.0, configuration.fractionCompleted))
-        let filled   = Int(fraction * Double(configuration.width))
-        let empty    = configuration.width - filled
+        let width    = Swift.max(0, configuration.width)
+        let filled   = Int(fraction * Double(width))
+        let empty    = width - filled
 
         HStack(spacing: 0) {
-            if filled > 0 {
-                Text(repeating: "━", count: filled)
-                    .forgroundColor(.green)
-            }
-            if empty > 0 {
-                Text(repeating: "─", count: empty)
-                    .forgroundColor(.eight_bit(240))
+            if width > 0 {
+                if filled > 0 {
+                    Text(repeating: "━", count: filled)
+                        .forgroundColor(.green)
+                }
+                if empty > 0 {
+                    Text(repeating: "─", count: empty)
+                        .forgroundColor(.eight_bit(240))
+                }
+                if !configuration.label.isEmpty {
+                    Text(verbatim: " \(configuration.label)")
+                }
+            } else {
+                // No room for the line → collapse to the spinner + label.
+                Text(verbatim: ProgressSpinner.collapsed(for: fraction, label: configuration.label))
             }
         }
     }
@@ -126,13 +194,14 @@ public struct PercentageProgressViewStyle: ProgressViewStyle {
     public func makeBody(configuration: ProgressViewStyleConfiguration) -> some View {
         let fraction   = Swift.max(0.0, Swift.min(1.0, configuration.fractionCompleted))
         let percentage = Int(fraction * 100)
+        let suffix     = configuration.label.isEmpty ? "" : " \(configuration.label)"
 
         if percentage == 100 {
-            return Text(verbatim: "\(percentage)%").forgroundColor(.green)
+            return Text(verbatim: "\(percentage)%\(suffix)").forgroundColor(.green)
         } else if percentage >= 50 {
-            return Text(verbatim: "\(percentage)%").forgroundColor(.yellow)
+            return Text(verbatim: "\(percentage)%\(suffix)").forgroundColor(.yellow)
         } else {
-            return Text(verbatim: "\(percentage)%")
+            return Text(verbatim: "\(percentage)%\(suffix)")
         }
     }
 }
@@ -158,9 +227,6 @@ public struct PercentageProgressViewStyle: ProgressViewStyle {
 ///     .progressViewStyle(SpinnerProgressViewStyle(label: "Processing"))
 /// ```
 public struct SpinnerProgressViewStyle: ProgressViewStyle {
-    /// The frames cycled through as progress advances.
-    private static let frames: [Character] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"]
-
     /// The text shown after the spinner character.
     public let label: String
 
@@ -172,11 +238,11 @@ public struct SpinnerProgressViewStyle: ProgressViewStyle {
     }
 
     public func makeBody(configuration: ProgressViewStyleConfiguration) -> some View {
-        let fraction   = Swift.max(0.0, Swift.min(1.0, configuration.fractionCompleted))
-        let frameCount = Self.frames.count
-        let index      = Int(fraction * Double(frameCount * 4)) % frameCount
-        let frame      = Self.frames[index]
-        return Text(verbatim: "\(frame) \(label)...").forgroundColor(.cyan)
+        let fraction = Swift.max(0.0, Swift.min(1.0, configuration.fractionCompleted))
+        let glyph    = ProgressSpinner.character(for: fraction)
+        // The ProgressView's own label takes precedence over the style's default.
+        let text     = configuration.label.isEmpty ? label : configuration.label
+        return Text(verbatim: "\(glyph) \(text)...").forgroundColor(.cyan)
     }
 }
 
@@ -185,14 +251,17 @@ public struct SpinnerProgressViewStyle: ProgressViewStyle {
 /// A type-erased ``ProgressViewStyle`` that wraps any concrete style.
 ///
 /// Used internally by ``ProgressView`` to store the active style without
-/// exposing the associated type.
+/// exposing the associated type. The erased result is a ``Group`` — itself a
+/// composition of views — so no custom rendering code is involved.
 struct AnyProgressViewStyle: ProgressViewStyle, @unchecked Sendable {
     private let _makeBody: (ProgressViewStyleConfiguration) -> Group
+    let reservedColumns: Int
 
     init<S: ProgressViewStyle>(_ style: S) {
+        self.reservedColumns = style.reservedColumns
         _makeBody = { config in
-            // @ViewBuilder で Body が Group に推論されるため、
-            // Group でラップして型消去する。
+            // @ViewBuilder infers Body as Group for the built-in styles; wrap
+            // anything else so the erased result is always a Group.
             let result = style.makeBody(configuration: config)
             if let group = result as? Group {
                 return group
@@ -206,14 +275,17 @@ struct AnyProgressViewStyle: ProgressViewStyle, @unchecked Sendable {
     }
 }
 
-
-
 // MARK: - ProgressView
 
 /// A horizontal progress view.
 ///
 /// `ProgressView` renders a progress indicator whose appearance is controlled
 /// by a ``ProgressViewStyle``. The default style is ``BarProgressViewStyle``.
+///
+/// `ProgressView` carries no rendering logic of its own: its ``body`` simply
+/// asks the current style to compose an indicator out of ``HStack``, ``Text``,
+/// and the standard style modifiers, and the framework lowers that composition
+/// through the shared rendering pipeline like any other view.
 ///
 /// ## Static / one-shot rendering
 ///
@@ -257,19 +329,23 @@ public struct ProgressView: View, Sendable {
 
     // MARK: - Stored properties
 
-    let header: String
-
     /// Minimum value (left edge). Defaults to `0.0`.
     public let min: Double
     /// Maximum value (right edge). Defaults to `1.0`.
     public let max: Double
-    /// Width of the indicator in terminal columns. Defaults to `30`.
-    public let width: Int
+    /// Width of the fillable region in terminal columns.
+    ///
+    /// `nil` (the default) auto-sizes to the full terminal width, minus the
+    /// active style's ``ProgressViewStyle/reservedColumns``, and follows the
+    /// window as it is resized.
+    public let width: Int?
     /// Character for the filled portion. Defaults to `█` (U+2588).
     public let filledCharacter: Character
     /// Character for the empty portion. Defaults to `░` (U+2591).
     public let emptyCharacter: Character
-    /// The type-erased style used to render this progress view.
+    /// A text label shown before the indicator. Empty when there is no label.
+    public let label: String
+    /// The type-erased style used to compose this progress view.
     let style: AnyProgressViewStyle
 
     // The current value — stored either as a plain Double or as a Binding.
@@ -290,15 +366,19 @@ public struct ProgressView: View, Sendable {
     // MARK: - Public initialisers
 
     /// Creates a progress view with a **plain value** (static snapshot).
+    ///
+    /// - Parameter label: A localized description shown before the indicator
+    ///   (e.g. `"Downloading"`). Defaults to no label.
     public init(
+        _ label: LocalizedStringKey = "",
         min: Double = 0.0,
         value: Double,
         max: Double = 1.0,
-        width: Int = 30,
+        width: Int? = nil,
         filledCharacter: Character = "\u{2588}",
         emptyCharacter: Character = "\u{2591}"
     ) {
-        self.header = ""
+        self.label = String(localized: label.localizationValue)
         self.min = min
         self.max = max
         self.width = width
@@ -309,15 +389,19 @@ public struct ProgressView: View, Sendable {
     }
 
     /// Creates a progress view driven by a **`Binding`** for live updates.
+    ///
+    /// - Parameter label: A localized description shown before the indicator
+    ///   (e.g. `"Downloading"`). Defaults to no label.
     public init(
+        _ label: LocalizedStringKey = "",
         min: Double = 0.0,
         value: Binding<Double>,
         max: Double = 1.0,
-        width: Int = 30,
+        width: Int? = nil,
         filledCharacter: Character = "\u{2588}",
         emptyCharacter: Character = "\u{2591}"
     ) {
-        self.header = ""
+        self.label = String(localized: label.localizationValue)
         self.min = min
         self.max = max
         self.width = width
@@ -327,18 +411,18 @@ public struct ProgressView: View, Sendable {
         self.style = AnyProgressViewStyle(BarProgressViewStyle())
     }
 
-    // Internal init for modifier chaining.
+    // Internal init for style chaining.
     init(
-        header: String,
+        label: String,
         min: Double,
         valueSource: ValueSource,
         max: Double,
-        width: Int,
+        width: Int?,
         filledCharacter: Character,
         emptyCharacter: Character,
         style: AnyProgressViewStyle
     ) {
-        self.header = header
+        self.label = label
         self.min = min
         self.max = max
         self.width = width
@@ -350,84 +434,41 @@ public struct ProgressView: View, Sendable {
 
     // MARK: - View
 
+    /// The composed indicator for the current value.
+    ///
+    /// The body is recomputed on every access, so a `Binding`-backed progress
+    /// view always reflects the latest value when the reactive runtime
+    /// re-renders. Everything below this point — measuring, laying out, and
+    /// diffing — is handled by the shared pipeline via the default `View`
+    /// conformance, exactly as it is for any composite view.
     public var body: some View {
-        Group(contents: [])
-    }
-
-    @_spi(RenderingInternals)
-    public func addHeader(_ newHeader: String) -> Self {
-        Self(
-            header: newHeader + header,
-            min: min,
-            valueSource: valueSource,
-            max: max,
-            width: width,
-            filledCharacter: filledCharacter,
-            emptyCharacter: emptyCharacter,
-            style: style
-        )
-    }
-
-    public func render() {
-        styleView(for: valueSource.current).render()
-    }
-
-    @_spi(RenderingInternals)
-    public func renderString() -> String {
-        styleView(for: valueSource.current).renderString()
-    }
-
-    @_spi(RenderingInternals)
-    public func measure() -> Size {
-        styleView(for: valueSource.current).measure()
-    }
-
-    @_spi(RenderingInternals)
-    public func draw(into canvas: TerminalCanvas, at origin: Point) {
-        styleView(for: valueSource.current).draw(into: canvas, at: origin)
-    }
-
-    // MARK: - Internal
-
-    /// Builds the styled view for the given raw value.
-    private func styleView(for value: Double) -> Group {
-        let clamped  = Swift.min(Swift.max(value, min), max)
+        let clamped  = Swift.min(Swift.max(valueSource.current, min), max)
         let range    = max - min
         let fraction = range == 0 ? 0 : (clamped - min) / range
 
-        let config = ProgressViewStyleConfiguration(
+        // Columns the trailing label (plus one spacing column) consumes when
+        // auto-sizing, so the label sits where the percentage does and the
+        // whole line still fits the terminal.
+        let labelReserve = label.isEmpty ? 0 : TextMetrics.visibleWidth(label) + 1
+
+        // An unspecified width auto-sizes to the terminal, leaving room for the
+        // style's chrome and the label so the whole line fits. It may reach 0 on
+        // a very narrow terminal, at which point the style drops the gauge and
+        // keeps just the percentage/label.
+        let resolvedWidth = width ?? Swift.max(0, TerminalSize.current.columns - style.reservedColumns - labelReserve)
+
+        return style.makeBody(configuration: ProgressViewStyleConfiguration(
             fractionCompleted: fraction,
-            width: width,
+            width: resolvedWidth,
             filledCharacter: filledCharacter,
-            emptyCharacter: emptyCharacter
-        )
-        let styledView = style.makeBody(configuration: config)
-        return header.isEmpty ? styledView : styledView.addHeader(header)
+            emptyCharacter: emptyCharacter,
+            label: label
+        ))
     }
 
     // MARK: - Modifiers
 
-    /// Applies a foreground color to the progress indicator.
-    public func forgroundColor(_ color: Color) -> Self {
-        Self(
-            header: "\(header)\u{001B}[3\(color.ansi)m",
-            min: min, valueSource: valueSource, max: max,
-            width: width, filledCharacter: filledCharacter, emptyCharacter: emptyCharacter,
-            style: style
-        )
-    }
-
-    /// Fills the background behind the progress indicator.
-    public func background(_ color: Color) -> Self {
-        Self(
-            header: "\(header)\u{001B}[4\(color.ansi)m",
-            min: min, valueSource: valueSource, max: max,
-            width: width, filledCharacter: filledCharacter, emptyCharacter: emptyCharacter,
-            style: style
-        )
-    }
-
-    /// Sets the style used to render this progress view.
+    /// Sets the style used to compose this progress view.
     ///
     /// ```swift
     /// ProgressView(value: 0.5, width: 40)
@@ -437,7 +478,7 @@ public struct ProgressView: View, Sendable {
     /// - Parameter style: A value conforming to ``ProgressViewStyle``.
     public func progressViewStyle(_ newStyle: some ProgressViewStyle) -> Self {
         Self(
-            header: header,
+            label: label,
             min: min, valueSource: valueSource, max: max,
             width: width, filledCharacter: filledCharacter, emptyCharacter: emptyCharacter,
             style: AnyProgressViewStyle(newStyle)

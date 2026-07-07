@@ -67,18 +67,13 @@ public struct Spacer: View, Sendable, Equatable {
         return Spacer(header: header + self.header, count: self.count)
     }
 
-    // MARK: - Horizontal helpers (used by HStack)
-
-    /// Size when used as a **horizontal** spacer inside ``HStack``.
-    func horizontalMeasure() -> Size {
-        Size(width: count, height: 1)
-    }
-
-    /// Draws horizontal blank space into `canvas` at `origin` (used by HStack).
-    func drawHorizontal(into canvas: TerminalCanvas, at origin: Point) {
-        let spaces = String(repeating: " ", count: count)
-        canvas.expand(toFit: Rect(origin: origin, size: horizontalMeasure()))
-        canvas.write(spaces, at: origin)
+    /// Lowers this spacer into a direction-adaptive ``RenderNode/spacer`` node.
+    ///
+    /// The layout engine interprets the node as horizontal blank columns
+    /// inside an ``HStack`` and as vertical blank rows everywhere else.
+    @_spi(RenderingInternals)
+    public func makeNode() -> RenderNode {
+        .spacer(header: header, count: count)
     }
 
     // MARK: - Modifiers

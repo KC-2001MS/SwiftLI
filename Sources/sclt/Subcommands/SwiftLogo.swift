@@ -8,7 +8,7 @@
 import ArgumentParser
 import SwiftLI
 
-struct SwiftLogoCommand: AsyncParsableCommand, ViewableCommand {
+struct SwiftLogoCommand: AsyncParsableCommand, InlineViewableCommand {
     static let configuration = CommandConfiguration(
         commandName: "swift",
         abstract: "Display of SwiftLogo structure",
@@ -23,6 +23,8 @@ struct SwiftLogoCommand: AsyncParsableCommand, ViewableCommand {
     @State var isActive: Bool = false
 
     mutating func run() async throws {
+        // The logo is static, so draw it inline once and leave it in the
+        // scrollback — no alternate screen, no need to keep the process alive.
         startBodyRendering()
         stopBodyRendering()
     }

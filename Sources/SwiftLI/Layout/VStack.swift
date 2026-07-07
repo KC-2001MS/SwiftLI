@@ -6,7 +6,7 @@
 //
 
 /// The horizontal alignment of children within a ``VStack``.
-public enum HorizontalAlignment: Sendable {
+public enum HorizontalAlignment: Sendable, Equatable {
     /// Align children to the leading (left) edge of the stack.
     case leading
     /// Align children to the trailing (right) edge of the stack.
@@ -85,100 +85,18 @@ public struct VStack: View, @unchecked Sendable {
         VStack(alignment: alignment, spacing: spacing, children: children, header: newHeader + header)
     }
 
-    public func render() {
-        let canvas = TerminalCanvas(width: 0, height: 0)
-        _drawInto(canvas: canvas, at: .zero)
-        canvas.flush()
-    }
-
+    /// Lowers this stack into an ``RenderNode/vstack`` node.
+    ///
+    /// Flattening of transparent ``Group`` children, leading/trailing
+    /// alignment, and horizontal ``Divider`` spanning are all resolved by the
+    /// layout engine, so nested stacks compose without special cases here.
     @_spi(RenderingInternals)
-    public func renderString() -> String {
-        let canvas = TerminalCanvas(width: 0, height: 0)
-        _drawInto(canvas: canvas, at: .zero)
-        return canvas.toString()
-    }
-
-    @_spi(RenderingInternals)
-    public func measure() -> Size {
-        let flat = _flattenChildren(children)
-        var maxWidth = 0
-        var totalHeight = 0
-        for (i, child) in flat.enumerated() {
-            let size = child.measure()
-            // Divider spans the full stackWidth, so exclude it from the width calculation.
-            if !(child is Divider) && size.width > maxWidth {
-                maxWidth = size.width
-            }
-            totalHeight += size.height
-            if i < flat.count - 1 {
-                totalHeight += spacing
-            }
-        }
-        return Size(width: maxWidth, height: totalHeight)
-    }
-
-    @_spi(RenderingInternals)
-    public func draw(into canvas: TerminalCanvas, at origin: Point) {
-        _drawInto(canvas: canvas, at: origin)
-    }
-
-    /// Recursively flattens ``Group`` children so that a Group inside a VStack
-    /// is transparent — its children are treated as direct VStack children,
-    /// inheriting any styling the Group carries via ``addHeader``.
-    /// If this VStack itself has an accumulated `header` style, it is applied
-    /// to every child before flattening.
-    private func _flattenChildren(_ views: [any View]) -> [any View] {
-        let styled: [any View] = header.isEmpty ? views : views.map { $0.addHeader(header) }
-        return styled.flatMap { view -> [any View] in
-            if let group = view as? Group {
-                return _flattenChildrenNoHeader(group._resolvedChildren)
-            }
-            return [view]
-        }
-    }
-
-    /// Flattens without re-applying the VStack header (used for Group children
-    /// that already had the header applied via addHeader above).
-    private func _flattenChildrenNoHeader(_ views: [any View]) -> [any View] {
-        views.flatMap { view -> [any View] in
-            if let group = view as? Group {
-                return _flattenChildrenNoHeader(group._resolvedChildren)
-            }
-            return [view]
-        }
-    }
-
-    private func _drawInto(canvas: TerminalCanvas, at origin: Point) {
-        let flat = _flattenChildren(children)
-        // Compute overall stack width for alignment and Divider span.
-        // Divider returns 0 so it doesn't artificially constrain the width.
-        let stackWidth = flat.map { child -> Int in
-            if child is Divider { return 0 }
-            return child.measure().width
-        }.max() ?? 0
-
-        var y = origin.row
-        for (i, child) in flat.enumerated() {
-            let size = child.measure()
-            if let divider = child as? Divider {
-                // Horizontal divider spans the full stack width.
-                divider.drawHorizontal(into: canvas, at: Point(column: origin.column, row: y), width: stackWidth)
-            } else {
-                let colOffset: Int
-                switch alignment {
-                case .leading:
-                    colOffset = 0
-                case .trailing:
-                    colOffset = stackWidth - size.width
-                }
-                let childOrigin = Point(column: origin.column + colOffset, row: y)
-                canvas.expand(toFit: Rect(origin: childOrigin, size: size))
-                child.draw(into: canvas, at: childOrigin)
-            }
-            y += size.height
-            if i < flat.count - 1 {
-                y += spacing
-            }
-        }
+    public func makeNode() -> RenderNode {
+        let node = RenderNode.vstack(
+            alignment: alignment,
+            spacing: spacing,
+            children: children.map { $0.makeNode() }
+        )
+        return header.isEmpty ? node : node.applyingHeader(header)
     }
 }

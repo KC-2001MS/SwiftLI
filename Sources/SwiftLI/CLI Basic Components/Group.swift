@@ -80,48 +80,14 @@ public struct Group: View {
         return Group(header: header + self.header, contents: self.contents)
     }
 
-    /// Renders all child views to standard output.
+    /// Lowers this group into a transparent ``RenderNode/group`` node,
+    /// cascading any accumulated style header onto every child.
     ///
-    /// Children are drawn top-to-bottom in the order they were declared.
-    public func render() {
-        let canvas = TerminalCanvas(width: 0, height: 0)
-        _drawChildren(into: canvas, at: .zero)
-        canvas.flush()
-    }
-
+    /// The layout engine flattens group nodes into the enclosing stack, so a
+    /// `Group` never introduces spacing or alignment of its own.
     @_spi(RenderingInternals)
-    public func renderString() -> String {
-        let canvas = TerminalCanvas(width: 0, height: 0)
-        _drawChildren(into: canvas, at: .zero)
-        return canvas.toString()
-    }
-
-    @_spi(RenderingInternals)
-    public func measure() -> Size {
-        let children = _resolvedChildren
-        var maxWidth = 0
-        var totalHeight = 0
-        for child in children {
-            let size = child.measure()
-            if size.width > maxWidth { maxWidth = size.width }
-            totalHeight += size.height
-        }
-        return Size(width: maxWidth, height: totalHeight)
-    }
-
-    @_spi(RenderingInternals)
-    public func draw(into canvas: TerminalCanvas, at origin: Point) {
-        _drawChildren(into: canvas, at: origin)
-    }
-
-    /// Draws children vertically stacked into the canvas.
-    private func _drawChildren(into canvas: TerminalCanvas, at origin: Point) {
-        var y = origin.row
-        for child in _resolvedChildren {
-            let size = child.measure()
-            canvas.expand(toFit: Rect(origin: Point(column: origin.column, row: y), size: size))
-            child.draw(into: canvas, at: Point(column: origin.column, row: y))
-            y += size.height
-        }
+    public func makeNode() -> RenderNode {
+        let node = RenderNode.group(children: contents.map { $0.makeNode() })
+        return header.isEmpty ? node : node.applyingHeader(header)
     }
 }

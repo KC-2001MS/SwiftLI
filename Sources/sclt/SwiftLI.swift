@@ -26,9 +26,19 @@ struct scltCommand: AsyncParsableCommand {
             LabelCommand.self,
             EmoticonCommand.self,
             SwiftLogoCommand.self,
-            ProgressBarCommand.self,
+            ProgressViewCommand.self,
             HStackCommand.self,
-            VStackCommand.self
+            VStackCommand.self,
+            DashboardCommand.self,
+            TimelineCommand.self,
+            TextFieldCommand.self,
+            TextEditorCommand.self,
+            ToggleCommand.self,
+            PickerCommand.self,
+            ScrollCommand.self,
+            FrameCommand.self,
+            TableCommand.self,
+            ListCommand.self
         ],
         defaultSubcommand: TextCommand.self,
         helpNames: [.long, .short]

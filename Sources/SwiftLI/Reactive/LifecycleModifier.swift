@@ -43,20 +43,23 @@ public struct OnAppearView: View {
     }
 
     public var body: some View {
-        // render() is overridden, so body is not used by the runtime.
-        // Return the content views so default render() still works if called.
+        // makeNode() is overridden, so body is not used by the runtime.
         Group(contents: [])
     }
 
-    public func render() {
-        // Fire the action only on the first render
+    /// Lowers the wrapped content, firing the appear action exactly once on the
+    /// first lowering.
+    ///
+    /// `makeNode()` is the single point every render pass funnels through, so
+    /// firing here (guarded by ``appearedKeys``) reliably runs the action the
+    /// first time the view is drawn.
+    @_spi(RenderingInternals)
+    public func makeNode() -> RenderNode {
         if !Self.appearedKeys.contains(key) {
             Self.appearedKeys.insert(key)
             action()
         }
-        for view in content {
-            view.render()
-        }
+        return .group(children: content.map { $0.makeNode() })
     }
 }
 

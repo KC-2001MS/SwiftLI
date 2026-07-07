@@ -11,7 +11,7 @@
             ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
             <ActionContent
                title = "Run Script"
-               scriptText = "# Type a script or drag a script file from your workspace to insert its path.&#10;# &#x30d1;&#x30c3;&#x30b1;&#x30fc;&#x30b8;&#x540d;&#x3092;&#x8a2d;&#x5b9a;&#10;PACKAGE_NAME=&quot;sclt&quot;&#10;&#10;# &#x30d3;&#x30eb;&#x30c9;&#x30c7;&#x30a3;&#x30ec;&#x30af;&#x30c8;&#x30ea;&#x3092;&#x8a2d;&#x5b9a;&#10;BUILD_DIR=&quot;${BUILT_PRODUCTS_DIR}&quot;&#10;&#10;# &#x5b9f;&#x884c;&#x30d5;&#x30a1;&#x30a4;&#x30eb;&#x306e;&#x30d1;&#x30b9;&#10;EXECUTABLE_PATH=&quot;$BUILD_DIR/$EXECUTABLE_PATH/$PACKAGE_NAME&quot;&#10;&#10;# &#x79fb;&#x52d5;&#x5148;&#x306e;&#x30c7;&#x30a3;&#x30ec;&#x30af;&#x30c8;&#x30ea;&#10;DEST_DIR=&quot;/usr/local/bin&quot;&#10;&#10;cp ${EXECUTABLE_PATH} ${DEST_DIR}&#10;">
+               scriptText = "# Install the freshly built sclt to /usr/local/bin so the terminal always uses the latest build after every Run.&#10;SRC=&quot;${BUILT_PRODUCTS_DIR}/sclt&quot;&#10;[ -f &quot;$SRC&quot; ] || SRC=&quot;${TARGET_BUILD_DIR}/sclt&quot;&#10;DEST=&quot;/usr/local/bin/sclt&quot;&#10;if [ -f &quot;$SRC&quot; ]; then&#10;  mkdir -p /usr/local/bin&#10;  cp -f &quot;$SRC&quot; &quot;$DEST&quot;&#10;  # Re-sign ad-hoc so the standalone copy launches (avoids Killed: 9 from a stale signature).&#10;  codesign -f -s - &quot;$DEST&quot; 2&gt;/dev/null || true&#10;  echo &quot;Installed $SRC -&gt; $DEST&quot;&#10;else&#10;  echo &quot;sclt binary not found (BUILT_PRODUCTS_DIR=$BUILT_PRODUCTS_DIR)&quot; 1&gt;&amp;2&#10;fi&#10;">
                <EnvironmentBuildable>
                   <BuildableReference
                      BuildableIdentifier = "primary"

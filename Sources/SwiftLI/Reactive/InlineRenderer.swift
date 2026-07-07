@@ -10,99 +10,73 @@ import Foundation
 /// Renders a ``View`` inline in the terminal and redraws it in-place on
 /// subsequent calls.
 ///
-/// `InlineRenderer` is used internally by ``ViewableCommand``. It:
-/// 1. Captures stdout during the first render to count the number of lines
-///    the view occupies.
-/// 2. On subsequent renders, moves the cursor up by that many lines and
-///    overwrites the content.
+/// `InlineRenderer` is used internally by ``ViewableCommand``. It drives the
+/// intermediate-representation pipeline:
 ///
-/// This allows `run()` output printed **before** or **after** the body to
-/// remain untouched — only the body region is refreshed.
+/// 1. Lower the view into a ``RenderNode`` tree.
+/// 2. Lay the tree out into a ``Frame`` (the exact lines to display).
+/// 3. Compare that frame against the previous one with ``FrameDiff`` and emit
+///    only the escape sequences needed to update the lines that changed.
+///
+/// Because the diff rewrites just the changed lines, any `run()` output printed
+/// **before** the body stays untouched, and live updates (progress bars,
+/// spinners) never flicker.
 final class InlineRenderer: @unchecked Sendable {
 
     // MARK: - State
 
-    /// Number of newline-terminated lines the body produced on the last render.
-    private var renderedLineCount: Int = 0
-    private var hasRendered: Bool = false
+    /// The most recently displayed frame, or `nil` before the first render.
+    private var previousFrame: Frame?
+    /// The terminal width used for the previous frame, to detect a resize.
+    private var previousColumns: Int?
     private let lock = NSLock()
 
     // MARK: - Public interface
 
     /// Renders `view` for the first time or redraws it in-place.
     ///
-    /// The view is wrapped in an implicit root ``VStack`` (spacing 0, leading
-    /// alignment) before rendering, making ``Group`` and top-level arrays
-    /// behave like VStack children automatically.
-    ///
     /// - Parameter view: The view to render.
     func render(_ view: any View) {
         lock.lock()
         defer { lock.unlock() }
 
-        if hasRendered {
-            // Move cursor up to the first line of the previous render,
-            // then erase each line before redrawing
-            if renderedLineCount > 0 {
-                print("\u{001B}[\(renderedLineCount)A", terminator: "")
-            }
-            for _ in 0..<renderedLineCount {
-                print("\u{001B}[2K", terminator: "")  // erase entire line
-                print("\u{001B}[1B", terminator: "")  // move down one line
-            }
-            // Return cursor to the top of the body region
-            if renderedLineCount > 0 {
-                print("\u{001B}[\(renderedLineCount)A", terminator: "")
-            }
+        var frame = NodeLayout.frame(of: view.makeNode())
+        // Clip every line to one less than the terminal width. Leaving the last
+        // column empty guarantees a trailing newline never triggers a wrap onto
+        // a second physical row (some terminals wrap the moment the final column
+        // is written), which would desync the in-place cursor arithmetic.
+        let columns = TerminalSize.current.columns
+        let clip = Swift.max(0, columns - 1)
+        frame.lines = frame.lines.map { TextMetrics.truncate($0, toColumns: clip) }
+
+        let output: String
+        if let previous = previousFrame, previousColumns == columns {
+            // Same width → the per-line diff is valid; redraw only what changed.
+            output = FrameDiff.inlineUpdate(from: previous, to: frame)
+        } else if let previous = previousFrame {
+            // The terminal was resized: the old block has reflowed, so fall back
+            // to a physical-row-aware clean repaint instead of the per-line diff.
+            output = FrameDiff.inlineRepaint(from: previous, to: frame, columns: columns)
+        } else {
+            // First render.
+            output = FrameDiff.inlineUpdate(from: nil, to: frame)
         }
 
-        // Wrap in an implicit root VStack so top-level views stack vertically
-        let bodyGroup = view.body as? Group
-        let children: [any View] = bodyGroup.map(\.contents) ?? [view]
-        let root = VStack(spacing: 0, children: children.isEmpty ? [view] : children)
-        // Capture stdout to count lines
-        let lineCount = captureAndPrint(view: root)
-        renderedLineCount = lineCount
-        hasRendered = true
+        print(output, terminator: "")
+        fflush(stdout)
+        previousFrame = frame
+        previousColumns = columns
     }
 
     /// Called once when body rendering is complete.
     ///
-    /// The cursor is already at the end of the last rendered line after
-    /// `render()`, so no additional output is needed here.
+    /// The cursor is already parked on the line just below the finalized body
+    /// after the last `render()`, so subsequent `print()` calls naturally
+    /// appear beneath it. Resets state so a future render starts fresh.
     func finalize() {
-        // No-op: cursor is already positioned after the last rendered line.
-    }
-
-    // MARK: - Private helpers
-
-    /// Renders `view` to a String, counts newlines, then writes to stdout.
-    /// Returns the number of lines printed.
-    private func captureAndPrint(view: any View) -> Int {
-        // Redirect stdout to a pipe so we can count lines
-        let pipe = Pipe()
-        let originalFd = dup(STDOUT_FILENO)
-        dup2(pipe.fileHandleForWriting.fileDescriptor, STDOUT_FILENO)
-
-        view.render()
-        fflush(stdout)
-
-        // Restore stdout
-        dup2(originalFd, STDOUT_FILENO)
-        close(originalFd)
-        pipe.fileHandleForWriting.closeFile()
-
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-
-        // Write captured content to the real stdout
-        FileHandle.standardOutput.write(data)
-        fflush(stdout)
-
-        // Count newlines to know how many lines were rendered
-        let text = String(data: data, encoding: .utf8) ?? ""
-        let lines = text.components(separatedBy: "\n")
-        // Last element after split is empty if text ends with \n, so subtract 1
-        let count = Swift.max(lines.count - 1, 0)
-        return count
+        lock.lock()
+        defer { lock.unlock() }
+        previousFrame = nil
+        previousColumns = nil
     }
 }

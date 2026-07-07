@@ -8,7 +8,7 @@
 import ArgumentParser
 import SwiftLI
 
-struct SpacerCommand: AsyncParsableCommand, ViewableCommand {
+struct SpacerCommand: AsyncParsableCommand, FullScreenViewableCommand {
     static let configuration = CommandConfiguration(
         commandName: "spacer",
         abstract: "Display of HSpacer structure",

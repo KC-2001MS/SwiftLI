@@ -1,4 +1,4 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
@@ -6,7 +6,7 @@ import PackageDescription
 let package = Package(
     name: "SwiftLI",
     platforms: [
-            .macOS(.v12),
+        .macOS(.v12),
     ],
     products: [
         .library(
@@ -28,6 +28,14 @@ let package = Package(
             name: "sclt",
             dependencies: [
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
+                "SwiftLI"
+            ]
+        ),
+        // Tests use Swift Testing, which ships with the Swift 6 toolchain — no
+        // package dependency is needed; `import Testing` resolves from the SDK.
+        .testTarget(
+            name: "SwiftLITests",
+            dependencies: [
                 "SwiftLI"
             ]
         ),

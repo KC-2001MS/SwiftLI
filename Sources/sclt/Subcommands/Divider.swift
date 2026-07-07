@@ -8,7 +8,7 @@
 import ArgumentParser
 import SwiftLI
 
-struct DividerCommand: AsyncParsableCommand, ViewableCommand {
+struct DividerCommand: AsyncParsableCommand, FullScreenViewableCommand {
     static let configuration = CommandConfiguration(
         commandName: "divider",
         abstract: "Display of Divider structure",
@@ -37,6 +37,13 @@ struct DividerCommand: AsyncParsableCommand, ViewableCommand {
                 .background(Color.white)
                 .forgroundColor(Color.blue)
                 .bold()
+
+            // Full-width divider: no count → spans the whole terminal and
+            // follows the window as it is resized.
+            Text("Divider() full width (resize the terminal to see it follow):")
+                .forgroundColor(.cyan)
+            Divider()
+            Spacer()
 
             // Horizontal divider (VStack context)
             Text("Divider() in VStack (horizontal):")

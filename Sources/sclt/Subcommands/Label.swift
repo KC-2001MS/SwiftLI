@@ -8,7 +8,7 @@
 import ArgumentParser
 import SwiftLI
 
-struct LabelCommand: AsyncParsableCommand, ViewableCommand {
+struct LabelCommand: AsyncParsableCommand, FullScreenViewableCommand {
     static let configuration = CommandConfiguration(
         commandName: "label",
         abstract: "Display of Label structure",

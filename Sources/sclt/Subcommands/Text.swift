@@ -8,7 +8,7 @@
 import ArgumentParser
 import SwiftLI
 
-struct TextCommand: AsyncParsableCommand, ViewableCommand {
+struct TextCommand: AsyncParsableCommand, FullScreenViewableCommand {
     static let configuration = CommandConfiguration(
         commandName: "text",
         abstract: "Display of Text structure",

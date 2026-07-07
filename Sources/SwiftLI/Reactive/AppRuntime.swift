@@ -76,6 +76,7 @@ public final class AppRuntime: @unchecked Sendable {
             runLoop.run(mode: .default, before: Date(timeIntervalSinceNow: 0.1))
         }
 
+        KeyInputRouter.shared.stop()
         renderer.teardown()
         AppRuntime.shared = nil
     }

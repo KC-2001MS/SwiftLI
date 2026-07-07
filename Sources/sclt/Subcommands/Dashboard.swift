@@ -1,0 +1,118 @@
+//
+//  Dashboard.swift
+//  sclt
+//
+//  Created by Keisuke Chinone on 2026/07/07.
+//
+
+import Foundation
+import ArgumentParser
+import SwiftLI
+
+/// A full-screen sample that combines the basic views (``VStack``, ``HStack``,
+/// ``Divider``, ``Text``, ``Spacer``, ``ForEach``) with ``ProgressView`` in a
+/// single nested layout, to exercise a more complex full-screen composition.
+struct DashboardCommand: AsyncParsableCommand, FullScreenViewableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "dashboard",
+        abstract: "Full-screen dashboard combining basic views and ProgressView",
+        discussion: """
+        A complex full-screen layout: a title bar, a task list with per-task
+        progress bars on the left, and overall stats on the right, all driven
+        live by a single animated state value.
+        """,
+        version: "0.0.3",
+        shouldDisplay: true,
+        helpNames: [.long, .short]
+    )
+
+    /// Drives the whole dashboard; incremented on a timer in `run()`.
+    @State var tick: Int = 0
+
+    private var tasks: [String] { ["Fetch", "Resolve", "Build", "Test", "Package", "Upload"] }
+
+    mutating func run() async throws {
+        startBodyRendering()
+        for _ in 0..<140 {
+            try await Task.sleep(nanoseconds: 80_000_000)
+            tick += 1
+        }
+        stopBodyRendering()
+    }
+
+    // MARK: - Derived values
+
+    /// Staggered 0…1 progress for each task, so they fill one after another.
+    private func progress(for index: Int) -> Double {
+        let start = Double(index) * 10.0
+        let value = (Double(tick) - start) / 50.0
+        return Swift.max(0.0, Swift.min(1.0, value))
+    }
+
+    private var completed: Int {
+        (0..<tasks.count).filter { progress(for: $0) >= 1.0 }.count
+    }
+
+    private var overall: Double {
+        let total = (0..<tasks.count).map { progress(for: $0) }.reduce(0, +)
+        return total / Double(tasks.count)
+    }
+
+    /// Right-pads `text` with spaces to `width` columns for column alignment.
+    private func pad(_ text: String, to width: Int) -> String {
+        text.count >= width ? text : text + String(repeating: " ", count: width - text.count)
+    }
+
+    // MARK: - Body
+
+    var body: some View {
+        // Read the width each render so the title bar follows terminal resizes.
+        let columns = TerminalSize.current.columns
+        let heading = " SwiftLI Dashboard"
+        let titleBar = pad(heading, to: columns)
+
+        return Group {
+            // Full-width title bar.
+            Text(titleBar)
+                .bold()
+                .forgroundColor(.black)
+                .background(.cyan)
+
+            Spacer()
+
+            // Two columns separated by a vertical divider.
+            HStack(alignment: .top, spacing: 2) {
+                // Left: task list, each row a label + its own progress bar.
+                VStack(alignment: .leading) {
+                    Text("Tasks").bold().underline().forgroundColor(.cyan)
+                    ForEach(0..<tasks.count) { index in
+                        HStack(spacing: 1) {
+                            Text(pad(tasks[index], to: 9))
+                            ProgressView(value: progress(for: index), width: 18)
+                        }
+                    }
+                }
+
+                Divider()
+
+                // Right: overall progress and live stats.
+                VStack(alignment: .leading) {
+                    Text("Overall").bold().underline().forgroundColor(.cyan)
+                    ProgressView(value: overall, width: 24)
+                    Spacer()
+                    Text("Completed : \(completed)/\(tasks.count)").forgroundColor(.green)
+                    Text("Remaining : \(tasks.count - completed)").forgroundColor(.yellow)
+                    Text("Tick      : \(tick)")
+                    Spacer()
+                    ProgressView(value: overall, width: 24)
+                        .progressViewStyle(SpinnerProgressViewStyle(label: completed == tasks.count ? "Done" : "Working"))
+                }
+            }
+
+            Spacer()
+            Divider()
+            Text("Ctrl+C to quit — resize the window to see the layout follow")
+                .forgroundColor(.eight_bit(240))
+        }
+    }
+}

@@ -26,6 +26,14 @@ public struct Clear: View, Sendable, Equatable {
         Group(contents: [Text(header: "\u{001B}[2J", content: "")])
     }
 
+    /// Lowers to a ``RenderNode/raw`` node carrying the ANSI clear-screen
+    /// sequence, which the pipeline emits as the frame preamble before any
+    /// grid content. `Clear` itself occupies no cells.
+    @_spi(RenderingInternals)
+    public func makeNode() -> RenderNode {
+        .raw("\u{001B}[2J")
+    }
+
     @_spi(RenderingInternals)
     public func addHeader(_ header: String) -> Self {
         return Clear()
