@@ -143,7 +143,9 @@ public struct FocusModifier: View {
     let onUnfocus: @Sendable () -> Void
     let isRequested: @Sendable () -> Bool
 
-    public var body: some View { Group(contents: []) }
+    public var body: some View {
+        EmptyView()
+    }
 
     @_spi(RenderingInternals)
     public func addHeader(_ header: String) -> FocusModifier {

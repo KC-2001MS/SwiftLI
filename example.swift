@@ -12,7 +12,7 @@
 // import SwiftLI
 //
 // @main
-// struct MyCommand: AsyncParsableCommand, ViewableCommand {
+// struct MyCommand: AsyncParsableCommand, InlineCommand {
 //     @State var value: Double = 0
 //
 //     let min = 0.0

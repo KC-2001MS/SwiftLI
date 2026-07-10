@@ -8,7 +8,7 @@
 import ArgumentParser
 import SwiftLI
 
-struct LabelCommand: AsyncParsableCommand, FullScreenViewableCommand {
+struct LabelCommand: AsyncParsableCommand, FullScreenCommand {
     static let configuration = CommandConfiguration(
         commandName: "label",
         abstract: "Display of Label structure",
@@ -32,23 +32,21 @@ struct LabelCommand: AsyncParsableCommand, FullScreenViewableCommand {
     }
 
     var body: some View {
-        Group {
-            Text("Label View")
-                .background(Color.white)
-                .forgroundColor(Color.blue)
-                .bold()
+        Text("Label View")
+            .background(Color.white)
+            .forgroundColor(Color.blue)
+            .bold()
 
-            HStack(spacing: 1) {
-                Label(
-                    "init(_ title: String, unicodeImage: Int)",
-                    unicodeImage: isActive ? 0x2705 : 0x274C
-                )
-                .forgroundColor(isActive ? .green : .cyan)
-                Spacer(1)
-                Text(isActive ? "0x2705 ✅" : "0x274C ❌")
-                    .fontWeight(.thin)
-                    .forgroundColor(isActive ? .green : .red)
-            }
+        HStack(spacing: 1) {
+            Label(
+                "init(_ title: String, unicodeImage: Int)",
+                unicodeImage: isActive ? 0x2705 : 0x274C
+            )
+            .forgroundColor(isActive ? .green : .cyan)
+            Spacer(1)
+            Text(isActive ? "0x2705 ✅" : "0x274C ❌")
+                .fontWeight(.thin)
+                .forgroundColor(isActive ? .green : .red)
         }
     }
 }

@@ -10,7 +10,7 @@ import Foundation
 /// Renders a ``View`` inline in the terminal and redraws it in-place on
 /// subsequent calls.
 ///
-/// `InlineRenderer` is used internally by ``ViewableCommand``. It drives the
+/// `InlineRenderer` is used internally by ``InlineCommand``. It drives the
 /// intermediate-representation pipeline:
 ///
 /// 1. Lower the view into a ``RenderNode`` tree.
@@ -29,6 +29,8 @@ final class InlineRenderer: @unchecked Sendable {
     private var previousFrame: Frame?
     /// The terminal width used for the previous frame, to detect a resize.
     private var previousColumns: Int?
+    /// The terminal height used for the previous frame, to detect a resize.
+    private var previousRows: Int?
     private let lock = NSLock()
 
     // MARK: - Public interface
@@ -40,18 +42,33 @@ final class InlineRenderer: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
-        var frame = NodeLayout.frame(of: view.makeNode())
         // Clip every line to one less than the terminal width. Leaving the last
         // column empty guarantees a trailing newline never triggers a wrap onto
         // a second physical row (some terminals wrap the moment the final column
         // is written), which would desync the in-place cursor arithmetic.
-        let columns = TerminalSize.current.columns
+        let size = TerminalSize.current
+        let columns = size.columns
         let clip = Swift.max(0, columns - 1)
+        // Inline output has one fewer usable column than the terminal, so the
+        // root `\.maxWidth` environment matches what will actually be shown.
+        var rootValues = EnvironmentValues()
+        rootValues.maxWidth = clip
+        var frame = EnvironmentStack.with(rootValues) {
+            NodeLayout.frame(of: view.makeNode())
+        }
         frame.lines = frame.lines.map { TextMetrics.truncate($0, toColumns: clip) }
+        // Clamp the body to the visible screen (one row is reserved for the
+        // parked cursor below it). A taller body would scroll its first lines
+        // off the top, where cursor-relative repaints can no longer reach —
+        // every later diff would then land on the wrong rows.
+        let maxLines = Swift.max(1, size.rows - 1)
+        if frame.lines.count > maxLines {
+            frame.lines = Array(frame.lines.prefix(maxLines))
+        }
 
         let output: String
-        if let previous = previousFrame, previousColumns == columns {
-            // Same width → the per-line diff is valid; redraw only what changed.
+        if let previous = previousFrame, previousColumns == columns, previousRows == size.rows {
+            // Same size → the per-line diff is valid; redraw only what changed.
             output = FrameDiff.inlineUpdate(from: previous, to: frame)
         } else if let previous = previousFrame {
             // The terminal was resized: the old block has reflowed, so fall back
@@ -62,10 +79,10 @@ final class InlineRenderer: @unchecked Sendable {
             output = FrameDiff.inlineUpdate(from: nil, to: frame)
         }
 
-        print(output, terminator: "")
-        fflush(stdout)
+        TerminalOutput.write(output)
         previousFrame = frame
         previousColumns = columns
+        previousRows = size.rows
     }
 
     /// Called once when body rendering is complete.
@@ -78,5 +95,6 @@ final class InlineRenderer: @unchecked Sendable {
         defer { lock.unlock() }
         previousFrame = nil
         previousColumns = nil
+        previousRows = nil
     }
 }

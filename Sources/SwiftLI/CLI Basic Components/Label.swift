@@ -97,10 +97,10 @@ public struct Label: View {
     }
 
     public var body: some View {
-        style.makeBody(configuration: LabelStyleConfiguration(
-            icon: Text(content: image),
-            title: Text(content: title)
-        ))
+        AnyView(erasing: style.makeBody(configuration: LabelStyleConfiguration(
+            icon: AnyView(Text(content: image)),
+            title: AnyView(Text(content: title))
+        )))
     }
 
     @_spi(RenderingInternals)
@@ -112,11 +112,11 @@ public struct Label: View {
     /// own style header onto the resulting node.
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
-        let bodyGroup = style.makeBody(configuration: LabelStyleConfiguration(
-            icon: Text(content: image),
-            title: Text(content: title)
-        ))
-        return Group(header: header, contents: bodyGroup.contents).makeNode()
+        let node = style.makeBody(configuration: LabelStyleConfiguration(
+            icon: AnyView(Text(content: image)),
+            title: AnyView(Text(content: title))
+        )).makeNode()
+        return header.isEmpty ? node : node.applyingHeader(header)
     }
 
     /// Changes the style used to lay out the icon and title.

@@ -25,7 +25,7 @@ import Foundation
 /// }
 /// ```
 ///
-/// When used inside a ``ViewableCommand``, state changes automatically redraw
+/// When used inside a ``InlineCommand``/``FullScreenCommand``, state changes automatically redraw
 /// the command's `body` in-place — no manual `updateBody()` call needed after
 /// the initial `startBodyRendering()`.
 ///
@@ -50,14 +50,14 @@ public struct State<Value: Sendable>: Sendable {
     ///
     /// Reading returns the latest value. Writing stores the new value and
     /// notifies all registered observers (``AppRuntime`` and any active
-    /// ``ViewableCommand``).
+    /// ``InlineCommand``/``FullScreenCommand``).
     public var wrappedValue: Value {
         get { storage.value }
         nonmutating set {
             storage.value = newValue
             // Notify the full-screen CLIApp runtime (if active)
             AppRuntime.shared?.scheduleRender()
-            // Notify any ViewableCommand inline renderer (if active)
+            // Notify any inline command renderer (if active)
             StateObserverRegistry.shared.notifyChange()
         }
     }
@@ -120,11 +120,11 @@ final class StateStorage<Value: Sendable>: @unchecked Sendable {
 // MARK: - StateObserverRegistry
 
 /// A global registry that routes ``State`` change notifications to a currently
-/// active ``ViewableCommand`` inline renderer.
+/// active ``InlineCommand`` renderer.
 ///
 /// Only one observer may be active at a time — the currently running
-/// `ViewableCommand`. It is registered by ``ViewableCommand/startBodyRendering()``
-/// and unregistered by ``ViewableCommand/stopBodyRendering()``.
+/// `InlineCommand`/`FullScreenCommand`. It is registered by ``InlineCommand/startBodyRendering()``
+/// and unregistered by ``InlineCommand/stopBodyRendering()``.
 final class StateObserverRegistry: @unchecked Sendable {
     static let shared = StateObserverRegistry()
 

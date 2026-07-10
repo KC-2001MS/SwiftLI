@@ -10,7 +10,7 @@ import Foundation
 /// An editable single-line text field bound to a `Binding<String>`.
 ///
 /// `TextField` mirrors SwiftUI's `TextField`. While a reactive runtime is
-/// active (a ``CLIApp`` or a ``ViewableCommand`` that called
+/// active (a ``CLIApp`` or a ``InlineCommand``/``FullScreenCommand`` that called
 /// `startBodyRendering()`), the field registers itself with the runtime's
 /// keyboard handling: the focused field receives keystrokes, editing its bound
 /// string character-by-character, while <kbd>Tab</kbd> / <kbd>Shift-Tab</kbd>
@@ -70,7 +70,9 @@ public struct TextField: View {
         self.onSubmit = onSubmit
     }
 
-    public var body: some View { Group(contents: []) }
+    public var body: some View {
+        EmptyView()
+    }
 
     @_spi(RenderingInternals)
     public func addHeader(_ newHeader: String) -> Self {

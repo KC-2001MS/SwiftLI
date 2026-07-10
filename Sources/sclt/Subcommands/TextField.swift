@@ -12,7 +12,7 @@ import SwiftLI
 /// A full-screen sample that exercises ``TextField``: two focusable, editable
 /// fields with a live preview. Tab/Shift-Tab move focus, Enter submits, Ctrl-C
 /// quits.
-struct TextFieldCommand: AsyncParsableCommand, FullScreenViewableCommand {
+struct TextFieldCommand: AsyncParsableCommand, FullScreenCommand {
     static let configuration = CommandConfiguration(
         commandName: "textfield",
         abstract: "Display of TextField structure",
@@ -43,40 +43,38 @@ struct TextFieldCommand: AsyncParsableCommand, FullScreenViewableCommand {
     }
 
     var body: some View {
-        Group {
-            Text(" TextField ")
-                .bold()
-                .forgroundColor(.black)
-                .background(.cyan)
+        Text(" TextField ")
+            .bold()
+            .forgroundColor(.black)
+            .background(.cyan)
 
-            Spacer()
+        Spacer()
 
-            Text("Tab: move focus   Enter on Name: jump to Email   Ctrl-C: quit")
-                .forgroundColor(.eight_bit(240))
+        Text("Tab: move focus   Enter on Name: jump to Email   Ctrl-C: quit")
+            .forgroundColor(.eight_bit(240))
 
-            Spacer()
+        Spacer()
 
-            HStack(spacing: 1) {
-                Text("Name  :")
-                // Enter on the name field programmatically moves focus to email.
-                TextField("Enter your name", text: $name, onSubmit: { focus = .email })
-                    .focused($focus, equals: .name)
-            }
-            HStack(spacing: 1) {
-                Text("Email :")
-                TextField("Enter your email", text: $email, onSubmit: { submitted = true })
-                    .focused($focus, equals: .email)
-            }
+        HStack(spacing: 1) {
+            Text("Name  :")
+            // Enter on the name field programmatically moves focus to email.
+            TextField("Enter your name", text: $name, onSubmit: { focus = .email })
+                .focused($focus, equals: .name)
+        }
+        HStack(spacing: 1) {
+            Text("Email :")
+            TextField("Enter your email", text: $email, onSubmit: { submitted = true })
+                .focused($focus, equals: .email)
+        }
 
-            Spacer()
+        Spacer()
 
-            let focusName = focus == .name ? "Name" : (focus == .email ? "Email" : "none")
-            Text("Focused: \(focusName)").forgroundColor(.cyan)
-            if submitted {
-                Text("Submitted: \(name) <\(email)>").forgroundColor(.green).bold()
-            } else {
-                Text("Preview: \(name) <\(email)>").forgroundColor(.yellow)
-            }
+        let focusName = focus == .name ? "Name" : (focus == .email ? "Email" : "none")
+        Text("Focused: \(focusName)").forgroundColor(.cyan)
+        if submitted {
+            Text("Submitted: \(name) <\(email)>").forgroundColor(.green).bold()
+        } else {
+            Text("Preview: \(name) <\(email)>").forgroundColor(.yellow)
         }
     }
 }

@@ -44,7 +44,7 @@ public struct OnAppearView: View {
 
     public var body: some View {
         // makeNode() is overridden, so body is not used by the runtime.
-        Group(contents: [])
+        EmptyView()
     }
 
     /// Lowers the wrapped content, firing the appear action exactly once on the

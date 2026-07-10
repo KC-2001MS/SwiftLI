@@ -9,84 +9,54 @@ import Foundation
 import ArgumentParser
 import SwiftLI
 
-struct ProgressViewCommand: AsyncParsableCommand, FullScreenViewableCommand {
+struct ProgressViewCommand: AsyncParsableCommand, FullScreenCommand {
     static let configuration = CommandConfiguration(
         commandName: "progressview",
-        abstract: "Display of ProgressView structure",
+        abstract: "Display of the indeterminate ProgressView spinner",
         discussion: """
-        Command to check the display of ProgressView structure
+        ProgressView is an indeterminate activity indicator — a spinning glyph
+        that signals work is happening without reporting a value. Advance its
+        `phase` over time to animate it. For a determinate meter, see `gauge`.
         """,
         version: "0.0.3",
         shouldDisplay: true,
         helpNames: [.long, .short]
     )
 
-    @State var progress: Double = 0.0
-
-    var min: Double { 0.0 }
-    var max: Double { 1.0 }
+    @State var tick: Int = 0
 
     mutating func run() async throws {
         startBodyRendering()
-        for i in 1...100 {
-            try await Task.sleep(nanoseconds: 30_000_000)
-            progress = Double(i) / 100.0
+        for _ in 0..<200 {
+            try await Task.sleep(nanoseconds: 80_000_000)
+            tick += 1
         }
         stopBodyRendering()
     }
 
     var body: some View {
-        let percent = Int((progress * 100).rounded())
-        return Group {
-            Text("ProgressView")
-                .background(.white)
-                .forgroundColor(.blue)
-                .bold()
+        Text("ProgressView")
+            .background(.white)
+            .forgroundColor(.blue)
+            .bold()
 
-            Text("Every style is driven live by the same value (\(percent)%)")
-                .forgroundColor(.cyan)
+        Text("An indeterminate spinner — phase advances each tick (\(tick))")
+            .forgroundColor(.cyan)
 
-            Spacer()
+        Spacer()
 
-            // All four styles animate from the same `progress` state, so each
-            // one visibly moves as the value changes. The leading text is a
-            // row identifier; the ProgressView's own `label` appears in the
-            // trailing status area (where the percentage is shown).
-            HStack(spacing: 1) {
-                Text("Bar        ").forgroundColor(.red)
-                ProgressView(min: min, value: progress, max: max, width: 30)
-            }
-
-            HStack(spacing: 1) {
-                Text("Linear     ").forgroundColor(.red)
-                ProgressView(min: min, value: progress, max: max, width: 30)
-                    .progressViewStyle(LinearProgressViewStyle())
-            }
-
-            HStack(spacing: 1) {
-                Text("Percentage ").forgroundColor(.red)
-                ProgressView(min: min, value: progress, max: max, width: 30)
-                    .progressViewStyle(PercentageProgressViewStyle())
-            }
-
-            HStack(spacing: 1) {
-                Text("Spinner    ").forgroundColor(.red)
-                ProgressView(min: min, value: progress, max: max, width: 30)
-                    .progressViewStyle(SpinnerProgressViewStyle(label: "Processing"))
-            }
-
-            Spacer()
-
-            // The `label` is drawn in the trailing status area, right where the
-            // percentage sits. Width unspecified → auto-sizes to the full
-            // terminal width (label included) and follows the window on resize.
-            // As the width collapses, the gauge shrinks and finally becomes a
-            // one-character spinner plus the label.
-            Text("Labeled full width (label sits by the percentage):")
-                .forgroundColor(.cyan)
-            ProgressView("Downloading", min: min, value: progress, max: max)
-            ProgressView("Extracting", min: min, value: progress, max: max)
-                .progressViewStyle(LinearProgressViewStyle())
+        HStack(spacing: 1) {
+            Text("With label ").forgroundColor(.red)
+            ProgressView("Loading", phase: tick)
         }
+
+        HStack(spacing: 1) {
+            Text("Bare glyph ").forgroundColor(.red)
+            ProgressView(phase: tick)
+        }
+
+        Spacer()
+        Divider()
+        Text("Ctrl-C to quit").forgroundColor(.eight_bit(240))
     }
 }

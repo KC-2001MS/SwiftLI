@@ -126,7 +126,9 @@ public struct Table<Data: RandomAccessCollection>: View, @unchecked Sendable {
         self.onSubmit = onSubmit
     }
 
-    public var body: some View { Group(contents: []) }
+    public var body: some View {
+        EmptyView()
+    }
 
     @_spi(RenderingInternals)
     public func addHeader(_ newHeader: String) -> Self {

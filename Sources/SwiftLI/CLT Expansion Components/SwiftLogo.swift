@@ -23,7 +23,7 @@ public struct SwiftLogo: View, Sendable, Equatable {
     public init() {}
     
     public var body: some View {
-        Group {
+        VStack {
             HStack {
                 Spacer(10)
 

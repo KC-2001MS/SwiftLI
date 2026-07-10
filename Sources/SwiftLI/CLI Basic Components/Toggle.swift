@@ -10,9 +10,9 @@ import Foundation
 // MARK: - ToggleStyle
 
 /// The values passed to ``ToggleStyle/makeBody(configuration:)`` when rendering.
-public struct ToggleStyleConfiguration: Sendable {
-    /// The toggle's text label.
-    public let label: String
+public struct ToggleStyleConfiguration {
+    /// The toggle's label view, or `nil` when the toggle has no label.
+    public let label: AnyView?
     /// Whether the toggle is currently on.
     public let isOn: Bool
     /// Whether the toggle currently has keyboard focus.
@@ -45,7 +45,10 @@ public struct YesNoToggleStyle: ToggleStyle {
 
         return HStack(spacing: 0) {
             if focused { Text(content: "> ").forgroundColor(.cyan) }
-            if !configuration.label.isEmpty { Text(content: configuration.label + "  ") }
+            if let label = configuration.label {
+                label
+                Text(content: "  ")
+            }
             Text(content: on ? "[Yes]" : " Yes ").forgroundColor(yesColor).bold(on)
             Text(content: " ")
             Text(content: !on ? "[No]" : " No ").forgroundColor(noColor).bold(!on)
@@ -61,7 +64,7 @@ public struct CheckboxToggleStyle: ToggleStyle {
         let box = configuration.isOn ? "[x]" : "[ ]"
         return HStack(spacing: 1) {
             Text(content: box).forgroundColor(configuration.isFocused ? .cyan : .primary)
-            if !configuration.label.isEmpty { Text(content: configuration.label) }
+            if let label = configuration.label { label }
         }
     }
 }
@@ -82,7 +85,7 @@ public struct SwitchToggleStyle: ToggleStyle {
 
         return HStack(spacing: 1) {
             if configuration.isFocused { Text(content: ">").forgroundColor(.cyan) }
-            if !configuration.label.isEmpty { Text(content: configuration.label) }
+            if let label = configuration.label { label }
             Text(content: track).forgroundColor(color)
             Text(content: word).forgroundColor(color).bold()
         }
@@ -99,7 +102,10 @@ public struct PromptToggleStyle: ToggleStyle {
     public func makeBody(configuration: ToggleStyleConfiguration) -> some View {
         let answer = configuration.isOn ? "y" : "n"
         return HStack(spacing: 0) {
-            if !configuration.label.isEmpty { Text(content: configuration.label + " ") }
+            if let label = configuration.label {
+                label
+                Text(content: " ")
+            }
             Text(content: "[y/n]: ").forgroundColor(.eight_bit(240))
             if configuration.isFocused {
                 Text(content: answer).background(.white).forgroundColor(.black)
@@ -112,21 +118,17 @@ public struct PromptToggleStyle: ToggleStyle {
 
 // MARK: - AnyToggleStyle (type erasure)
 
-/// A type-erased ``ToggleStyle`` whose erased result is a ``Group`` — a plain
-/// composition of views, matching how ``AnyProgressViewStyle`` works.
+/// A type-erased ``ToggleStyle`` whose erased result is an ``AnyView`` — a
+/// plain composition of views, matching how ``AnyProgressViewStyle`` works.
 struct AnyToggleStyle: ToggleStyle, @unchecked Sendable {
-    private let _makeBody: (ToggleStyleConfiguration) -> Group
+    private let _makeBody: (ToggleStyleConfiguration) -> any View
 
     init<S: ToggleStyle>(_ style: S) {
-        _makeBody = { config in
-            let result = style.makeBody(configuration: config)
-            if let group = result as? Group { return group }
-            return Group(contents: [result])
-        }
+        _makeBody = { style.makeBody(configuration: $0) }
     }
 
-    func makeBody(configuration: ToggleStyleConfiguration) -> Group {
-        _makeBody(configuration)
+    func makeBody(configuration: ToggleStyleConfiguration) -> AnyView {
+        AnyView(erasing: _makeBody(configuration))
     }
 }
 
@@ -151,12 +153,12 @@ struct AnyToggleStyle: ToggleStyle, @unchecked Sendable {
 public struct Toggle: View {
     let header: String
     let id: String
-    let label: String
+    let label: AnyView?
     let isOn: Binding<Bool>
     let onSubmit: (() -> Void)?
     let style: AnyToggleStyle
 
-    /// Creates a toggle with a label and a boolean binding.
+    /// Creates a toggle with a text label and a boolean binding.
     /// - Parameters:
     ///   - label: The text shown beside the control; also the default identity.
     ///   - isOn: The bound boolean.
@@ -171,13 +173,34 @@ public struct Toggle: View {
         let resolved = String(localized: label.localizationValue)
         self.header = ""
         self.id = id ?? (resolved.isEmpty ? "Toggle" : resolved)
-        self.label = resolved
+        self.label = resolved.isEmpty ? nil : AnyView(Text(content: resolved))
         self.isOn = isOn
         self.onSubmit = onSubmit
         self.style = AnyToggleStyle(YesNoToggleStyle())
     }
 
-    init(header: String, id: String, label: String, isOn: Binding<Bool>, onSubmit: (() -> Void)?, style: AnyToggleStyle) {
+    /// Creates a toggle with a custom label view.
+    /// - Parameters:
+    ///   - isOn: The bound boolean.
+    ///   - id: An explicit identity; defaults to `"Toggle"` — give each toggle
+    ///     a distinct `id` when a screen shows more than one.
+    ///   - onSubmit: Called when <kbd>Return</kbd> is pressed while focused.
+    ///   - label: A ``ViewBuilder`` producing the toggle's label.
+    public init<Label: View>(
+        isOn: Binding<Bool>,
+        id: String = "Toggle",
+        onSubmit: (() -> Void)? = nil,
+        @ViewBuilder label: () -> Label
+    ) {
+        self.header = ""
+        self.id = id
+        self.label = AnyView(label())
+        self.isOn = isOn
+        self.onSubmit = onSubmit
+        self.style = AnyToggleStyle(YesNoToggleStyle())
+    }
+
+    init(header: String, id: String, label: AnyView?, isOn: Binding<Bool>, onSubmit: (() -> Void)?, style: AnyToggleStyle) {
         self.header = header
         self.id = id
         self.label = label
@@ -186,7 +209,9 @@ public struct Toggle: View {
         self.style = style
     }
 
-    public var body: some View { Group(contents: []) }
+    public var body: some View {
+        EmptyView()
+    }
 
     @_spi(RenderingInternals)
     public func addHeader(_ newHeader: String) -> Self {

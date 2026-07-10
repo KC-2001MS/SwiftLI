@@ -109,7 +109,7 @@ public struct Divider: View, Sendable, Equatable {
     // MARK: - View (horizontal / default context)
 
     public var body: some View {
-        Group(contents: [Text(header: self.header, repeating: self.character, count: self.count)])
+        EmptyView()
     }
 
     @_spi(RenderingInternals)

@@ -11,7 +11,7 @@ import SwiftLI
 
 /// A full-screen sample for ``Toggle`` showing its built-in styles. Tab moves
 /// focus; Space / arrows / y-n flip the focused toggle; Ctrl-C quits.
-struct ToggleCommand: AsyncParsableCommand, FullScreenViewableCommand {
+struct ToggleCommand: AsyncParsableCommand, FullScreenCommand {
     static let configuration = CommandConfiguration(
         commandName: "toggle",
         abstract: "Display of Toggle structure",
@@ -36,43 +36,41 @@ struct ToggleCommand: AsyncParsableCommand, FullScreenViewableCommand {
     }
 
     var body: some View {
-        Group {
-            Text(" Toggle ")
-                .bold()
-                .forgroundColor(.black)
-                .background(.cyan)
+        Text(" Toggle ")
+            .bold()
+            .forgroundColor(.black)
+            .background(.cyan)
 
-            Spacer()
+        Spacer()
 
-            Text("Tab: focus   Space: flip   ←/→ or y/n: set   Ctrl-C: quit")
-                .forgroundColor(.eight_bit(240))
+        Text("Tab: focus   Space: flip   ←/→ or y/n: set   Ctrl-C: quit")
+            .forgroundColor(.eight_bit(240))
 
-            Spacer()
+        Spacer()
 
-            HStack(spacing: 1) {
-                Text("Yes/No   :")
-                Toggle("Proceed?", isOn: $proceed)
-            }
-            HStack(spacing: 1) {
-                Text("Checkbox :")
-                Toggle("Verbose logging", isOn: $verbose)
-                    .toggleStyle(CheckboxToggleStyle())
-            }
-            HStack(spacing: 1) {
-                Text("Switch   :")
-                Toggle("Overwrite", isOn: $overwrite)
-                    .toggleStyle(SwitchToggleStyle())
-            }
-            HStack(spacing: 1) {
-                Text("Prompt   :")
-                Toggle("Continue?", isOn: $proceed)
-                    .toggleStyle(PromptToggleStyle())
-            }
-
-            Spacer()
-            Divider()
-            Text("proceed=\(proceed)  verbose=\(verbose)  overwrite=\(overwrite)")
-                .forgroundColor(.yellow)
+        HStack(spacing: 1) {
+            Text("Yes/No   :")
+            Toggle("Proceed?", isOn: $proceed)
         }
+        HStack(spacing: 1) {
+            Text("Checkbox :")
+            Toggle("Verbose logging", isOn: $verbose)
+                .toggleStyle(CheckboxToggleStyle())
+        }
+        HStack(spacing: 1) {
+            Text("Switch   :")
+            Toggle("Overwrite", isOn: $overwrite)
+                .toggleStyle(SwitchToggleStyle())
+        }
+        HStack(spacing: 1) {
+            Text("Prompt   :")
+            Toggle("Continue?", isOn: $proceed)
+                .toggleStyle(PromptToggleStyle())
+        }
+
+        Spacer()
+        Divider()
+        Text("proceed=\(proceed)  verbose=\(verbose)  overwrite=\(overwrite)")
+            .forgroundColor(.yellow)
     }
 }

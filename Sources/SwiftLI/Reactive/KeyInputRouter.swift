@@ -20,7 +20,7 @@ import Foundation
 ///   field or moves focus), then a redraw is requested.
 ///
 /// Redraws and exits are routed to **both** runtimes — the full-screen
-/// ``CLIApp`` (`AppRuntime`) and any inline/full-screen ``ViewableCommand`` —
+/// ``CLIApp`` (`AppRuntime`) and any inline/full-screen ``InlineCommand``/``FullScreenCommand`` —
 /// exactly like a `@State` mutation, so the router doesn't need to know which
 /// one is active.
 final class KeyInputRouter: @unchecked Sendable {

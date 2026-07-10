@@ -12,7 +12,8 @@
 /// pipeline. Because it is a plain value, two consecutive frames can be
 /// compared with ``FrameDiff`` to find out exactly which lines changed.
 public struct Frame: Equatable, Sendable {
-    /// Raw escape output emitted before the grid content (e.g. ``Clear``).
+    /// Raw escape output emitted before the grid content (e.g. a screen-clear
+    /// sequence carried by ``RenderNode/raw(_:)``).
     public var preamble: String
 
     /// The rendered rows, top to bottom, with trailing blanks trimmed.

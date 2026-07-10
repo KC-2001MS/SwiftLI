@@ -48,9 +48,9 @@ public struct Group: View {
     /// Creates a group of views using ``ViewBuilder`` syntax.
     ///
     /// - Parameter contents: A ``ViewBuilder`` closure that produces the child views.
-    public init(@ViewBuilder contents: () -> Group) {
+    public init<Content: View>(@ViewBuilder contents: () -> Content) {
         self.header = ""
-        self.contents = contents().contents
+        self.contents = contents()._flattenedChildren()
     }
 
     init(contents: [any View]) {
@@ -71,13 +71,19 @@ public struct Group: View {
         header.isEmpty ? contents : contents.map { $0.addHeader(header) }
     }
 
+    /// `Group` is transparent: it lowers directly via ``makeNode()``.
     public var body: some View {
-        Group(header: "", contents: _resolvedChildren)
+        EmptyView()
     }
 
     @_spi(RenderingInternals)
     public func addHeader(_ header: String) -> Self {
         return Group(header: header + self.header, contents: self.contents)
+    }
+
+    @_spi(RenderingInternals)
+    public func _flattenedChildren() -> [any View] {
+        _resolvedChildren.flatMap { $0._flattenedChildren() }
     }
 
     /// Lowers this group into a transparent ``RenderNode/group`` node,

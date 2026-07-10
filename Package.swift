@@ -6,7 +6,9 @@ import PackageDescription
 let package = Package(
     name: "SwiftLI",
     platforms: [
-        .macOS(.v12),
+        // Parameter packs in generic types (TupleView) require the Swift 5.9
+        // runtime, which ships with macOS 14.
+        .macOS(.v14),
     ],
     products: [
         .library(

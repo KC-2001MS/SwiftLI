@@ -8,10 +8,10 @@
 import ArgumentParser
 import SwiftLI
 
-struct SpacerCommand: AsyncParsableCommand, FullScreenViewableCommand {
+struct SpacerCommand: AsyncParsableCommand, FullScreenCommand {
     static let configuration = CommandConfiguration(
         commandName: "spacer",
-        abstract: "Display of HSpacer structure",
+        abstract: "Display of Spacer structure",
         discussion: """
         Command to check the display of Spacer structure
         """,
@@ -32,41 +32,39 @@ struct SpacerCommand: AsyncParsableCommand, FullScreenViewableCommand {
     }
 
     var body: some View {
-        Group {
-            Text("Spacer View")
-                .background(Color.white)
-                .forgroundColor(Color.blue)
-                .bold()
+        Text("Spacer View")
+            .background(Color.white)
+            .forgroundColor(Color.blue)
+            .bold()
 
-            // Vertical spacer demo: Spacer() inserts one blank row in VStack
-            Text("init()")
+        // Vertical spacer demo: Spacer() inserts one blank row in VStack
+        Text("init()")
+            .forgroundColor(Color.cyan)
+
+        HStack(spacing: 1) {
+            Spacer(1)
+            Text("← Spacer()  (1 space)")
+                .fontWeight(.thin)
+                .forgroundColor(.red)
+        }
+
+        Spacer()
+
+        // Horizontal spacer demo: Spacer(count) in HStack
+        HStack(spacing: 1) {
+            Text("init(_ count: Int)")
                 .forgroundColor(Color.cyan)
+            Spacer(1)
+            Text("\(count)")
+                .fontWeight(.thin)
+                .forgroundColor(.red)
+        }
 
-            HStack(spacing: 1) {
-                Spacer(1)
-                Text("← Spacer()  (1 space)")
-                    .fontWeight(.thin)
-                    .forgroundColor(.red)
-            }
-
-            Spacer()
-
-            // Horizontal spacer demo: Spacer(count) in HStack
-            HStack(spacing: 1) {
-                Text("init(_ count: Int)")
-                    .forgroundColor(Color.cyan)
-                Spacer(1)
-                Text("\(count)")
-                    .fontWeight(.thin)
-                    .forgroundColor(.red)
-            }
-
-            HStack(spacing: 0) {
-                Spacer(count)
-                Text("← Spacer(\(count))")
-                    .fontWeight(.thin)
-                    .forgroundColor(.red)
-            }
+        HStack(spacing: 0) {
+            Spacer(count)
+            Text("← Spacer(\(count))")
+                .fontWeight(.thin)
+                .forgroundColor(.red)
         }
     }
 }

@@ -49,6 +49,8 @@ final class FocusCoordinator: @unchecked Sendable {
     // Multi-line editors (``TextEditor``) remember a vertical scroll offset so the
     // view follows the cursor line minimally, keyed by editor id.
     private var editorOffsets: [String: Int] = [:]
+    // Action controls (``Button``): the closure fired on Return/Space, keyed by id.
+    private var buttonActions: [String: () -> Void] = [:]
     private var focusedID: String?
     // The first control to appear is auto-focused, but only once: after the user
     // blurs with Escape we must not silently re-focus it on the next render.
@@ -124,6 +126,17 @@ final class FocusCoordinator: @unchecked Sendable {
         intBindings[id] = selection
         optionCounts[id] = count
         submits[id] = onSubmit
+        if !order.contains(id) { order.append(id) }
+        linkFocus(id: id)
+    }
+
+    /// Registers an action control (a ``Button``) in the focus ring.
+    ///
+    /// - Parameter action: Called when <kbd>Return</kbd> or <kbd>Space</kbd> is
+    ///   pressed while focused.
+    func registerButton(id: String, action: @escaping () -> Void) {
+        lock.lock(); defer { lock.unlock() }
+        buttonActions[id] = action
         if !order.contains(id) { order.append(id) }
         linkFocus(id: id)
     }
@@ -282,6 +295,7 @@ final class FocusCoordinator: @unchecked Sendable {
         let keymap = id.flatMap { keymaps[$0] } ?? SingleLineKeymap()
         let isScroll = id.map { scrollViewportHeights[$0] != nil } ?? false
         let isList = id.map { listSelections[$0] != nil } ?? false
+        let buttonAction = id.flatMap { buttonActions[$0] }
         lock.unlock()
 
         // Nothing focused: Tab / Shift-Tab re-enter the focus ring.
@@ -331,6 +345,9 @@ final class FocusCoordinator: @unchecked Sendable {
         case .tab:     focusNext();     return true
         case .backTab: focusPrevious(); return true
         default: break
+        }
+        if let buttonAction {
+            return handleButton(key: key, action: buttonAction)
         }
         if let toggleBinding {
             return handleToggle(id: id, key: key, binding: toggleBinding, submit: submit)
@@ -391,8 +408,10 @@ final class FocusCoordinator: @unchecked Sendable {
         let maxOffset = Swift.max(0, (scrollContentHeights[id] ?? 0) - viewport)
         let target: Int
         switch key {
-        case .up:                  target = current - 1
-        case .down:                target = current + 1
+        // Up/Left step back one, Down/Right forward one — so the same handler
+        // drives both a vertical viewport (↑/↓) and a horizontal one (←/→).
+        case .up, .left:           target = current - 1
+        case .down, .right:        target = current + 1
         case .character(" "):      target = current + viewport
         case .home:                target = 0
         case .end:                 target = maxOffset
@@ -400,6 +419,18 @@ final class FocusCoordinator: @unchecked Sendable {
         }
         scrollOffsets[id] = Swift.min(Swift.max(target, 0), maxOffset)
         return true
+    }
+
+    /// Applies a key to a focused action control: Return or Space fires the
+    /// button's action.
+    private func handleButton(key: KeyEvent, action: () -> Void) -> Bool {
+        switch key {
+        case .enter, .character(" "):
+            action()
+            return true
+        default:
+            return false
+        }
     }
 
     /// Applies a key to a focused boolean control.
@@ -504,6 +535,7 @@ final class FocusCoordinator: @unchecked Sendable {
         listViewports.removeAll()
         listOffsets.removeAll()
         editorOffsets.removeAll()
+        buttonActions.removeAll()
         pendingFocus.removeAll()
         focusOnFocus.removeAll()
         focusOnUnfocus.removeAll()

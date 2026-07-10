@@ -59,7 +59,7 @@ public struct Spacer: View, Sendable, Equatable {
     // MARK: - View (vertical / default context)
 
     public var body: some View {
-        Group(contents: [Text(repeating: "\n", count: count)])
+        EmptyView()
     }
 
     @_spi(RenderingInternals)

@@ -10,9 +10,9 @@ import Foundation
 // MARK: - PickerStyle
 
 /// The values passed to ``PickerStyle/makeBody(configuration:)`` when rendering.
-public struct PickerStyleConfiguration: Sendable {
-    /// The picker's text label.
-    public let label: String
+public struct PickerStyleConfiguration {
+    /// The picker's label view, or `nil` when the picker has no label.
+    public let label: AnyView?
     /// The selectable options, in order.
     public let options: [String]
     /// The index of the selected option (clamped to `options`).
@@ -46,7 +46,10 @@ public struct InlinePickerStyle: PickerStyle {
         let arrowColor: Color = configuration.isFocused ? .cyan : .eight_bit(240)
         return HStack(spacing: 0) {
             if configuration.isFocused { Text(content: "> ").forgroundColor(.cyan) }
-            if !configuration.label.isEmpty { Text(content: configuration.label + " ") }
+            if let label = configuration.label {
+                label
+                Text(content: " ")
+            }
             Text(content: "‹ ").forgroundColor(arrowColor)
             Text(content: configuration.selection).bold()
             Text(content: " ›").forgroundColor(arrowColor)
@@ -62,7 +65,10 @@ public struct SegmentedPickerStyle: PickerStyle {
     public func makeBody(configuration: PickerStyleConfiguration) -> some View {
         var cells: [any View] = []
         if configuration.isFocused { cells.append(Text(content: "> ").forgroundColor(.cyan)) }
-        if !configuration.label.isEmpty { cells.append(Text(content: configuration.label + " ")) }
+        if let label = configuration.label {
+            cells.append(label)
+            cells.append(Text(content: " "))
+        }
         for (index, option) in configuration.options.enumerated() {
             if index == configuration.selectedIndex {
                 cells.append(Text(content: "[\(option)]").forgroundColor(.green).bold())
@@ -84,11 +90,11 @@ public struct ListPickerStyle: PickerStyle {
         let focused = configuration.isFocused
         var rows: [any View] = []
 
-        if !configuration.label.isEmpty {
+        if let label = configuration.label {
             rows.append(HStack(spacing: 0) {
                 Group(contents: [
                     Text(content: focused ? "> " : "  ").forgroundColor(.cyan),
-                    Text(content: configuration.label).bold()
+                    label.bold()
                 ])
             })
         }
@@ -114,20 +120,16 @@ public struct ListPickerStyle: PickerStyle {
 
 // MARK: - AnyPickerStyle (type erasure)
 
-/// A type-erased ``PickerStyle`` whose erased result is a ``Group``.
+/// A type-erased ``PickerStyle`` whose erased result is an ``AnyView``.
 struct AnyPickerStyle: PickerStyle, @unchecked Sendable {
-    private let _makeBody: (PickerStyleConfiguration) -> Group
+    private let _makeBody: (PickerStyleConfiguration) -> any View
 
     init<S: PickerStyle>(_ style: S) {
-        _makeBody = { config in
-            let result = style.makeBody(configuration: config)
-            if let group = result as? Group { return group }
-            return Group(contents: [result])
-        }
+        _makeBody = { style.makeBody(configuration: $0) }
     }
 
-    func makeBody(configuration: PickerStyleConfiguration) -> Group {
-        _makeBody(configuration)
+    func makeBody(configuration: PickerStyleConfiguration) -> AnyView {
+        AnyView(erasing: _makeBody(configuration))
     }
 }
 
@@ -152,13 +154,13 @@ struct AnyPickerStyle: PickerStyle, @unchecked Sendable {
 public struct Picker: View {
     let header: String
     let id: String
-    let label: String
+    let label: AnyView?
     let options: [String]
     let selection: Binding<Int>
     let onSubmit: (() -> Void)?
     let style: AnyPickerStyle
 
-    /// Creates a picker with a label, a selected-index binding, and options.
+    /// Creates a picker with a text label, a selected-index binding, and options.
     /// - Parameters:
     ///   - label: The text shown beside the control; also the default identity.
     ///   - selection: The bound selected-option index.
@@ -175,14 +177,38 @@ public struct Picker: View {
         let resolved = String(localized: label.localizationValue)
         self.header = ""
         self.id = id ?? (resolved.isEmpty ? "Picker" : resolved)
-        self.label = resolved
+        self.label = resolved.isEmpty ? nil : AnyView(Text(content: resolved))
         self.options = options
         self.selection = selection
         self.onSubmit = onSubmit
         self.style = AnyPickerStyle(InlinePickerStyle())
     }
 
-    init(header: String, id: String, label: String, options: [String], selection: Binding<Int>, onSubmit: (() -> Void)?, style: AnyPickerStyle) {
+    /// Creates a picker with a custom label view.
+    /// - Parameters:
+    ///   - selection: The bound selected-option index.
+    ///   - options: The selectable option titles.
+    ///   - id: An explicit identity; defaults to `"Picker"` — give each picker
+    ///     a distinct `id` when a screen shows more than one.
+    ///   - onSubmit: Called when <kbd>Return</kbd> is pressed while focused.
+    ///   - label: A ``ViewBuilder`` producing the picker's label.
+    public init<Label: View>(
+        selection: Binding<Int>,
+        options: [String],
+        id: String = "Picker",
+        onSubmit: (() -> Void)? = nil,
+        @ViewBuilder label: () -> Label
+    ) {
+        self.header = ""
+        self.id = id
+        self.label = AnyView(label())
+        self.options = options
+        self.selection = selection
+        self.onSubmit = onSubmit
+        self.style = AnyPickerStyle(InlinePickerStyle())
+    }
+
+    init(header: String, id: String, label: AnyView?, options: [String], selection: Binding<Int>, onSubmit: (() -> Void)?, style: AnyPickerStyle) {
         self.header = header
         self.id = id
         self.label = label
@@ -192,7 +218,9 @@ public struct Picker: View {
         self.style = style
     }
 
-    public var body: some View { Group(contents: []) }
+    public var body: some View {
+        EmptyView()
+    }
 
     @_spi(RenderingInternals)
     public func addHeader(_ newHeader: String) -> Self {

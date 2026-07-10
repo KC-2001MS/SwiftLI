@@ -74,8 +74,44 @@ public indirect enum RenderNode: Equatable, Sendable {
     /// both `nil` hides the scrollbar.
     case scroll(offset: Int, height: Int, thumb: String?, track: String?, child: RenderNode)
 
+    /// A box of Unicode box-drawing characters around a child.
+    ///
+    /// The border occupies one extra column on each side and one extra row
+    /// above and below the child. `header` styles the border glyphs (e.g. a
+    /// foreground colour); an empty header uses the terminal default. `fill`
+    /// styles the interior — when non-empty the whole inside of the box is
+    /// painted with it (typically a background colour) and the child inherits
+    /// it so its text sits on the fill; an empty `fill` leaves the interior
+    /// transparent.
+    case border(header: String, fill: String, style: BorderStyle, child: RenderNode)
+
+    /// A drop shadow drawn along a child's right and bottom edges.
+    ///
+    /// The shadow adds one column and one row to the footprint, offset a single
+    /// cell down and to the right. `header` styles the shadow cells (typically a
+    /// background colour).
+    case shadow(header: String, child: RenderNode)
+
+    /// A fixed-width viewport showing a horizontally scrolled window of a wider
+    /// child.
+    ///
+    /// The child is laid out in full, then only the columns in
+    /// `offset ..< offset + extent` of each row are drawn. `thumb`/`track` are
+    /// pre-styled single-glyph strings for the scrollbar drawn on the row below
+    /// the content; both `nil` hides the scrollbar.
+    case hscroll(offset: Int, extent: Int, thumb: String?, track: String?, child: RenderNode)
+
+    /// Picks the first candidate whose natural size fits the available space.
+    ///
+    /// At layout time each candidate is measured at its natural (unconstrained)
+    /// size and compared against the proposed width (and/or the terminal
+    /// height); the first that fits is laid out, falling back to the last
+    /// candidate when none do. `checkWidth`/`checkHeight` select which axes the
+    /// fit is tested on.
+    case viewThatFits(checkWidth: Bool, checkHeight: Bool, candidates: [RenderNode])
+
     /// A raw ANSI escape sequence emitted before the frame's grid content
-    /// (used by ``Clear``). Occupies no cells.
+    /// (e.g. a screen-clear sequence). Occupies no cells.
     case raw(String)
 
     /// Returns a copy of the tree with `header` prepended to every styled leaf.
@@ -108,6 +144,15 @@ public indirect enum RenderNode: Equatable, Sendable {
             return .lineLimit(limit, child: child.applyingHeader(header))
         case .scroll(let offset, let height, let thumb, let track, let child):
             return .scroll(offset: offset, height: height, thumb: thumb, track: track, child: child.applyingHeader(header))
+        case .hscroll(let offset, let extent, let thumb, let track, let child):
+            return .hscroll(offset: offset, extent: extent, thumb: thumb, track: track, child: child.applyingHeader(header))
+        case .border(let h, let fill, let style, let child):
+            return .border(header: header + h, fill: fill, style: style, child: child.applyingHeader(header))
+        case .shadow(let h, let child):
+            // The shadow cell keeps its own style; only the content inherits.
+            return .shadow(header: h, child: child.applyingHeader(header))
+        case .viewThatFits(let cw, let ch, let candidates):
+            return .viewThatFits(checkWidth: cw, checkHeight: ch, candidates: candidates.map { $0.applyingHeader(header) })
         }
     }
 }

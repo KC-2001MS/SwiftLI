@@ -52,14 +52,14 @@
 /// ForEach(fruits) { Text($0) }
 ///     .forgroundColor(.green)   // every row becomes green
 /// ```
-public struct ForEach<Data: RandomAccessCollection>: View {
+public struct ForEach<Data: RandomAccessCollection, Content: View>: View {
     let header: String
 
     /// The collection whose elements drive the iteration.
     let data: Data
 
     /// Builds the view for a single element.
-    let content: (Data.Element) -> Group
+    let content: (Data.Element) -> Content
 
     /// Creates a view that generates one child per element of `data`.
     ///
@@ -70,7 +70,7 @@ public struct ForEach<Data: RandomAccessCollection>: View {
     ///     element.
     public init(
         _ data: Data,
-        @ViewBuilder content: @escaping (Data.Element) -> Group
+        @ViewBuilder content: @escaping (Data.Element) -> Content
     ) {
         self.header = ""
         self.data = data
@@ -80,14 +80,16 @@ public struct ForEach<Data: RandomAccessCollection>: View {
     init(
         header: String,
         data: Data,
-        content: @escaping (Data.Element) -> Group
+        content: @escaping (Data.Element) -> Content
     ) {
         self.header = header
         self.data = data
         self.content = content
     }
 
-    public var body: some View { Group(contents: []) }
+    public var body: some View {
+        EmptyView()
+    }
 
     @_spi(RenderingInternals)
     public func addHeader(_ header: String) -> Self {
@@ -104,5 +106,14 @@ public struct ForEach<Data: RandomAccessCollection>: View {
     public func makeNode() -> RenderNode {
         let node = RenderNode.group(children: data.map { content($0).makeNode() })
         return header.isEmpty ? node : node.applyingHeader(header)
+    }
+
+    /// A `ForEach` is transparent: every generated view (itself flattened)
+    /// joins the enclosing container individually, with the accumulated style
+    /// header cascaded onto each.
+    @_spi(RenderingInternals)
+    public func _flattenedChildren() -> [any View] {
+        let views = data.flatMap { content($0)._flattenedChildren() }
+        return header.isEmpty ? views : views.map { $0.addHeader(header) }
     }
 }

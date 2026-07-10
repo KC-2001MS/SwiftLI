@@ -8,7 +8,7 @@
 import ArgumentParser
 import SwiftLI
 
-struct EmoticonCommand: AsyncParsableCommand, FullScreenViewableCommand {
+struct EmoticonCommand: AsyncParsableCommand, FullScreenCommand {
     static let configuration = CommandConfiguration(
         commandName: "emoticon",
         abstract: "Display of Emoticon structure",
@@ -38,68 +38,62 @@ struct EmoticonCommand: AsyncParsableCommand, FullScreenViewableCommand {
     }
 
     var body: some View {
-        Group {
-            Text("Emoticon View")
-                .background(Color.white)
-                .forgroundColor(Color.blue)
-                .bold()
+        Text("Emoticon View")
+            .background(Color.white)
+            .forgroundColor(Color.blue)
+            .bold()
 
-            Text("init()")
-                .forgroundColor(Color.cyan)
+        Text("init()")
+            .forgroundColor(Color.cyan)
 
+        HStack(spacing: 1) {
+            Emoticon()
+            Spacer(1)
+            Text("Emoticon()  ← default :)")
+                .fontWeight(.thin)
+                .forgroundColor(.red)
+        }
+
+        Spacer()
+
+        Text("init(eye:mouth:)  — cycling through all cases")
+            .forgroundColor(Color.cyan)
+
+        HStack(spacing: 1) {
+            Emoticon(eye: eyes[eyeIndex], mouth: mouths[mouthIndex])
+            Spacer(1)
+            Text("eye: .\(eyes[eyeIndex])  mouth: .\(mouths[mouthIndex])")
+                .fontWeight(.thin)
+                .forgroundColor(.red)
+        }
+
+        Spacer()
+
+        Text("EyesStyle cases")
+            .forgroundColor(Color.cyan)
+
+        ForEach(EyesStyle.allCases) { eye in
             HStack(spacing: 1) {
-                Emoticon()
+                Emoticon(eye: eye, mouth: .default)
                 Spacer(1)
-                Text("Emoticon()  ← default :)")
+                Text(".\(eye)")
                     .fontWeight(.thin)
-                    .forgroundColor(.red)
+                    .forgroundColor(eye == eyes[eyeIndex] ? .green : .red)
             }
+        }
 
-            Spacer()
+        Spacer()
 
-            Text("init(eye:mouth:)  — cycling through all cases")
-                .forgroundColor(Color.cyan)
+        Text("MouthStyle cases")
+            .forgroundColor(Color.cyan)
 
+        ForEach(MouthStyle.allCases) { mouth in
             HStack(spacing: 1) {
-                Emoticon(eye: eyes[eyeIndex], mouth: mouths[mouthIndex])
+                Emoticon(eye: .default, mouth: mouth)
                 Spacer(1)
-                Text("eye: .\(eyes[eyeIndex])  mouth: .\(mouths[mouthIndex])")
+                Text(".\(mouth)")
                     .fontWeight(.thin)
-                    .forgroundColor(.red)
-            }
-
-            Spacer()
-
-            Text("EyesStyle cases")
-                .forgroundColor(Color.cyan)
-
-            Group {
-                for eye in EyesStyle.allCases {
-                    HStack(spacing: 1) {
-                        Emoticon(eye: eye, mouth: .default)
-                        Spacer(1)
-                        Text(".\(eye)")
-                            .fontWeight(.thin)
-                            .forgroundColor(eye == eyes[eyeIndex] ? .green : .red)
-                    }
-                }
-            }
-
-            Spacer()
-
-            Text("MouthStyle cases")
-                .forgroundColor(Color.cyan)
-
-            Group {
-                for mouth in MouthStyle.allCases {
-                    HStack(spacing: 1) {
-                        Emoticon(eye: .default, mouth: mouth)
-                        Spacer(1)
-                        Text(".\(mouth)")
-                            .fontWeight(.thin)
-                            .forgroundColor(mouth == mouths[mouthIndex] ? .green : .red)
-                    }
-                }
+                    .forgroundColor(mouth == mouths[mouthIndex] ? .green : .red)
             }
         }
     }

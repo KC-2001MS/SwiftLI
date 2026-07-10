@@ -30,13 +30,13 @@ import Foundation
 /// Without a `selection` the list is a plain, non-focusable column of rows.
 ///
 /// > Note: When the list scrolls, offset tracking assumes one line per row.
-public struct List<Data: RandomAccessCollection>: View, @unchecked Sendable {
+public struct List<Data: RandomAccessCollection, RowContent: View>: View, @unchecked Sendable {
     private let header: String
     private let id: String
     private let data: Data
     private let selection: Binding<Int?>?
     private let height: Int?
-    private let rowContent: (Data.Element) -> Group
+    private let rowContent: (Data.Element) -> RowContent
     private let onSubmit: (() -> Void)?
 
     /// Creates a list over `data`.
@@ -53,7 +53,7 @@ public struct List<Data: RandomAccessCollection>: View, @unchecked Sendable {
         height: Int? = nil,
         id: String = "List",
         onSubmit: (() -> Void)? = nil,
-        @ViewBuilder rowContent: @escaping (Data.Element) -> Group
+        @ViewBuilder rowContent: @escaping (Data.Element) -> RowContent
     ) {
         self.header = ""
         self.id = id
@@ -64,7 +64,7 @@ public struct List<Data: RandomAccessCollection>: View, @unchecked Sendable {
         self.rowContent = rowContent
     }
 
-    init(header: String, id: String, data: Data, selection: Binding<Int?>?, height: Int?, onSubmit: (() -> Void)?, rowContent: @escaping (Data.Element) -> Group) {
+    init(header: String, id: String, data: Data, selection: Binding<Int?>?, height: Int?, onSubmit: (() -> Void)?, rowContent: @escaping (Data.Element) -> RowContent) {
         self.header = header
         self.id = id
         self.data = data
@@ -74,7 +74,9 @@ public struct List<Data: RandomAccessCollection>: View, @unchecked Sendable {
         self.rowContent = rowContent
     }
 
-    public var body: some View { Group(contents: []) }
+    public var body: some View {
+        EmptyView()
+    }
 
     @_spi(RenderingInternals)
     public func addHeader(_ newHeader: String) -> Self {

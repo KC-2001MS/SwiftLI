@@ -83,6 +83,23 @@ public enum NodeLayout {
             let childSize = measure(child, axis: .vertical, proposedWidth: proposedWidth, lineLimit: lineLimit)
             let barWidth = (thumb != nil && childSize.height > height) ? 2 : 0
             return Size(width: childSize.width + barWidth, height: height)
+        case .hscroll(_, let extent, let thumb, _, let child):
+            let childSize = measure(child, axis: .vertical, proposedWidth: nil, lineLimit: lineLimit)
+            let barRow = (thumb != nil && childSize.width > extent) ? 1 : 0
+            return Size(width: extent, height: childSize.height + barRow)
+        case .border(_, _, _, let child):
+            // The box adds one column on each side and one row top and bottom.
+            let inner = proposedWidth.map { Swift.max(0, $0 - 2) }
+            let childSize = measure(child, axis: .vertical, proposedWidth: inner, lineLimit: lineLimit)
+            return Size(width: childSize.width + 2, height: childSize.height + 2)
+        case .shadow(_, let child):
+            // The drop shadow adds one column and one row to the footprint.
+            let inner = proposedWidth.map { Swift.max(0, $0 - 1) }
+            let childSize = measure(child, axis: .vertical, proposedWidth: inner, lineLimit: lineLimit)
+            return Size(width: childSize.width + 1, height: childSize.height + 1)
+        case .viewThatFits(let cw, let ch, let candidates):
+            let chosen = fittingCandidate(candidates, checkWidth: cw, checkHeight: ch, proposedWidth: proposedWidth, lineLimit: lineLimit)
+            return measure(chosen, axis: axis, proposedWidth: proposedWidth, lineLimit: lineLimit)
         }
     }
 
@@ -145,7 +162,34 @@ public enum NodeLayout {
             draw(child, into: canvas, at: origin, axis: axis, proposedWidth: proposedWidth, lineLimit: limit)
         case .scroll(let offset, let height, let thumb, let track, let child):
             drawScroll(offset: offset, height: height, thumb: thumb, track: track, child: child, into: canvas, at: origin, proposedWidth: proposedWidth, lineLimit: lineLimit)
+        case .hscroll(let offset, let extent, let thumb, let track, let child):
+            drawHScroll(offset: offset, extent: extent, thumb: thumb, track: track, child: child, into: canvas, at: origin, lineLimit: lineLimit)
+        case .border(let header, let fill, let style, let child):
+            drawBorder(header: header, fill: fill, style: style, child: child, into: canvas, at: origin, proposedWidth: proposedWidth, lineLimit: lineLimit)
+        case .shadow(let header, let child):
+            drawShadow(header: header, child: child, into: canvas, at: origin, proposedWidth: proposedWidth, lineLimit: lineLimit)
+        case .viewThatFits(let cw, let ch, let candidates):
+            let chosen = fittingCandidate(candidates, checkWidth: cw, checkHeight: ch, proposedWidth: proposedWidth, lineLimit: lineLimit)
+            draw(chosen, into: canvas, at: origin, axis: axis, proposedWidth: proposedWidth, lineLimit: lineLimit)
         }
+    }
+
+    /// Chooses the first candidate whose natural size fits the available space,
+    /// falling back to the last candidate when none fit.
+    static func fittingCandidate(_ candidates: [RenderNode], checkWidth: Bool, checkHeight: Bool, proposedWidth: Int?, lineLimit: Int?) -> RenderNode {
+        guard let last = candidates.last else { return .empty }
+        let availWidth  = proposedWidth ?? TerminalSize.current.columns
+        let availHeight = TerminalSize.current.rows
+        for candidate in candidates {
+            // Measure at the natural (unconstrained) size, then test it against
+            // what is available — a candidate that would have to wrap or clip is
+            // considered not to fit.
+            let size = measure(candidate, axis: .vertical, proposedWidth: nil, lineLimit: lineLimit)
+            let widthFits  = !checkWidth  || size.width  <= availWidth
+            let heightFits = !checkHeight || size.height <= availHeight
+            if widthFits && heightFits { return candidate }
+        }
+        return last
     }
 
     // MARK: - Scroll layout
@@ -187,6 +231,124 @@ public enum NodeLayout {
                 canvas.write(glyph, at: Point(column: origin.column + barColumn, row: origin.row + row))
             }
         }
+    }
+
+    private static func drawHScroll(offset: Int, extent: Int, thumb: String?, track: String?, child: RenderNode, into canvas: TerminalCanvas, at origin: Point, lineLimit: Int?) {
+        guard extent > 0 else { return }
+
+        // Lay the child out at its natural width, then take an `extent`-column
+        // horizontal window of every row.
+        let childCanvas = TerminalCanvas(width: 0, height: 0)
+        draw(child, into: childCanvas, at: .zero, axis: .vertical, proposedWidth: nil, lineLimit: lineLimit)
+        let lines = childCanvas.lines()
+        let contentHeight = lines.count
+        let contentWidth = lines.map { TextMetrics.visibleWidth(TextMetrics.stripANSI($0)) }.max() ?? 0
+        let maxOffset = Swift.max(0, contentWidth - extent)
+        let clamped = Swift.min(Swift.max(offset, 0), maxOffset)
+
+        let scrollable = contentWidth > extent
+        let showBar = thumb != nil && scrollable
+        let barRow = contentHeight   // one row below the content
+
+        // Scrollbar thumb geometry (proportional to how much is visible).
+        var thumbStart = 0
+        var thumbSize = extent
+        if showBar {
+            thumbSize = Swift.max(1, extent * extent / contentWidth)
+            let travel = extent - thumbSize
+            thumbStart = maxOffset > 0 ? clamped * travel / maxOffset : 0
+        }
+
+        canvas.expand(toFit: Rect(origin: origin, size: Size(width: extent, height: contentHeight + (showBar ? 1 : 0))))
+        for row in 0..<contentHeight {
+            let windowed = TextMetrics.sliceColumns(lines[row], from: clamped, width: extent)
+            if !windowed.isEmpty { canvas.write(windowed, at: Point(column: origin.column, row: origin.row + row)) }
+        }
+        if showBar, let thumb, let track {
+            for col in 0..<extent {
+                let glyph = (col >= thumbStart && col < thumbStart + thumbSize) ? thumb : track
+                canvas.write(glyph, at: Point(column: origin.column + col, row: origin.row + barRow))
+            }
+        }
+    }
+
+    // MARK: - Border & shadow layout
+
+    /// Draws a box of box-drawing glyphs around `child`, placing the child one
+    /// cell in from the top-left corner.
+    private static func drawBorder(header: String, fill: String, style: BorderStyle, child: RenderNode, into canvas: TerminalCanvas, at origin: Point, proposedWidth: Int?, lineLimit: Int?) {
+        let g = style.glyphs
+        let inner = proposedWidth.map { Swift.max(0, $0 - 2) }
+        let childSize = measure(child, axis: .vertical, proposedWidth: inner, lineLimit: lineLimit)
+        let w = childSize.width
+        let h = childSize.height
+        let reset = "\u{001B}[0m"
+
+        canvas.expand(toFit: Rect(origin: origin, size: Size(width: w + 2, height: h + 2)))
+
+        // With a fill, every border cell — corners included — takes the fill
+        // background, so the box reads as one solid rectangle. This matches how
+        // Textual, Rich and Lipgloss render a filled box: the rounded glyphs are
+        // drawn *on* the fill as decoration, and the silhouette stays square. A
+        // single cell has only one background, so a rounded *filled* corner is
+        // not representable; a truly round silhouette needs an unfilled outline.
+        let edge = header + fill
+
+        let top = edge + String(g.topLeft) + String(repeating: g.horizontal, count: w) + String(g.topRight) + reset
+        canvas.write(top, at: origin)
+
+        let bottom = edge + String(g.bottomLeft) + String(repeating: g.horizontal, count: w) + String(g.bottomRight) + reset
+        canvas.write(bottom, at: Point(column: origin.column, row: origin.row + h + 1))
+
+        let side = edge + String(g.vertical) + reset
+        for r in 0..<h {
+            canvas.write(side, at: Point(column: origin.column, row: origin.row + 1 + r))
+            canvas.write(side, at: Point(column: origin.column + w + 1, row: origin.row + 1 + r))
+        }
+
+        // Paint the interior when a fill is requested, so the whole inside of
+        // the box is coloured — not just the cells the child writes.
+        if !fill.isEmpty && w > 0 && h > 0 {
+            let fillRow = fill + String(repeating: " ", count: w) + reset
+            for r in 0..<h {
+                canvas.write(fillRow, at: Point(column: origin.column + 1, row: origin.row + 1 + r))
+            }
+        }
+
+        // The child sits inside the box, inset by one cell. When filled, the
+        // child inherits the fill so its text sits on the fill background too.
+        let content = fill.isEmpty ? child : child.applyingHeader(fill)
+        draw(content, into: canvas, at: Point(column: origin.column + 1, row: origin.row + 1), axis: .vertical, proposedWidth: inner, lineLimit: lineLimit)
+    }
+
+    /// Draws a one-cell drop shadow along `child`'s right and bottom edges,
+    /// offset a single cell down and to the right, then draws the child on top.
+    private static func drawShadow(header: String, child: RenderNode, into canvas: TerminalCanvas, at origin: Point, proposedWidth: Int?, lineLimit: Int?) {
+        let inner = proposedWidth.map { Swift.max(0, $0 - 1) }
+        let childSize = measure(child, axis: .vertical, proposedWidth: inner, lineLimit: lineLimit)
+        let w = childSize.width
+        let h = childSize.height
+
+        guard w > 0, h > 0 else {
+            draw(child, into: canvas, at: origin, axis: .vertical, proposedWidth: inner, lineLimit: lineLimit)
+            return
+        }
+
+        canvas.expand(toFit: Rect(origin: origin, size: Size(width: w + 1, height: h + 1)))
+
+        // A single shadow cell: a styled space so trailing shadow is not trimmed.
+        let cell = header + " " + "\u{001B}[0m"
+        // Bottom band, one row below the child.
+        for c in 1...w {
+            canvas.write(cell, at: Point(column: origin.column + c, row: origin.row + h))
+        }
+        // Right band, one column right of the child (shares the corner cell).
+        for r in 1...h {
+            canvas.write(cell, at: Point(column: origin.column + w, row: origin.row + r))
+        }
+
+        // The content draws on top, covering the band it overlaps.
+        draw(child, into: canvas, at: origin, axis: .vertical, proposedWidth: inner, lineLimit: lineLimit)
     }
 
     // MARK: - Stack layout
@@ -524,6 +686,14 @@ public enum NodeLayout {
             return collectRaw(child)
         case .scroll(_, _, _, _, let child):
             return collectRaw(child)
+        case .hscroll(_, _, _, _, let child):
+            return collectRaw(child)
+        case .border(_, _, _, let child):
+            return collectRaw(child)
+        case .shadow(_, let child):
+            return collectRaw(child)
+        case .viewThatFits(_, _, let candidates):
+            return candidates.map(collectRaw).joined()
         case .empty, .text, .spacer, .divider:
             return ""
         }
@@ -546,16 +716,38 @@ enum TextMetrics {
     }
 
     /// Strips ANSI escape sequences from a string, returning printable text only.
+    ///
+    /// Handles both CSI sequences (`\e[…m`, ending at their final byte) and OSC
+    /// sequences (`\e]…`, ending at BEL or the ST terminator `\e\`) — the latter
+    /// is what carries OSC 8 hyperlinks — so neither is ever counted as visible
+    /// width.
     static func stripANSI(_ s: String) -> String {
         var result = ""
         var i = s.startIndex
         while i < s.endIndex {
             if s[i] == "\u{001B}" {
                 i = s.index(after: i)
-                while i < s.endIndex {
-                    let c = s[i]
+                guard i < s.endIndex else { break }
+                if s[i] == "]" {
+                    // OSC: skip until BEL or the ST terminator (ESC \).
                     i = s.index(after: i)
-                    if c == "m" { break }
+                    while i < s.endIndex {
+                        let c = s[i]
+                        if c == "\u{0007}" { i = s.index(after: i); break }
+                        if c == "\u{001B}" {
+                            i = s.index(after: i)
+                            if i < s.endIndex, s[i] == "\\" { i = s.index(after: i) }
+                            break
+                        }
+                        i = s.index(after: i)
+                    }
+                } else {
+                    // CSI (or other): skip up to and including the final 'm'.
+                    while i < s.endIndex {
+                        let c = s[i]
+                        i = s.index(after: i)
+                        if c == "m" { break }
+                    }
                 }
             } else {
                 result.append(s[i])
@@ -585,14 +777,33 @@ enum TextMetrics {
         while i < styled.endIndex {
             let ch = styled[i]
             if ch == "\u{001B}" {
-                // Copy the whole escape sequence (up to and including its 'm').
+                // Copy the whole escape sequence verbatim (it occupies no
+                // columns): CSI ends at its 'm'; OSC ends at BEL or ST (`\e\`).
                 out.append(ch)
                 i = styled.index(after: i)
-                while i < styled.endIndex {
-                    let c = styled[i]
-                    out.append(c)
+                if i < styled.endIndex, styled[i] == "]" {
+                    out.append(styled[i])
                     i = styled.index(after: i)
-                    if c == "m" { break }
+                    while i < styled.endIndex {
+                        let c = styled[i]
+                        out.append(c)
+                        i = styled.index(after: i)
+                        if c == "\u{0007}" { break }
+                        if c == "\u{001B}" {
+                            if i < styled.endIndex, styled[i] == "\\" {
+                                out.append(styled[i])
+                                i = styled.index(after: i)
+                            }
+                            break
+                        }
+                    }
+                } else {
+                    while i < styled.endIndex {
+                        let c = styled[i]
+                        out.append(c)
+                        i = styled.index(after: i)
+                        if c == "m" { break }
+                    }
                 }
             } else {
                 let w = visibleWidth(String(ch))
@@ -603,6 +814,54 @@ enum TextMetrics {
             }
         }
         if truncated { out += "\u{001B}[0m" }
+        return out
+    }
+
+    /// Returns the `width`-column window of a (possibly styled) string starting
+    /// at visible column `start`.
+    ///
+    /// Escape sequences (CSI and OSC) are always copied so the style/hyperlink
+    /// state carries into the window even when the leading columns are skipped;
+    /// visible glyphs are kept only when they fall entirely inside
+    /// `start ..< start + width`. Used to horizontally scroll a row.
+    static func sliceColumns(_ styled: String, from start: Int, width: Int) -> String {
+        if width <= 0 { return "" }
+        var out = ""
+        var col = 0
+        var i = styled.startIndex
+        while i < styled.endIndex {
+            let ch = styled[i]
+            if ch == "\u{001B}" {
+                // Copy the whole escape verbatim: CSI ends at 'm'; OSC at BEL/ST.
+                out.append(ch)
+                i = styled.index(after: i)
+                if i < styled.endIndex, styled[i] == "]" {
+                    out.append(styled[i]); i = styled.index(after: i)
+                    while i < styled.endIndex {
+                        let c = styled[i]; out.append(c); i = styled.index(after: i)
+                        if c == "\u{0007}" { break }
+                        if c == "\u{001B}" {
+                            if i < styled.endIndex, styled[i] == "\\" { out.append(styled[i]); i = styled.index(after: i) }
+                            break
+                        }
+                    }
+                } else {
+                    while i < styled.endIndex {
+                        let c = styled[i]; out.append(c); i = styled.index(after: i)
+                        if c == "m" { break }
+                    }
+                }
+            } else {
+                let w = visibleWidth(String(ch))
+                if col >= start && col + w <= start + width {
+                    out.append(ch)
+                }
+                col += w
+                i = styled.index(after: i)
+                if col >= start + width { break }
+            }
+        }
+        out += "\u{001B}[0m"
         return out
     }
 

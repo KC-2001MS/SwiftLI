@@ -8,9 +8,9 @@
 import ArgumentParser
 import SwiftLI
 
-struct SwiftLogoCommand: AsyncParsableCommand, InlineViewableCommand {
+struct SwiftLogoCommand: AsyncParsableCommand, InlineCommand {
     static let configuration = CommandConfiguration(
-        commandName: "swift",
+        commandName: "swiftlogo",
         abstract: "Display of SwiftLogo structure",
         discussion: """
         Command to check the display of SwiftLogo structure
@@ -30,21 +30,19 @@ struct SwiftLogoCommand: AsyncParsableCommand, InlineViewableCommand {
     }
 
     var body: some View {
-        Group {
-            Text("SwiftLogo View")
-                .background(Color.white)
-                .forgroundColor(Color.blue)
-                .bold()
+        Text("SwiftLogo View")
+            .background(Color.white)
+            .forgroundColor(Color.blue)
+            .bold()
 
-            Text("init()")
-                .forgroundColor(Color.cyan)
+        Text("init()")
+            .forgroundColor(Color.cyan)
 
-            SwiftLogo()
+        SwiftLogo()
 
-            Spacer()
+        Spacer()
 
-            Text("* This library was created by Swift.")
-                .fontWeight(.thin)
-        }
+        Text("* This library was created by Swift.")
+            .fontWeight(.thin)
     }
 }

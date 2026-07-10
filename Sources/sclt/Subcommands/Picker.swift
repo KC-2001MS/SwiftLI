@@ -11,7 +11,7 @@ import SwiftLI
 
 /// A full-screen sample for ``Picker`` showing its built-in styles. Tab moves
 /// focus; arrows / Space / digits change the selection; Ctrl-C quits.
-struct PickerCommand: AsyncParsableCommand, FullScreenViewableCommand {
+struct PickerCommand: AsyncParsableCommand, FullScreenCommand {
     static let configuration = CommandConfiguration(
         commandName: "picker",
         abstract: "Display of Picker structure",
@@ -40,39 +40,37 @@ struct PickerCommand: AsyncParsableCommand, FullScreenViewableCommand {
     }
 
     var body: some View {
-        Group {
-            Text(" Picker ")
-                .bold()
-                .forgroundColor(.black)
-                .background(.cyan)
+        Text(" Picker ")
+            .bold()
+            .forgroundColor(.black)
+            .background(.cyan)
 
-            Spacer()
+        Spacer()
 
-            Text("Tab: focus   ←/→ or Space: change   1-9: jump   Ctrl-C: quit")
-                .forgroundColor(.eight_bit(240))
+        Text("Tab: focus   ←/→ or Space: change   1-9: jump   Ctrl-C: quit")
+            .forgroundColor(.eight_bit(240))
 
-            Spacer()
+        Spacer()
 
-            HStack(spacing: 1) {
-                Text("Inline    :")
-                Picker("Color", selection: $color, options: colors)
-            }
-            HStack(spacing: 1) {
-                Text("Segmented :")
-                Picker("Size", selection: $size, options: sizes)
-                    .pickerStyle(SegmentedPickerStyle())
-            }
-
-            Spacer()
-
-            Text("List:").forgroundColor(.cyan)
-            Picker("Fruit", selection: $fruit, options: fruits)
-                .pickerStyle(ListPickerStyle())
-
-            Spacer()
-            Divider()
-            Text("color=\(colors[color])  size=\(sizes[size])  fruit=\(fruits[fruit])")
-                .forgroundColor(.yellow)
+        HStack(spacing: 1) {
+            Text("Inline    :")
+            Picker("Color", selection: $color, options: colors)
         }
+        HStack(spacing: 1) {
+            Text("Segmented :")
+            Picker("Size", selection: $size, options: sizes)
+                .pickerStyle(SegmentedPickerStyle())
+        }
+
+        Spacer()
+
+        Text("List:").forgroundColor(.cyan)
+        Picker("Fruit", selection: $fruit, options: fruits)
+            .pickerStyle(ListPickerStyle())
+
+        Spacer()
+        Divider()
+        Text("color=\(colors[color])  size=\(sizes[size])  fruit=\(fruits[fruit])")
+            .forgroundColor(.yellow)
     }
 }

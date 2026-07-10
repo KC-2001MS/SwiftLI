@@ -8,7 +8,7 @@
 import ArgumentParser
 import SwiftLI
 
-struct GroupCommand: AsyncParsableCommand, FullScreenViewableCommand {
+struct GroupCommand: AsyncParsableCommand, FullScreenCommand {
     static let configuration = CommandConfiguration(
         commandName: "group",
         abstract: "Display of Group structure",
@@ -32,24 +32,22 @@ struct GroupCommand: AsyncParsableCommand, FullScreenViewableCommand {
     }
 
     var body: some View {
+        Text("Group View")
+            .background(Color.white)
+            .forgroundColor(Color.blue)
+            .bold()
+
+        HStack(spacing: 1) {
+            Text("Group(@ViewBuilder contents: () -> [View])")
+                .forgroundColor(isActive ? .green : .cyan)
+            Spacer(1)
+            Text(isActive ? "active" : "inactive")
+                .fontWeight(.thin)
+                .forgroundColor(isActive ? .green : .red)
+        }
+
         Group {
-            Text("Group View")
-                .background(Color.white)
-                .forgroundColor(Color.blue)
-                .bold()
-
-            HStack(spacing: 1) {
-                Text("Group(@ViewBuilder contents: () -> [View])")
-                    .forgroundColor(isActive ? .green : .cyan)
-                Spacer(1)
-                Text(isActive ? "active" : "inactive")
-                    .fontWeight(.thin)
-                    .forgroundColor(isActive ? .green : .red)
-            }
-
-            Group {
-                Text("Group")
-            }
+            Text("Group")
         }
     }
 }

@@ -11,7 +11,7 @@ import SwiftLI
 
 /// A full-screen sample for ``Table``: a people grid that fills the terminal
 /// width, with a fixed-width column and truncating cells.
-struct TableCommand: AsyncParsableCommand, FullScreenViewableCommand {
+struct TableCommand: AsyncParsableCommand, FullScreenCommand {
     static let configuration = CommandConfiguration(
         commandName: "table",
         abstract: "Display of Table structure",
@@ -47,29 +47,27 @@ struct TableCommand: AsyncParsableCommand, FullScreenViewableCommand {
     }
 
     var body: some View {
-        Group {
-            Text(" Table ")
-                .bold()
-                .forgroundColor(.black)
-                .background(.cyan)
+        Text(" Table ")
+            .bold()
+            .forgroundColor(.black)
+            .background(.cyan)
 
-            Spacer()
+        Spacer()
 
-            Text("↑/↓: select   Home/End: jump   header stays pinned   Ctrl-C: quit")
-                .forgroundColor(.eight_bit(240))
+        Text("↑/↓: select   Home/End: jump   header stays pinned   Ctrl-C: quit")
+            .forgroundColor(.eight_bit(240))
 
-            Spacer()
+        Spacer()
 
-            Table(people, selection: $selection, height: 10) {
-                TableColumn("Name") { $0.name }
-                TableColumn("Role", width: 12) { $0.role }
-                TableColumn("Email") { $0.email }
-            }
-
-            Spacer()
-            Divider()
-            Text("Fills the terminal width; body scrolls under a pinned header.")
-                .forgroundColor(.yellow)
+        Table(people, selection: $selection, height: 10) {
+            TableColumn("Name") { $0.name }
+            TableColumn("Role", width: 12) { $0.role }
+            TableColumn("Email") { $0.email }
         }
+
+        Spacer()
+        Divider()
+        Text("Fills the terminal width; body scrolls under a pinned header.")
+            .forgroundColor(.yellow)
     }
 }

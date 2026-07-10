@@ -75,20 +75,13 @@ public final class TerminalRenderer: @unchecked Sendable {
         previousColumns = nil
         lock.unlock()
 
-        print(ANSICode.enterAltScreen, terminator: "")
-        print(ANSICode.hideCursor, terminator: "")
-        print(ANSICode.clearScreen, terminator: "")
-        print(ANSICode.cursorHome, terminator: "")
-        fflush(stdout)
+        TerminalOutput.write(ANSICode.enterAltScreen + ANSICode.hideCursor + ANSICode.clearScreen + ANSICode.cursorHome)
     }
 
     /// Leaves the alternate screen buffer, restoring the screen that was visible
     /// before ``beginAlternateScreen()`` and showing the cursor again.
     public func endAlternateScreen() {
-        print(ANSICode.reset, terminator: "")
-        print(ANSICode.showCursor, terminator: "")
-        print(ANSICode.leaveAltScreen, terminator: "")
-        fflush(stdout)
+        TerminalOutput.write(ANSICode.reset + ANSICode.showCursor + ANSICode.leaveAltScreen)
     }
 
     // MARK: - Public API
@@ -103,9 +96,7 @@ public final class TerminalRenderer: @unchecked Sendable {
         previousFrame = nil
         lock.unlock()
 
-        print(ANSICode.clearScreen, terminator: "")
-        print(ANSICode.cursorHome, terminator: "")
-        fflush(stdout)
+        TerminalOutput.write(ANSICode.clearScreen + ANSICode.cursorHome)
     }
 
     /// Renders a view tree in-place, updating only the lines that changed.
@@ -156,8 +147,7 @@ public final class TerminalRenderer: @unchecked Sendable {
         var output = ANSICode.hideCursor
         if resized { output += ANSICode.clearScreen }
         output += ANSICode.cursorHome + diff + ANSICode.showCursor
-        print(output, terminator: "")
-        fflush(stdout)
+        TerminalOutput.write(output)
     }
 
     /// Cleans up the terminal when the application exits.
@@ -165,9 +155,6 @@ public final class TerminalRenderer: @unchecked Sendable {
     /// Ensures the cursor is visible, attributes are reset, and a final
     /// newline is appended so the shell prompt appears on its own line.
     public func teardown() {
-        print(ANSICode.showCursor, terminator: "")
-        print(ANSICode.reset, terminator: "")
-        print("") // Final newline
-        fflush(stdout)
+        TerminalOutput.write(ANSICode.showCursor + ANSICode.reset + "\n")
     }
 }

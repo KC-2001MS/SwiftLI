@@ -125,8 +125,10 @@ public struct Text: View, Sendable, Equatable {
         self.contents = [content]
     }
 
+    /// `Text` is a rendering leaf: it lowers directly via ``makeNode()`` and
+    /// has no body.
     public var body: some View {
-        Group(contents: [])
+        EmptyView()
     }
 
     @_spi(RenderingInternals)
@@ -240,15 +242,27 @@ public protocol View {
 
     @_spi(RenderingInternals)
     func draw(into canvas: TerminalCanvas, at origin: Point)
+
+    /// The flat list of views this view contributes to an enclosing container.
+    ///
+    /// Structural views produced by ``ViewBuilder`` (``TupleView``,
+    /// ``_ConditionalContent``, `Optional`, ``EmptyView``) and transparent
+    /// containers (``Group``, ``ForEach``) expand to their children so that
+    /// containers such as ``VStack`` or ``VGrid`` see each child individually.
+    /// Ordinary views contribute themselves.
+    @_spi(RenderingInternals)
+    func _flattenedChildren() -> [any View]
 }
 
 public extension View {
-    @_spi(RenderingInternals)
+    // The default implementations below are deliberately *not* @_spi: a
+    // client module that imports SwiftLI without the SPI can only satisfy the
+    // SPI requirements through visible defaults — hiding these would make it
+    // impossible to conform to ``View`` outside this module.
     func addHeader(_ header: String) -> Self {
         return self
     }
 
-    @_spi(RenderingInternals)
     func makeNode() -> RenderNode {
         body.makeNode()
     }
@@ -260,19 +274,20 @@ public extension View {
         print(out, terminator: "")
     }
 
-    @_spi(RenderingInternals)
     func renderString() -> String {
         NodeLayout.frame(of: makeNode()).lines.joined(separator: "\n")
     }
 
-    @_spi(RenderingInternals)
     func measure() -> Size {
         NodeLayout.measure(makeNode())
     }
 
-    @_spi(RenderingInternals)
     func draw(into canvas: TerminalCanvas, at origin: Point) {
         NodeLayout.draw(makeNode(), into: canvas, at: origin)
+    }
+
+    func _flattenedChildren() -> [any View] {
+        [self]
     }
 
     // MARK: - Style modifiers

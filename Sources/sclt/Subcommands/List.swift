@@ -11,7 +11,7 @@ import SwiftLI
 
 /// A full-screen sample for ``List``: a selectable, scrolling list of items.
 /// Arrow keys move the selection, the list scrolls to follow, Ctrl-C quits.
-struct ListCommand: AsyncParsableCommand, FullScreenViewableCommand {
+struct ListCommand: AsyncParsableCommand, FullScreenCommand {
     static let configuration = CommandConfiguration(
         commandName: "list",
         abstract: "Display of List structure",
@@ -36,27 +36,25 @@ struct ListCommand: AsyncParsableCommand, FullScreenViewableCommand {
     }
 
     var body: some View {
-        Group {
-            Text(" List ")
-                .bold()
-                .forgroundColor(.black)
-                .background(.cyan)
+        Text(" List ")
+            .bold()
+            .forgroundColor(.black)
+            .background(.cyan)
 
-            Spacer()
+        Spacer()
 
-            Text("↑/↓: select   Home/End: jump   Ctrl-C: quit")
-                .forgroundColor(.eight_bit(240))
+        Text("↑/↓: select   Home/End: jump   Ctrl-C: quit")
+            .forgroundColor(.eight_bit(240))
 
-            Spacer()
+        Spacer()
 
-            List(items, selection: $selection, height: 10) { item in
-                Text(item)
-            }
-
-            Spacer()
-            Divider()
-            Text("Selected: \(selection.map { items[$0] } ?? "none")")
-                .forgroundColor(.yellow)
+        List(items, selection: $selection, height: 10) { item in
+            Text(item)
         }
+
+        Spacer()
+        Divider()
+        Text("Selected: \(selection.map { items[$0] } ?? "none")")
+            .forgroundColor(.yellow)
     }
 }

@@ -76,7 +76,7 @@ public struct Emoticon: View, Sendable, Equatable {
     }
     /// What the view displays
     public var body: some View {
-        Group(contents: [Text(header: header, content: content)])
+        Text(header: header, content: content)
     }
 
     @_spi(RenderingInternals)

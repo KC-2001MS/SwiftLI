@@ -10,12 +10,12 @@ import Foundation
 /// A property wrapper for mutable command state that provides a `Binding`
 /// via the `$` prefix.
 ///
-/// Use `@CommandState` for values in a ``ViewableCommand`` that should drive
+/// Use `@CommandState` for values in a ``InlineCommand``/``FullScreenCommand`` that should drive
 /// the `body` view.  Unlike `@Argument`, `@CommandState` is not parsed from
 /// the command line — set the initial value in the declaration or in `run()`.
 ///
 /// ```swift
-/// struct Example: AsyncParsableCommand, ViewableCommand {
+/// struct Example: AsyncParsableCommand, InlineCommand {
 ///     @Argument var initialValue: Double   // parsed from CLI
 ///     @CommandState var progress: Double = 0.0   // drives the view
 ///

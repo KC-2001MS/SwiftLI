@@ -12,7 +12,7 @@ import SwiftLI
 /// A full-screen sample that combines the basic views (``VStack``, ``HStack``,
 /// ``Divider``, ``Text``, ``Spacer``, ``ForEach``) with ``ProgressView`` in a
 /// single nested layout, to exercise a more complex full-screen composition.
-struct DashboardCommand: AsyncParsableCommand, FullScreenViewableCommand {
+struct DashboardCommand: AsyncParsableCommand, FullScreenCommand {
     static let configuration = CommandConfiguration(
         commandName: "dashboard",
         abstract: "Full-screen dashboard combining basic views and ProgressView",
@@ -71,48 +71,45 @@ struct DashboardCommand: AsyncParsableCommand, FullScreenViewableCommand {
         let heading = " SwiftLI Dashboard"
         let titleBar = pad(heading, to: columns)
 
-        return Group {
-            // Full-width title bar.
-            Text(titleBar)
-                .bold()
-                .forgroundColor(.black)
-                .background(.cyan)
+        // Full-width title bar.
+        Text(titleBar)
+            .bold()
+            .forgroundColor(.black)
+            .background(.cyan)
 
-            Spacer()
+        Spacer()
 
-            // Two columns separated by a vertical divider.
-            HStack(alignment: .top, spacing: 2) {
-                // Left: task list, each row a label + its own progress bar.
-                VStack(alignment: .leading) {
-                    Text("Tasks").bold().underline().forgroundColor(.cyan)
-                    ForEach(0..<tasks.count) { index in
-                        HStack(spacing: 1) {
-                            Text(pad(tasks[index], to: 9))
-                            ProgressView(value: progress(for: index), width: 18)
-                        }
+        // Two columns separated by a vertical divider.
+        HStack(alignment: .top, spacing: 2) {
+            // Left: task list, each row a label + its own progress bar.
+            VStack(alignment: .leading) {
+                Text("Tasks").bold().underline().forgroundColor(.cyan)
+                ForEach(0..<tasks.count) { index in
+                    HStack(spacing: 1) {
+                        Text(pad(tasks[index], to: 9))
+                        Gauge(value: progress(for: index), width: 18)
                     }
-                }
-
-                Divider()
-
-                // Right: overall progress and live stats.
-                VStack(alignment: .leading) {
-                    Text("Overall").bold().underline().forgroundColor(.cyan)
-                    ProgressView(value: overall, width: 24)
-                    Spacer()
-                    Text("Completed : \(completed)/\(tasks.count)").forgroundColor(.green)
-                    Text("Remaining : \(tasks.count - completed)").forgroundColor(.yellow)
-                    Text("Tick      : \(tick)")
-                    Spacer()
-                    ProgressView(value: overall, width: 24)
-                        .progressViewStyle(SpinnerProgressViewStyle(label: completed == tasks.count ? "Done" : "Working"))
                 }
             }
 
-            Spacer()
             Divider()
-            Text("Ctrl+C to quit — resize the window to see the layout follow")
-                .forgroundColor(.eight_bit(240))
+
+            // Right: overall progress and live stats.
+            VStack(alignment: .leading) {
+                Text("Overall").bold().underline().forgroundColor(.cyan)
+                Gauge(value: overall, width: 24)
+                Spacer()
+                Text("Completed : \(completed)/\(tasks.count)").forgroundColor(.green)
+                Text("Remaining : \(tasks.count - completed)").forgroundColor(.yellow)
+                Text("Tick      : \(tick)")
+                Spacer()
+                ProgressView(completed == tasks.count ? "Done" : "Working", phase: tick)
+            }
         }
+
+        Spacer()
+        Divider()
+        Text("Ctrl+C to quit — resize the window to see the layout follow")
+            .forgroundColor(.eight_bit(240))
     }
 }
