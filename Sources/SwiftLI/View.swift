@@ -193,7 +193,12 @@ public struct Text: View, Sendable, Equatable {
 /// Apply ANSI styles through the modifier methods declared in the `View`
 /// extension: ``forgroundColor(_:)``, ``bold()``, ``italic()``, ``underline()``,
 /// ``blink(_:)``, ``hidden()``, and ``strikethrough()``.
-public protocol View {
+///
+/// ## Views are scenes
+///
+/// `View` refines ``Scene``, so any view can stand directly as a
+/// ``Command``'s `body` — the view is the scene's whole content.
+public protocol View: Scene {
     /// The type of view representing the body of this view.
     associatedtype Body: View
 
@@ -268,6 +273,10 @@ public extension View {
     }
 
     func render() {
+        // Bracket the pass so control registrations (and the sticky refocus
+        // after a navigation push) resolve the same way as session renders.
+        FocusCoordinator.shared.beginRenderPass()
+        defer { FocusCoordinator.shared.endRenderPass() }
         let frame = NodeLayout.frame(of: makeNode())
         var out = frame.preamble
         out += frame.lines.map { $0 + "\n" }.joined()
@@ -275,7 +284,9 @@ public extension View {
     }
 
     func renderString() -> String {
-        NodeLayout.frame(of: makeNode()).lines.joined(separator: "\n")
+        FocusCoordinator.shared.beginRenderPass()
+        defer { FocusCoordinator.shared.endRenderPass() }
+        return NodeLayout.frame(of: makeNode()).lines.joined(separator: "\n")
     }
 
     func measure() -> Size {

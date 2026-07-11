@@ -15,8 +15,11 @@
 /// control, so a scroll view participates in the same focus ring as text fields
 /// and toggles.
 ///
-/// A proportional scrollbar is drawn to the right of the content (hidden when
-/// everything already fits, or when `showsIndicators` is `false`).
+/// A proportional scrollbar is drawn as a continuous solid strip with
+/// half-cell precision, pinned to the trailing edge of the viewport's
+/// allotted width — a horizontal viewport draws it along its bottom edge.
+/// It is hidden when everything already fits, or when `showsIndicators` is
+/// `false`.
 ///
 /// ```swift
 /// ScrollView(height: 10) {
@@ -123,7 +126,7 @@ public struct ScrollView: View, @unchecked Sendable {
             let contentExtent = isHorizontal
                 ? NodeLayout.measure(childNode).width
                 : NodeLayout.measure(childNode).height
-            FocusCoordinator.shared.registerScroll(id: id, viewportHeight: extent, contentHeight: contentExtent, onSubmit: nil)
+            FocusCoordinator.shared.registerScroll(id: id, viewportHeight: extent, contentHeight: contentExtent)
             KeyInputRouter.shared.ensureStarted()
             offset = FocusCoordinator.shared.scrollOffset(for: id)
             focused = FocusCoordinator.shared.isFocused(id)
@@ -132,19 +135,24 @@ public struct ScrollView: View, @unchecked Sendable {
             focused = f
         }
 
-        let thumb = showsIndicators ? Self.bar("█", focused: focused) : nil
-        let track = showsIndicators ? Self.bar("░", focused: focused) : nil
+        let bar = showsIndicators ? Self.scrollBar(focused: focused) : nil
         if isHorizontal {
-            return .hscroll(offset: offset, extent: extent, thumb: thumb, track: track, child: childNode)
+            // The horizontal bar sits on the bottom edge of the viewport.
+            return .hscroll(offset: offset, extent: extent, bar: bar, child: childNode)
         }
-        return .scroll(offset: offset, height: extent, thumb: thumb, track: track, child: childNode)
+        // Pin the scrollbar to the far edge of the columns this viewport is
+        // allotted, macOS-style, instead of hugging the content's own width.
+        return .scroll(offset: offset, height: extent, bar: bar, width: EnvironmentStack.current.maxWidth, child: childNode)
     }
 
-    /// A single pre-styled scrollbar glyph: cyan when focused, dim otherwise.
-    /// Shared so ``List`` and ``Table`` (which compose a controlled ``ScrollView``)
-    /// get an identical scrollbar.
-    static func bar(_ glyph: String, focused: Bool) -> String {
-        let color = focused ? "\u{001B}[36m" : "\u{001B}[38;5;240m"
-        return color + glyph + "\u{001B}[0m"
+    /// The scrollbar palette: a cyan thumb while focused (dim white otherwise)
+    /// over a dark-grey track. Shared so ``List`` and ``Table`` (which compose
+    /// a controlled ``ScrollView``) get an identical scrollbar.
+    static func scrollBar(focused: Bool) -> ScrollBar {
+        ScrollBar(
+            thumbForeground: focused ? "\u{001B}[36m" : "\u{001B}[38;5;245m",
+            trackForeground: "\u{001B}[38;5;238m",
+            trackBackground: "\u{001B}[48;5;238m"
+        )
     }
 }

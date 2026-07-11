@@ -50,8 +50,10 @@ public enum NodeLayout {
         case .text(let header, let contents):
             let s = styledText(header: header, contents: contents, proposedWidth: proposedWidth, lineLimit: lineLimit)
             return TextMetrics.size(of: s.isEmpty ? " " : s)
-        case .spacer(_, let count):
-            return axis == .horizontal ? Size(width: count, height: 1) : Size(width: 0, height: count)
+        case .spacer(_, let minLength):
+            // The minimum footprint; a row with flexible spacers expands them
+            // to the leftover width during row layout (see `measureRow`).
+            return axis == .horizontal ? Size(width: minLength, height: 1) : Size(width: 0, height: minLength)
         case .divider(_, _, _, let count, let fillsWidth):
             // Placeholder size — the enclosing stack stretches the divider to
             // its full height (HStack) or width (VStack) during layout. A
@@ -64,28 +66,30 @@ public enum NodeLayout {
             return measureColumn(flatten(children), spacing: spacing, proposedWidth: proposedWidth, lineLimit: lineLimit)
         case .hstack(_, let spacing, let children):
             // Horizontal width division isn't modelled, so children keep their
-            // natural width (no wrapping) inside an HStack.
-            return measureRow(flatten(children), spacing: spacing, lineLimit: lineLimit)
-        case .padding(let edges, let length, let child):
-            let inner = proposedWidth.map { $0 - horizontalPadding(edges, length) }
+            // natural width (no wrapping) inside an HStack. Flexible spacers
+            // absorb the leftover space up to the proposed/available width.
+            return measureRow(flatten(children), spacing: spacing, proposedWidth: proposedWidth, lineLimit: lineLimit)
+        case .padding(let insets, let child):
+            let inner = proposedWidth.map { $0 - insets.horizontal }
             var size = measure(child, axis: axis, proposedWidth: inner, lineLimit: lineLimit)
-            if edges.contains(.leading)  { size.width  += length }
-            if edges.contains(.trailing) { size.width  += length }
-            if edges.contains(.top)      { size.height += length }
-            if edges.contains(.bottom)   { size.height += length }
+            size.width += insets.horizontal
+            size.height += insets.vertical
             return size
         case .frame(let width, let height, let fillWidth, let fillHeight, _, let child):
             let r = resolveFrame(width: width, height: height, fillWidth: fillWidth, fillHeight: fillHeight, child: child, proposedWidth: proposedWidth, lineLimit: lineLimit)
             return Size(width: r.width, height: r.height)
         case .lineLimit(let limit, let child):
             return measure(child, axis: axis, proposedWidth: proposedWidth, lineLimit: limit)
-        case .scroll(_, let height, let thumb, _, let child):
+        case .scroll(_, let height, let bar, let width, let child):
             let childSize = measure(child, axis: .vertical, proposedWidth: proposedWidth, lineLimit: lineLimit)
-            let barWidth = (thumb != nil && childSize.height > height) ? 2 : 0
-            return Size(width: childSize.width + barWidth, height: height)
-        case .hscroll(_, let extent, let thumb, _, let child):
+            let showBar = bar != nil && childSize.height > height
+            // With a scrollbar, the viewport spans its allotted width so the
+            // bar sits at the far edge; without one it hugs the content.
+            let total = showBar ? Swift.max(childSize.width + 2, width ?? 0) : childSize.width
+            return Size(width: total, height: height)
+        case .hscroll(_, let extent, let bar, let child):
             let childSize = measure(child, axis: .vertical, proposedWidth: nil, lineLimit: lineLimit)
-            let barRow = (thumb != nil && childSize.width > extent) ? 1 : 0
+            let barRow = (bar != nil && childSize.width > extent) ? 1 : 0
             return Size(width: extent, height: childSize.height + barRow)
         case .border(_, _, _, let child):
             // The box adds one column on each side and one row top and bottom.
@@ -101,11 +105,6 @@ public enum NodeLayout {
             let chosen = fittingCandidate(candidates, checkWidth: cw, checkHeight: ch, proposedWidth: proposedWidth, lineLimit: lineLimit)
             return measure(chosen, axis: axis, proposedWidth: proposedWidth, lineLimit: lineLimit)
         }
-    }
-
-    /// Total horizontal padding contributed by the given edges.
-    private static func horizontalPadding(_ edges: Edge.Set, _ length: Int) -> Int {
-        (edges.contains(.leading) ? length : 0) + (edges.contains(.trailing) ? length : 0)
     }
 
     // MARK: - Drawing
@@ -125,13 +124,15 @@ public enum NodeLayout {
             // exact column width, so the layout never shifts — only the
             // visible characters disappear.
             canvas.write(isHidden(header) ? blankedGlyphs(of: s) : s, at: origin)
-        case .spacer(let header, let count):
+        case .spacer(let header, let minLength):
+            // A spacer inside a row is drawn (expanded) by `drawRow`; this
+            // path only handles a spacer outside any stack, at its minimum.
             if axis == .horizontal {
-                canvas.expand(toFit: Rect(origin: origin, size: Size(width: count, height: 1)))
-                canvas.write(header + String(repeating: " ", count: count), at: origin)
+                canvas.expand(toFit: Rect(origin: origin, size: Size(width: minLength, height: 1)))
+                canvas.write(header + String(repeating: " ", count: minLength), at: origin)
             } else {
                 // Vertical spacer: occupies blank rows only.
-                canvas.expand(toFit: Rect(origin: origin, size: Size(width: 0, height: count)))
+                canvas.expand(toFit: Rect(origin: origin, size: Size(width: 0, height: minLength)))
             }
         case .divider(let header, let character, let verticalCharacter, let count, let fillsWidth):
             // A divider outside of a stack falls back to its own count/height,
@@ -147,23 +148,23 @@ public enum NodeLayout {
         case .vstack(let alignment, let spacing, let children):
             drawColumn(flatten(children), alignment: alignment, spacing: spacing, into: canvas, at: origin, proposedWidth: proposedWidth, lineLimit: lineLimit)
         case .hstack(let alignment, let spacing, let children):
-            drawRow(flatten(children), alignment: alignment, spacing: spacing, into: canvas, at: origin, lineLimit: lineLimit)
-        case .padding(let edges, let length, let child):
+            drawRow(flatten(children), alignment: alignment, spacing: spacing, into: canvas, at: origin, proposedWidth: proposedWidth, lineLimit: lineLimit)
+        case .padding(let insets, let child):
             canvas.expand(toFit: Rect(origin: origin, size: measure(node, axis: axis, proposedWidth: proposedWidth, lineLimit: lineLimit)))
             let childOrigin = Point(
-                column: origin.column + (edges.contains(.leading) ? length : 0),
-                row: origin.row + (edges.contains(.top) ? length : 0)
+                column: origin.column + insets.leading,
+                row: origin.row + insets.top
             )
-            let inner = proposedWidth.map { $0 - horizontalPadding(edges, length) }
+            let inner = proposedWidth.map { $0 - insets.horizontal }
             draw(child, into: canvas, at: childOrigin, axis: axis, proposedWidth: inner, lineLimit: lineLimit)
         case .frame(let width, let height, let fillWidth, let fillHeight, let alignment, let child):
             drawFrame(width: width, height: height, fillWidth: fillWidth, fillHeight: fillHeight, alignment: alignment, child: child, into: canvas, at: origin, proposedWidth: proposedWidth, lineLimit: lineLimit)
         case .lineLimit(let limit, let child):
             draw(child, into: canvas, at: origin, axis: axis, proposedWidth: proposedWidth, lineLimit: limit)
-        case .scroll(let offset, let height, let thumb, let track, let child):
-            drawScroll(offset: offset, height: height, thumb: thumb, track: track, child: child, into: canvas, at: origin, proposedWidth: proposedWidth, lineLimit: lineLimit)
-        case .hscroll(let offset, let extent, let thumb, let track, let child):
-            drawHScroll(offset: offset, extent: extent, thumb: thumb, track: track, child: child, into: canvas, at: origin, lineLimit: lineLimit)
+        case .scroll(let offset, let height, let bar, let width, let child):
+            drawScroll(offset: offset, height: height, bar: bar, width: width, child: child, into: canvas, at: origin, proposedWidth: proposedWidth, lineLimit: lineLimit)
+        case .hscroll(let offset, let extent, let bar, let child):
+            drawHScroll(offset: offset, extent: extent, bar: bar, child: child, into: canvas, at: origin, lineLimit: lineLimit)
         case .border(let header, let fill, let style, let child):
             drawBorder(header: header, fill: fill, style: style, child: child, into: canvas, at: origin, proposedWidth: proposedWidth, lineLimit: lineLimit)
         case .shadow(let header, let child):
@@ -194,7 +195,7 @@ public enum NodeLayout {
 
     // MARK: - Scroll layout
 
-    private static func drawScroll(offset: Int, height: Int, thumb: String?, track: String?, child: RenderNode, into canvas: TerminalCanvas, at origin: Point, proposedWidth: Int?, lineLimit: Int?) {
+    private static func drawScroll(offset: Int, height: Int, bar: ScrollBar?, width: Int?, child: RenderNode, into canvas: TerminalCanvas, at origin: Point, proposedWidth: Int?, lineLimit: Int?) {
         guard height > 0 else { return }
 
         // Lay the child out in full, then take a `height`-row vertical window.
@@ -207,33 +208,53 @@ public enum NodeLayout {
 
         let contentWidth = lines.map { TextMetrics.visibleWidth(TextMetrics.stripANSI($0)) }.max() ?? 0
         let scrollable = contentHeight > height
-        let showBar = thumb != nil && scrollable
-        let barColumn = contentWidth + 1   // one blank gap before the scrollbar
+        let showBar = bar != nil && scrollable
+        // Pin the bar to the far edge of the allotted width (never closer than
+        // one blank gap after the content).
+        let barColumn = Swift.max(contentWidth + 1, (width ?? 0) - 1)
 
-        // Scrollbar thumb geometry (proportional to how much is visible).
-        var thumbStart = 0
-        var thumbSize = height
+        // Scrollbar thumb geometry in half rows, so the thumb's ends can land
+        // on half-cell boundaries.
+        var thumbStartHalf = 0
+        var thumbHalves = height * 2
         if showBar {
-            thumbSize = Swift.max(1, height * height / contentHeight)
-            let travel = height - thumbSize
-            thumbStart = maxOffset > 0 ? clamped * travel / maxOffset : 0
+            thumbHalves = Swift.max(1, height * 2 * height / contentHeight)
+            let travel = height * 2 - thumbHalves
+            thumbStartHalf = maxOffset > 0 ? clamped * travel / maxOffset : 0
         }
 
-        canvas.expand(toFit: Rect(origin: origin, size: Size(width: contentWidth + (showBar ? 2 : 0), height: height)))
+        canvas.expand(toFit: Rect(origin: origin, size: Size(width: showBar ? barColumn + 1 : contentWidth, height: height)))
         for row in 0..<height {
             let contentRow = clamped + row
             if contentRow < contentHeight {
                 let line = lines[contentRow]
                 if !line.isEmpty { canvas.write(line, at: Point(column: origin.column, row: origin.row + row)) }
             }
-            if showBar, let thumb, let track {
-                let glyph = (row >= thumbStart && row < thumbStart + thumbSize) ? thumb : track
+            if showBar, let bar {
+                let inThumb = { (half: Int) in half >= thumbStartHalf && half < thumbStartHalf + thumbHalves }
+                let glyph = Self.barCell(
+                    first: inThumb(row * 2), second: inThumb(row * 2 + 1),
+                    bar: bar, firstOnly: "▀", secondOnly: "▄"
+                )
                 canvas.write(glyph, at: Point(column: origin.column + barColumn, row: origin.row + row))
             }
         }
     }
 
-    private static func drawHScroll(offset: Int, extent: Int, thumb: String?, track: String?, child: RenderNode, into canvas: TerminalCanvas, at origin: Point, lineLimit: Int?) {
+    /// One scrollbar cell as a solid, gap-free glyph: a full block in the thumb
+    /// or track colour, or — when the thumb's end lands mid-cell — a half block
+    /// with the thumb colour over the track colour.
+    private static func barCell(first: Bool, second: Bool, bar: ScrollBar, firstOnly: String, secondOnly: String) -> String {
+        let reset = "\u{001B}[0m"
+        switch (first, second) {
+        case (true, true):   return bar.thumbForeground + "█" + reset
+        case (true, false):  return bar.thumbForeground + bar.trackBackground + firstOnly + reset
+        case (false, true):  return bar.thumbForeground + bar.trackBackground + secondOnly + reset
+        case (false, false): return bar.trackForeground + "█" + reset
+        }
+    }
+
+    private static func drawHScroll(offset: Int, extent: Int, bar: ScrollBar?, child: RenderNode, into canvas: TerminalCanvas, at origin: Point, lineLimit: Int?) {
         guard extent > 0 else { return }
 
         // Lay the child out at its natural width, then take an `extent`-column
@@ -247,16 +268,17 @@ public enum NodeLayout {
         let clamped = Swift.min(Swift.max(offset, 0), maxOffset)
 
         let scrollable = contentWidth > extent
-        let showBar = thumb != nil && scrollable
-        let barRow = contentHeight   // one row below the content
+        let showBar = bar != nil && scrollable
+        let barRow = contentHeight   // the bottom edge of the viewport
 
-        // Scrollbar thumb geometry (proportional to how much is visible).
-        var thumbStart = 0
-        var thumbSize = extent
+        // Scrollbar thumb geometry in half columns, so the thumb's ends can
+        // land on half-cell boundaries.
+        var thumbStartHalf = 0
+        var thumbHalves = extent * 2
         if showBar {
-            thumbSize = Swift.max(1, extent * extent / contentWidth)
-            let travel = extent - thumbSize
-            thumbStart = maxOffset > 0 ? clamped * travel / maxOffset : 0
+            thumbHalves = Swift.max(1, extent * 2 * extent / contentWidth)
+            let travel = extent * 2 - thumbHalves
+            thumbStartHalf = maxOffset > 0 ? clamped * travel / maxOffset : 0
         }
 
         canvas.expand(toFit: Rect(origin: origin, size: Size(width: extent, height: contentHeight + (showBar ? 1 : 0))))
@@ -264,9 +286,13 @@ public enum NodeLayout {
             let windowed = TextMetrics.sliceColumns(lines[row], from: clamped, width: extent)
             if !windowed.isEmpty { canvas.write(windowed, at: Point(column: origin.column, row: origin.row + row)) }
         }
-        if showBar, let thumb, let track {
+        if showBar, let bar {
+            let inThumb = { (half: Int) in half >= thumbStartHalf && half < thumbStartHalf + thumbHalves }
             for col in 0..<extent {
-                let glyph = (col >= thumbStart && col < thumbStart + thumbSize) ? thumb : track
+                let glyph = Self.barCell(
+                    first: inThumb(col * 2), second: inThumb(col * 2 + 1),
+                    bar: bar, firstOnly: "▌", secondOnly: "▐"
+                )
                 canvas.write(glyph, at: Point(column: origin.column + col, row: origin.row + barRow))
             }
         }
@@ -368,24 +394,40 @@ public enum NodeLayout {
     private static func measureColumn(_ children: [RenderNode], spacing: Int, proposedWidth: Int? = nil, lineLimit: Int? = nil) -> Size {
         var maxWidth = 0
         var totalHeight = 0
+        var hasSpacer = false
         for (i, child) in children.enumerated() {
+            if case .spacer = child { hasSpacer = true }
             let size = measure(child, axis: .vertical, proposedWidth: proposedWidth, lineLimit: lineLimit)
             // Dividers span the full stack width, so they don't constrain it.
             if !isDivider(child) && size.width > maxWidth { maxWidth = size.width }
             totalHeight += size.height
             if i < children.count - 1 { totalHeight += spacing }
         }
+        // Flexible spacers expand the column to the available height — the
+        // `maxHeight` environment (the terminal height at the top level) —
+        // mirroring how they fill a row's width inside an HStack.
+        if hasSpacer {
+            totalHeight = Swift.max(totalHeight, EnvironmentStack.current.maxHeight)
+        }
         return Size(width: maxWidth, height: totalHeight)
     }
 
-    private static func measureRow(_ children: [RenderNode], spacing: Int, lineLimit: Int? = nil) -> Size {
+    private static func measureRow(_ children: [RenderNode], spacing: Int, proposedWidth: Int? = nil, lineLimit: Int? = nil) -> Size {
         var totalWidth = 0
         var maxHeight = 0
+        var hasSpacer = false
         for (i, child) in children.enumerated() {
+            if case .spacer = child { hasSpacer = true }
             let size = measure(child, axis: .horizontal, lineLimit: lineLimit)
             totalWidth += size.width
             if i < children.count - 1 { totalWidth += spacing }
             if size.height > maxHeight { maxHeight = size.height }
+        }
+        // Flexible spacers expand the row to the proposed width — or the
+        // current `maxWidth` environment (the terminal width at the top
+        // level) when nothing is proposed — mirroring SwiftUI's Spacer.
+        if hasSpacer {
+            totalWidth = Swift.max(totalWidth, proposedWidth ?? EnvironmentStack.current.maxWidth)
         }
         return Size(width: totalWidth, height: maxHeight)
     }
@@ -404,12 +446,45 @@ public enum NodeLayout {
             isDivider(child) ? 0 : measure(child, axis: .vertical, proposedWidth: proposedWidth, lineLimit: lineLimit).width
         }.max() ?? 0
 
+        // Flexible spacers share the column's leftover rows up to the
+        // available height, pushing the views around them apart — the
+        // vertical counterpart of a spacer expanding inside an HStack.
+        let spacerMins = children.compactMap { child -> Int? in
+            if case .spacer(_, let minLength) = child { return minLength }
+            return nil
+        }
+        var spacerHeights: [Int] = []
+        if !spacerMins.isEmpty {
+            var natural = 0
+            for (i, child) in children.enumerated() {
+                if case .spacer(_, let minLength) = child {
+                    natural += minLength
+                } else {
+                    natural += measure(child, axis: .vertical, proposedWidth: proposedWidth, lineLimit: lineLimit).height
+                }
+                if i < children.count - 1 { natural += spacing }
+            }
+            var extra = Swift.max(0, EnvironmentStack.current.maxHeight - natural)
+            for (i, minLength) in spacerMins.enumerated() {
+                let share = extra / (spacerMins.count - i)
+                spacerHeights.append(minLength + share)
+                extra -= share
+            }
+        }
+
         var y = origin.row
+        var spacerIndex = 0
         for (i, child) in children.enumerated() {
             let size = measure(child, axis: .vertical, proposedWidth: proposedWidth, lineLimit: lineLimit)
+            var advance = size.height
             if case .divider(let header, let character, _, let count, let fillsWidth) = child {
                 let width = fillsWidth ? (proposedWidth ?? TerminalSize.current.columns) : (stackWidth > 0 ? stackWidth : count)
                 drawHorizontalDivider(header: header, character: character, width: width, into: canvas, at: Point(column: origin.column, row: y))
+            } else if case .spacer = child {
+                let height = spacerHeights[spacerIndex]
+                spacerIndex += 1
+                canvas.expand(toFit: Rect(origin: Point(column: origin.column, row: y), size: Size(width: 0, height: height)))
+                advance = height
             } else {
                 let colOffset: Int
                 switch alignment {
@@ -420,7 +495,7 @@ public enum NodeLayout {
                 canvas.expand(toFit: Rect(origin: childOrigin, size: size))
                 draw(child, into: canvas, at: childOrigin, axis: .vertical, proposedWidth: proposedWidth, lineLimit: lineLimit)
             }
-            y += size.height
+            y += advance
             if i < children.count - 1 { y += spacing }
         }
     }
@@ -431,6 +506,7 @@ public enum NodeLayout {
         spacing: Int,
         into canvas: TerminalCanvas,
         at origin: Point,
+        proposedWidth: Int? = nil,
         lineLimit: Int? = nil
     ) {
         // Dividers stretch to the stack height, so they don't participate in it.
@@ -438,11 +514,44 @@ public enum NodeLayout {
             isDivider(child) ? 0 : measure(child, axis: .horizontal, lineLimit: lineLimit).height
         }.max() ?? 0
 
+        // Flexible spacers share the row's leftover space up to the proposed
+        // (or top-level) width, so `HStack { Text("L"); Spacer(); Text("R") }`
+        // pushes its children apart — mirroring SwiftUI. Each spacer gets its
+        // minimum length plus an even share of the leftover.
+        let spacerMins = children.compactMap { child -> Int? in
+            if case .spacer(_, let minLength) = child { return minLength }
+            return nil
+        }
+        var spacerWidths: [Int] = []
+        if !spacerMins.isEmpty {
+            var natural = 0
+            for (i, child) in children.enumerated() {
+                natural += measure(child, axis: .horizontal, lineLimit: lineLimit).width
+                if i < children.count - 1 { natural += spacing }
+            }
+            let target = proposedWidth ?? EnvironmentStack.current.maxWidth
+            var extra = Swift.max(0, target - natural)
+            for (i, minLength) in spacerMins.enumerated() {
+                let share = extra / (spacerMins.count - i)
+                spacerWidths.append(minLength + share)
+                extra -= share
+            }
+        }
+
         var x = origin.column
+        var spacerIndex = 0
         for (i, child) in children.enumerated() {
             let size = measure(child, axis: .horizontal, lineLimit: lineLimit)
+            var advance = size.width
             if case .divider(let header, _, let verticalCharacter, _, _) = child {
                 drawVerticalDivider(header: header, character: verticalCharacter, height: Swift.max(stackHeight, 1), into: canvas, at: Point(column: x, row: origin.row))
+            } else if case .spacer(let header, _) = child {
+                let width = spacerWidths[spacerIndex]
+                spacerIndex += 1
+                let childOrigin = Point(column: x, row: origin.row)
+                canvas.expand(toFit: Rect(origin: childOrigin, size: Size(width: width, height: 1)))
+                canvas.write(header + String(repeating: " ", count: width), at: childOrigin)
+                advance = width
             } else {
                 let rowOffset: Int
                 switch alignment {
@@ -453,7 +562,7 @@ public enum NodeLayout {
                 canvas.expand(toFit: Rect(origin: childOrigin, size: size))
                 draw(child, into: canvas, at: childOrigin, axis: .horizontal, lineLimit: lineLimit)
             }
-            x += size.width
+            x += advance
             if i < children.count - 1 { x += spacing }
         }
     }
@@ -678,7 +787,7 @@ public enum NodeLayout {
             return children.map(collectRaw).joined()
         case .vstack(_, _, let children):
             return children.map(collectRaw).joined()
-        case .padding(_, _, let child):
+        case .padding(_, let child):
             return collectRaw(child)
         case .frame(_, _, _, _, _, let child):
             return collectRaw(child)
@@ -686,7 +795,7 @@ public enum NodeLayout {
             return collectRaw(child)
         case .scroll(_, _, _, _, let child):
             return collectRaw(child)
-        case .hscroll(_, _, _, _, let child):
+        case .hscroll(_, _, _, let child):
             return collectRaw(child)
         case .border(_, _, _, let child):
             return collectRaw(child)

@@ -8,7 +8,9 @@
 import ArgumentParser
 import SwiftLI
 
-struct HStackCommand: AsyncParsableCommand, FullScreenCommand {
+/// A static catalogue of ``HStack``, rendered inline so the output stays in
+/// the terminal scrollback.
+struct HStackCommand: InlineCommand {
     static let configuration = CommandConfiguration(
         commandName: "hstack",
         abstract: "Display of HStack structure",
@@ -20,80 +22,61 @@ struct HStackCommand: AsyncParsableCommand, FullScreenCommand {
         helpNames: [.long, .short]
     )
 
-    @State var colorIndex: Int = 0
-    @State var step: Int = 0
+    // No run() — the default inline session renders once and, with nothing
+    // left to do, exits by itself.
 
-    var colors: [Color] { [.red, .green, .yellow, .blue, .magenta, .cyan] }
+    var body: some Scene {
+        NavigationStack {
+            // Basic HStack
+            Text("HStack { ... }")
+                .forgroundColor(.cyan)
+                .navigationTitle("HStack")
+            HStack(spacing: 1) {
+                Text("[")
+                Text("Left").forgroundColor(.red)
+                Text("|")
+                Text("Center").forgroundColor(.green)
+                Text("|")
+                Text("Right").forgroundColor(.blue)
+                Text("]")
+            }
 
-    mutating func run() async throws {
-        startBodyRendering()
-        for i in 1...6 {
-            try await Task.sleep(nanoseconds: 600_000_000)
-            colorIndex = i % colors.count
-            step = i
+            // Spacing demo
+                .padding(.top, 1)
+            Text("HStack(spacing: 0):")
+                .forgroundColor(.cyan)
+            HStack(spacing: 0) {
+                Text("█").forgroundColor(.red)
+                Text("█").forgroundColor(.green)
+                Text("█").forgroundColor(.yellow)
+                Text("█").forgroundColor(.blue)
+                Text("█").forgroundColor(.magenta)
+            }
+            Text("HStack(spacing: 3):")
+                .forgroundColor(.cyan)
+            HStack(spacing: 3) {
+                Text("█").forgroundColor(.red)
+                Text("█").forgroundColor(.green)
+                Text("█").forgroundColor(.yellow)
+                Text("█").forgroundColor(.blue)
+                Text("█").forgroundColor(.magenta)
+            }
+
+            // Alignment demo
+                .padding(.top, 1)
+            Text("HStack(alignment: .top):")
+                .forgroundColor(.cyan)
+            HStack(alignment: .top, spacing: 2) {
+                Text("Short").forgroundColor(.red)
+                Text("Also short").forgroundColor(.blue)
+            }
+            Text("HStack(alignment: .bottom):")
+                .forgroundColor(.cyan)
+                .padding(.top, 1)
+            HStack(alignment: .bottom, spacing: 2) {
+                Text("Short").forgroundColor(.red)
+                Text("Also short").forgroundColor(.blue)
+            }
         }
-        stopBodyRendering()
-    }
-
-    var body: some View {
-        Text("HStack View")
-            .background(Color.white)
-            .forgroundColor(Color.blue)
-            .bold()
-
-        // Basic HStack
-        Text("HStack { ... }")
-            .forgroundColor(.cyan)
-        HStack(spacing: 1) {
-            Text("[")
-            Text("Left").forgroundColor(.red)
-            Text("|")
-            Text("Center").forgroundColor(.green)
-            Text("|")
-            Text("Right").forgroundColor(.blue)
-            Text("]")
-        }
-        Spacer()
-
-        // HStack with dynamic color cycling
-        Text("HStack with dynamic color:")
-            .forgroundColor(.cyan)
-        HStack(spacing: 2) {
-            Text("A").forgroundColor(colors[colorIndex]).bold()
-            Text("B").forgroundColor(colors[(colorIndex + 1) % colors.count]).bold()
-            Text("C").forgroundColor(colors[(colorIndex + 2) % colors.count]).bold()
-            Text("D").forgroundColor(colors[(colorIndex + 3) % colors.count]).bold()
-            Text("E").forgroundColor(colors[(colorIndex + 4) % colors.count]).bold()
-            Text("F").forgroundColor(colors[(colorIndex + 5) % colors.count]).bold()
-        }
-        Spacer()
-
-        // HStack with spacing demo
-        Text("HStack(spacing: \(step)):")
-            .forgroundColor(.cyan)
-        HStack(spacing: step) {
-            Text("█").forgroundColor(.red)
-            Text("█").forgroundColor(.green)
-            Text("█").forgroundColor(.yellow)
-            Text("█").forgroundColor(.blue)
-            Text("█").forgroundColor(.magenta)
-        }
-        Spacer()
-
-        // Alignment demo
-        Text("HStack(alignment: .top):")
-            .forgroundColor(.cyan)
-        HStack(alignment: .top, spacing: 2) {
-            Text("Short").forgroundColor(colors[colorIndex])
-            Text("Also short").forgroundColor(colors[(colorIndex + 3) % colors.count])
-        }
-        Spacer()
-        Text("HStack(alignment: .bottom):")
-            .forgroundColor(.cyan)
-        HStack(alignment: .bottom, spacing: 2) {
-            Text("Short").forgroundColor(colors[colorIndex])
-            Text("Also short").forgroundColor(colors[(colorIndex + 3) % colors.count])
-        }
-        Spacer()
     }
 }

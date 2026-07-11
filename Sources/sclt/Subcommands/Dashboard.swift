@@ -12,7 +12,7 @@ import SwiftLI
 /// A full-screen sample that combines the basic views (``VStack``, ``HStack``,
 /// ``Divider``, ``Text``, ``Spacer``, ``ForEach``) with ``ProgressView`` in a
 /// single nested layout, to exercise a more complex full-screen composition.
-struct DashboardCommand: AsyncParsableCommand, FullScreenCommand {
+struct DashboardCommand: FullScreenCommand {
     static let configuration = CommandConfiguration(
         commandName: "dashboard",
         abstract: "Full-screen dashboard combining basic views and ProgressView",
@@ -26,19 +26,14 @@ struct DashboardCommand: AsyncParsableCommand, FullScreenCommand {
         helpNames: [.long, .short]
     )
 
-    /// Drives the whole dashboard; incremented on a timer in `run()`.
+    /// Drives the whole dashboard; incremented by the task in `body`.
     @State var tick: Int = 0
+
+    @Environment(\.dismiss) var dismiss
 
     private var tasks: [String] { ["Fetch", "Resolve", "Build", "Test", "Package", "Upload"] }
 
-    mutating func run() async throws {
-        startBodyRendering()
-        for _ in 0..<140 {
-            try await Task.sleep(nanoseconds: 80_000_000)
-            tick += 1
-        }
-        stopBodyRendering()
-    }
+    // No run() — the task in `body` animates the dashboard, then dismisses.
 
     // MARK: - Derived values
 
@@ -65,51 +60,48 @@ struct DashboardCommand: AsyncParsableCommand, FullScreenCommand {
 
     // MARK: - Body
 
-    var body: some View {
-        // Read the width each render so the title bar follows terminal resizes.
-        let columns = TerminalSize.current.columns
-        let heading = " SwiftLI Dashboard"
-        let titleBar = pad(heading, to: columns)
-
-        // Full-width title bar.
-        Text(titleBar)
-            .bold()
-            .forgroundColor(.black)
-            .background(.cyan)
-
-        Spacer()
-
-        // Two columns separated by a vertical divider.
-        HStack(alignment: .top, spacing: 2) {
-            // Left: task list, each row a label + its own progress bar.
-            VStack(alignment: .leading) {
-                Text("Tasks").bold().underline().forgroundColor(.cyan)
-                ForEach(0..<tasks.count) { index in
-                    HStack(spacing: 1) {
-                        Text(pad(tasks[index], to: 9))
-                        Gauge(value: progress(for: index), width: 18)
+    var body: some Scene {
+        NavigationStack {
+            // Two columns separated by a vertical divider.
+            HStack(alignment: .top, spacing: 2) {
+                // Left: task list, each row a label + its own progress bar.
+                VStack(alignment: .leading) {
+                    Text("Tasks").bold().underline().forgroundColor(.cyan)
+                    ForEach(0..<tasks.count) { index in
+                        HStack(spacing: 1) {
+                            Text(pad(tasks[index], to: 9))
+                            Gauge(value: progress(for: index), width: 18)
+                        }
                     }
                 }
+
+                Divider()
+
+                // Right: overall progress and live stats.
+                VStack(alignment: .leading) {
+                    Text("Overall").bold().underline().forgroundColor(.cyan)
+                    Gauge(value: overall, width: 24)
+                    Text("Completed : \(completed)/\(tasks.count)").forgroundColor(.green)
+                        .padding(.top, 1)
+                    Text("Remaining : \(tasks.count - completed)").forgroundColor(.yellow)
+                    Text("Tick      : \(tick)")
+                    ProgressView(completed == tasks.count ? "Done" : "Working", phase: tick)
+                        .padding(.top, 1)
+                }
             }
+                .navigationTitle("Dashboard")
+                .task {
+                    for _ in 0..<140 {
+                        try? await Task.sleep(nanoseconds: 80_000_000)
+                        tick += 1
+                    }
+                    dismiss()
+                }
 
             Divider()
-
-            // Right: overall progress and live stats.
-            VStack(alignment: .leading) {
-                Text("Overall").bold().underline().forgroundColor(.cyan)
-                Gauge(value: overall, width: 24)
-                Spacer()
-                Text("Completed : \(completed)/\(tasks.count)").forgroundColor(.green)
-                Text("Remaining : \(tasks.count - completed)").forgroundColor(.yellow)
-                Text("Tick      : \(tick)")
-                Spacer()
-                ProgressView(completed == tasks.count ? "Done" : "Working", phase: tick)
-            }
+                .padding(.top, 1)
+            Text("Ctrl+C to quit — resize the window to see the layout follow")
+                .forgroundColor(.eight_bit(240))
         }
-
-        Spacer()
-        Divider()
-        Text("Ctrl+C to quit — resize the window to see the layout follow")
-            .forgroundColor(.eight_bit(240))
     }
 }

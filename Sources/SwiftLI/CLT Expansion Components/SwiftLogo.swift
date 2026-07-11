@@ -25,33 +25,28 @@ public struct SwiftLogo: View, Sendable, Equatable {
     public var body: some View {
         VStack {
             HStack {
-                Spacer(10)
-
                 Text(repeating: ".", count: 32)
             }
+            .padding(.leading, 10)
 
 
             HStack {
-                Spacer(7)
-
                 Text(".")
                 Text(repeating: ":", count: 36)
                 Text(".")
             }
+            .padding(.leading, 7)
 
 
             HStack {
-                Spacer(5)
-
                 Text(".")
                 Text(repeating: ":", count: 40)
                 Text(".")
             }
+            .padding(.leading, 5)
 
 
             HStack {
-                Spacer(4)
-
                 Text(".")
                 Text(repeating: ":", count: 24)
                 Text("-").forgroundColor(Color.primary)
@@ -59,11 +54,10 @@ public struct SwiftLogo: View, Sendable, Equatable {
                 Text(repeating: ":", count: 17)
                 Text(".")
             }
+            .padding(.leading, 4)
 
 
             HStack {
-                Spacer(3)
-
                 Text(".")
                 Text(repeating: ":", count: 26)
                 Text("##=").forgroundColor(Color.primary)
@@ -71,11 +65,10 @@ public struct SwiftLogo: View, Sendable, Equatable {
                 Text(repeating: ":", count: 15)
                 Text(".")
             }
+            .padding(.leading, 3)
 
 
             HStack {
-                Spacer(3)
-
                 Text(".")
                 Text(repeating: ":", count: 12)
                 Text("=-").forgroundColor(Color.primary)
@@ -86,11 +79,10 @@ public struct SwiftLogo: View, Sendable, Equatable {
                 Text(repeating: ":", count: 13)
                 Text(".")
             }
+            .padding(.leading, 3)
 
 
             HStack {
-                Spacer(3)
-
                 Text(repeating: ":", count: 9)
                 Text("+=").forgroundColor(Color.primary)
 
@@ -101,11 +93,10 @@ public struct SwiftLogo: View, Sendable, Equatable {
                 Text("@@@*").forgroundColor(Color.primary)
                 Text(repeating: ":", count: 13)
             }
+            .padding(.leading, 3)
 
 
             HStack {
-                Spacer(3)
-
                 Text(repeating: ":", count: 10)
                 Text("+#*").forgroundColor(Color.primary)
                 Text("::")
@@ -116,11 +107,10 @@ public struct SwiftLogo: View, Sendable, Equatable {
                 Text("@@@%").forgroundColor(Color.primary)
                 Text(repeating: ":", count: 12)
             }
+            .padding(.leading, 3)
 
 
             HStack {
-                Spacer(3)
-
                 Text(repeating: ":", count: 12)
                 Text("#@#=").forgroundColor(Color.primary)
                 Text(":")
@@ -131,11 +121,10 @@ public struct SwiftLogo: View, Sendable, Equatable {
                 Text("@@@@@").forgroundColor(Color.primary)
                 Text(repeating: ":", count: 11)
             }
+            .padding(.leading, 3)
 
 
             HStack {
-                Spacer(3)
-
                 Text(repeating: ":", count: 13)
                 Text("=%@@#+#@@#+").forgroundColor(Color.primary)
 
@@ -144,11 +133,10 @@ public struct SwiftLogo: View, Sendable, Equatable {
 
                 Text(repeating: ":", count: 10)
             }
+            .padding(.leading, 3)
 
 
             HStack {
-                Spacer(3)
-
                 Text(repeating: ":", count: 15)
                 Text("+%@@%#@@@@#+").forgroundColor(Color.primary)
 
@@ -156,31 +144,28 @@ public struct SwiftLogo: View, Sendable, Equatable {
                 Text("+@@@@@@*").forgroundColor(Color.primary)
                 Text(repeating: ":", count: 9)
             }
+            .padding(.leading, 3)
 
 
             HStack {
-                Spacer(3)
-
                 Text(repeating: ":", count: 17)
                 Text("+@@@@@@@@@@#@@@@@@@%").forgroundColor(Color.primary)
 
                 Text(repeating: ":", count: 9)
             }
+            .padding(.leading, 3)
 
 
             HStack {
-                Spacer(3)
-
                 Text(":::::::::::::::::::")
                 Text("*@@@@@@@@@@@@@@@@@").forgroundColor(Color.primary)
 
                 Text(":::::::::")
             }
+            .padding(.leading, 3)
 
 
             HStack {
-                Spacer(3)
-
                 Text(":::::")
                 Text("++").forgroundColor(Color.primary)
                 Text("::::::::::::::")
@@ -188,11 +173,10 @@ public struct SwiftLogo: View, Sendable, Equatable {
                 Text("*%@@@@@@@@@@@@@#").forgroundColor(Color.primary)
                 Text(":::::::::")
             }
+            .padding(.leading, 3)
 
 
             HStack {
-                Spacer(3)
-
                 Text("::::::")
                 Text("*@#*+").forgroundColor(Color.primary)
                 Text("::::::::::::")
@@ -200,31 +184,28 @@ public struct SwiftLogo: View, Sendable, Equatable {
                 Text("*@@@@@@@@@@@@%").forgroundColor(Color.primary)
                 Text(":::::::::")
             }
+            .padding(.leading, 3)
 
 
             HStack {
-                Spacer(3)
-
                 Text(":::::::")
                 Text("=#@@@@%%####%%@@@@@@@@@@@@@@@@%=").forgroundColor(Color.primary)
 
                 Text(":::::::")
             }
+            .padding(.leading, 3)
 
 
             HStack {
-                Spacer(3)
-
                 Text(":::::::::")
                 Text("=*%@@@@@@@@@@@@@@@@@@@@@@@@@@%").forgroundColor(Color.primary)
 
                 Text(":::::::")
             }
+            .padding(.leading, 3)
 
 
             HStack {
-                Spacer(3)
-
                 Text("-::::::::::::")
                 Text("*%@@@@@@@@@@@@@@@@#*").forgroundColor(Color.primary)
 
@@ -232,11 +213,10 @@ public struct SwiftLogo: View, Sendable, Equatable {
                 Text("*#@@").forgroundColor(Color.primary)
                 Text("::::::-")
             }
+            .padding(.leading, 3)
 
 
             HStack {
-                Spacer(3)
-
                 Text("-::::::::::::::::")
                 Text("+*#%%%@%%%#*").forgroundColor(Color.primary)
 
@@ -244,40 +224,37 @@ public struct SwiftLogo: View, Sendable, Equatable {
                 Text("#").forgroundColor(Color.primary)
                 Text("::::::-")
             }
+            .padding(.leading, 3)
 
 
             HStack {
-                Spacer(4)
-
                 Text("-")
                 Text(repeating: ":", count: 42)
                 Text("-")
             }
+            .padding(.leading, 4)
 
 
             HStack {
-                Spacer(5)
-
                 Text("-")
                 Text(repeating: ":", count: 40)
                 Text("-")
             }
+            .padding(.leading, 5)
 
 
             HStack {
-                Spacer(7)
-
                 Text("-")
                 Text(repeating: ":", count: 36)
                 Text("-")
             }
+            .padding(.leading, 7)
 
 
             HStack {
-                Spacer(10)
-
                 Text(repeating: "-", count: 32)
             }
+            .padding(.leading, 10)
 
         }
         .forgroundColor(Color.eight_bit(202))

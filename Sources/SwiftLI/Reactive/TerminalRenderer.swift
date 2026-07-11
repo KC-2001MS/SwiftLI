@@ -110,6 +110,11 @@ public final class TerminalRenderer: @unchecked Sendable {
     ///
     /// - Parameter views: The array of views to render.
     public func renderFullScreen(_ views: [any View]) {
+        // Bracket the pass so the coordinator knows which controls are in
+        // this frame — the idle check keeps the session alive while any are.
+        FocusCoordinator.shared.beginRenderPass()
+        defer { FocusCoordinator.shared.endRenderPass() }
+
         // Wrap all views in an implicit root VStack so they stack vertically.
         let root = RenderNode.vstack(alignment: .leading, spacing: 0, children: views.map { $0.makeNode() })
         var frame = NodeLayout.frame(of: root)

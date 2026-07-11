@@ -8,7 +8,9 @@
 import ArgumentParser
 import SwiftLI
 
-struct LabelCommand: AsyncParsableCommand, FullScreenCommand {
+/// A static catalogue of ``Label`` and its styles, rendered inline so the
+/// output stays in the terminal scrollback.
+struct LabelCommand: InlineCommand {
     static let configuration = CommandConfiguration(
         commandName: "label",
         abstract: "Display of Label structure",
@@ -20,33 +22,50 @@ struct LabelCommand: AsyncParsableCommand, FullScreenCommand {
         helpNames: [.long, .short]
     )
 
-    @State var isActive: Bool = false
+    // No run() — the default inline session renders once and, with nothing
+    // left to do, exits by itself.
 
-    mutating func run() async throws {
-        startBodyRendering()
-        for _ in 0..<3 {
-            try await Task.sleep(nanoseconds: 800_000_000)
-            isActive.toggle()
-        }
-        stopBodyRendering()
-    }
+    var body: some Scene {
+        NavigationStack {
+            HStack(spacing: 1) {
+                Label(
+                    "init(_ title: String, unicodeImage: Int)",
+                    unicodeImage: 0x2705
+                )
+                .forgroundColor(.cyan)
+                Spacer()
+                Text("0x2705 ✅")
+                    .fontWeight(.thin)
+                    .forgroundColor(.green)
+            }
+            .navigationTitle("Label")
 
-    var body: some View {
-        Text("Label View")
-            .background(Color.white)
-            .forgroundColor(Color.blue)
-            .bold()
+            HStack(spacing: 1) {
+                Label(image: "★", title: "init(image: String, title: String)")
+                    .forgroundColor(.cyan)
+                Spacer()
+                Text("★")
+                    .fontWeight(.thin)
+                    .forgroundColor(.yellow)
+            }
 
-        HStack(spacing: 1) {
-            Label(
-                "init(_ title: String, unicodeImage: Int)",
-                unicodeImage: isActive ? 0x2705 : 0x274C
-            )
-            .forgroundColor(isActive ? .green : .cyan)
-            Spacer(1)
-            Text(isActive ? "0x2705 ✅" : "0x274C ❌")
-                .fontWeight(.thin)
-                .forgroundColor(isActive ? .green : .red)
+            HStack(spacing: 1) {
+                Label("labelStyle(.iconOnly)", unicodeImage: 0x1F4BE)
+                    .labelStyle(.iconOnly)
+                Spacer()
+                Text("icon only")
+                    .fontWeight(.thin)
+                    .forgroundColor(.red)
+            }
+
+            HStack(spacing: 1) {
+                Label("labelStyle(.titleOnly)", unicodeImage: 0x1F4BE)
+                    .labelStyle(.titleOnly)
+                Spacer()
+                Text("title only")
+                    .fontWeight(.thin)
+                    .forgroundColor(.red)
+            }
         }
     }
 }

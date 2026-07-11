@@ -92,4 +92,10 @@ final class OptionalIntBox: @unchecked Sendable {
     init(_ value: Int?) { self.value = value }
 }
 
+/// Double equivalent of ``StringBox`` for ``Slider`` bindings.
+final class DoubleBox: @unchecked Sendable {
+    var value: Double
+    init(_ value: Double) { self.value = value }
+}
+
 #endif

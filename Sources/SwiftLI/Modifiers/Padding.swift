@@ -12,19 +12,15 @@
 /// reserves the requested trailing/bottom space, so padding composes cleanly
 /// inside stacks.
 struct PaddingModifier: ViewModifier {
-    let edges: Edge.Set
-    let length: Int
+    let insets: EdgeInsets
 
     func node(for content: RenderNode) -> RenderNode {
-        .padding(edges: edges, length: length, child: content)
+        .padding(insets: insets, child: content)
     }
 
     /// Horizontal padding consumes columns from the content's available width.
     func adjustEnvironment(_ values: inout EnvironmentValues) {
-        var consumed = 0
-        if edges.contains(.leading) { consumed += length }
-        if edges.contains(.trailing) { consumed += length }
-        values.maxWidth = Swift.max(0, values.maxWidth - consumed)
+        values.maxWidth = Swift.max(0, values.maxWidth - insets.horizontal)
     }
 }
 
@@ -38,7 +34,7 @@ public extension View {
     ///   Defaults to `1`.
     /// - Returns: A view with padding applied.
     func padding(_ length: Int = 1) -> some View {
-        modifier(PaddingModifier(edges: .all, length: length))
+        modifier(PaddingModifier(insets: EdgeInsets(edges: .all, length: length)))
     }
 
     /// Adds padding to the specified edges of this view.
@@ -49,6 +45,19 @@ public extension View {
     ///   - length: The number of space characters to add. Defaults to `1`.
     /// - Returns: A view with padding applied.
     func padding(_ edges: Edge.Set, _ length: Int = 1) -> some View {
-        modifier(PaddingModifier(edges: edges, length: length))
+        modifier(PaddingModifier(insets: EdgeInsets(edges: edges, length: length)))
+    }
+
+    /// Adds a different amount of padding to each edge of this view.
+    ///
+    /// ```swift
+    /// Text("Report")
+    ///     .padding(EdgeInsets(top: 1, leading: 4, bottom: 0, trailing: 2))
+    /// ```
+    ///
+    /// - Parameter insets: The per-edge amounts of blank space to add.
+    /// - Returns: A view with padding applied.
+    func padding(_ insets: EdgeInsets) -> some View {
+        modifier(PaddingModifier(insets: insets))
     }
 }

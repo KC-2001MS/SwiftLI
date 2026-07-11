@@ -9,7 +9,7 @@ import Foundation
 import ArgumentParser
 import SwiftLI
 
-struct GaugeCommand: AsyncParsableCommand, FullScreenCommand {
+struct GaugeCommand: FullScreenCommand {
     static let configuration = CommandConfiguration(
         commandName: "gauge",
         abstract: "Display of Gauge structure and styles",
@@ -28,54 +28,52 @@ struct GaugeCommand: AsyncParsableCommand, FullScreenCommand {
     var min: Double { 0.0 }
     var max: Double { 1.0 }
 
-    mutating func run() async throws {
-        startBodyRendering()
-        for i in 1...100 {
-            try await Task.sleep(nanoseconds: 30_000_000)
-            progress = Double(i) / 100.0
-        }
-        stopBodyRendering()
-    }
+    @Environment(\.dismiss) var dismiss
 
-    var body: some View {
-        let percent = Int((progress * 100).rounded())
-        Text("Gauge")
-            .background(.white)
-            .forgroundColor(.blue)
-            .bold()
+    // No run() — the task in `body` animates the gauges, then dismisses.
 
-        Text("Every style is driven live by the same value (\(percent)%)")
-            .forgroundColor(.cyan)
+    var body: some Scene {
+        NavigationStack {
+            let percent = Int((progress * 100).rounded())
+            Text("Every style is driven live by the same value (\(percent)%)")
+                .forgroundColor(.cyan)
+                .navigationTitle("Gauge")
+                .task {
+                    for i in 1...100 {
+                        try? await Task.sleep(nanoseconds: 30_000_000)
+                        progress = Double(i) / 100.0
+                    }
+                    dismiss()
+                }
 
-        Spacer()
+            HStack(spacing: 1) {
+                Text("Bar        ").forgroundColor(.red)
+                Gauge(min: min, value: progress, max: max, width: 30)
+            }
+                .padding(.top, 1)
 
-        HStack(spacing: 1) {
-            Text("Bar        ").forgroundColor(.red)
-            Gauge(min: min, value: progress, max: max, width: 30)
-        }
+            HStack(spacing: 1) {
+                Text("Linear     ").forgroundColor(.red)
+                Gauge(min: min, value: progress, max: max, width: 30)
+                    .gaugeStyle(LinearGaugeStyle())
+            }
 
-        HStack(spacing: 1) {
-            Text("Linear     ").forgroundColor(.red)
-            Gauge(min: min, value: progress, max: max, width: 30)
+            HStack(spacing: 1) {
+                Text("Percentage ").forgroundColor(.red)
+                Gauge(min: min, value: progress, max: max, width: 30)
+                    .gaugeStyle(PercentageGaugeStyle())
+            }
+
+            Text("Labeled full width (label sits by the percentage):")
+                .forgroundColor(.cyan)
+                .padding(.top, 1)
+            Gauge("Downloading", min: min, value: progress, max: max)
+            Gauge("Extracting", min: min, value: progress, max: max)
                 .gaugeStyle(LinearGaugeStyle())
+
+            Divider()
+                .padding(.top, 1)
+            Text("Ctrl-C to quit").forgroundColor(.eight_bit(240))
         }
-
-        HStack(spacing: 1) {
-            Text("Percentage ").forgroundColor(.red)
-            Gauge(min: min, value: progress, max: max, width: 30)
-                .gaugeStyle(PercentageGaugeStyle())
-        }
-
-        Spacer()
-
-        Text("Labeled full width (label sits by the percentage):")
-            .forgroundColor(.cyan)
-        Gauge("Downloading", min: min, value: progress, max: max)
-        Gauge("Extracting", min: min, value: progress, max: max)
-            .gaugeStyle(LinearGaugeStyle())
-
-        Spacer()
-        Divider()
-        Text("Ctrl-C to quit").forgroundColor(.eight_bit(240))
     }
 }

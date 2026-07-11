@@ -8,7 +8,9 @@
 import ArgumentParser
 import SwiftLI
 
-struct SwiftLogoCommand: AsyncParsableCommand, InlineCommand {
+/// A static display of ``SwiftLogo``, rendered inline so the output stays in
+/// the terminal scrollback.
+struct SwiftLogoCommand: InlineCommand {
     static let configuration = CommandConfiguration(
         commandName: "swiftlogo",
         abstract: "Display of SwiftLogo structure",
@@ -20,29 +22,20 @@ struct SwiftLogoCommand: AsyncParsableCommand, InlineCommand {
         helpNames: [.long, .short]
     )
 
-    @State var isActive: Bool = false
+    // No run() — the default inline session renders once and, with nothing
+    // left to do, exits by itself.
 
-    mutating func run() async throws {
-        // The logo is static, so draw it inline once and leave it in the
-        // scrollback — no alternate screen, no need to keep the process alive.
-        startBodyRendering()
-        stopBodyRendering()
-    }
+    var body: some Scene {
+        NavigationStack {
+            Text("init()")
+                .forgroundColor(Color.cyan)
+                .navigationTitle("SwiftLogo")
 
-    var body: some View {
-        Text("SwiftLogo View")
-            .background(Color.white)
-            .forgroundColor(Color.blue)
-            .bold()
+            SwiftLogo()
 
-        Text("init()")
-            .forgroundColor(Color.cyan)
-
-        SwiftLogo()
-
-        Spacer()
-
-        Text("* This library was created by Swift.")
-            .fontWeight(.thin)
+            Text("* This library was created by Swift.")
+                .fontWeight(.thin)
+                .padding(.top, 1)
+        }
     }
 }

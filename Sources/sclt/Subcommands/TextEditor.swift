@@ -11,7 +11,7 @@ import SwiftLI
 
 /// A full-screen sample for ``TextEditor``: a multi-line note area where Return
 /// inserts a newline and the arrows move between lines. Ctrl-C quits.
-struct TextEditorCommand: AsyncParsableCommand, FullScreenCommand {
+struct TextEditorCommand: FullScreenCommand {
     static let configuration = CommandConfiguration(
         commandName: "texteditor",
         abstract: "Display of TextEditor structure",
@@ -27,33 +27,19 @@ struct TextEditorCommand: AsyncParsableCommand, FullScreenCommand {
 
     @State var notes = ""
 
-    mutating func run() async throws {
-        startBodyRendering()
-        await waitUntilInterrupted()
-        stopBodyRendering()
-        print("--- notes ---")
-        print(notes)
-    }
+    // No run() — FullScreenCommand's default runs the session until Ctrl-C.
 
-    var body: some View {
-        let lineCount = notes.isEmpty ? 0 : notes.components(separatedBy: "\n").count
-        Text(" TextEditor ")
-            .bold()
-            .forgroundColor(.black)
-            .background(.cyan)
+    var body: some Scene {
+        NavigationStack {
+            let lineCount = notes.isEmpty ? 0 : notes.components(separatedBy: "\n").count
+            TextEditor("Type your notes here...", text: $notes, height: 8)
+                .navigationTitle("TextEditor")
+                .navigationSubtitle("Return: newline   Tab: leave   Arrows: move   Esc: leave   Ctrl-C: quit")
 
-        Spacer()
-
-        Text("Return: newline   Tab: leave   Arrows: move   Esc: leave   Ctrl-C: quit")
-            .forgroundColor(.eight_bit(240))
-
-        Spacer()
-
-        TextEditor("Type your notes here...", text: $notes, height: 8)
-
-        Spacer()
-        Divider()
-        Text("\(notes.count) chars, \(lineCount) line(s)")
-            .forgroundColor(.yellow)
+            Divider()
+                .padding(.top, 1)
+            Text("\(notes.count) chars, \(lineCount) line(s)")
+                .forgroundColor(.yellow)
+        }
     }
 }

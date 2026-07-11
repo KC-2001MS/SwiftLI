@@ -12,6 +12,54 @@ import Darwin
 import Glibc
 #endif
 
+/// Restores the terminal's original settings on any process exit path.
+///
+/// ``KeyboardReader/stop()`` handles the normal teardown, but a session can
+/// also end via `exit()` (which ArgumentParser calls), an uncaught error, or
+/// a fatal signal — none of which run the teardown. If raw mode survives the
+/// process, every later command in the same terminal prints staircased text
+/// (`\n` without a carriage return, because `OPOST` is still off). This guard
+/// saves the pre-raw termios and restores it from an `atexit` hook and
+/// fatal-signal handlers.
+private enum TerminalRestoreGuard {
+    nonisolated(unsafe) private static var saved = termios()
+    nonisolated(unsafe) private static var hasSaved = false
+    nonisolated(unsafe) private static var installed = false
+
+    /// Records the pre-raw settings and installs the exit hooks (once).
+    static func arm(original: termios) {
+        saved = original
+        hasSaved = true
+        guard !installed else { return }
+        installed = true
+        atexit { TerminalRestoreGuard.restore() }
+        // Raw mode disables ISIG, so Ctrl-C never reaches these — but an
+        // external SIGTERM/SIGHUP/SIGQUIT would otherwise kill the process
+        // with the terminal still raw. Restore, then re-raise the default
+        // action so the process still dies with the correct status.
+        for sig in [SIGTERM, SIGHUP, SIGQUIT] {
+            signal(sig) { s in
+                TerminalRestoreGuard.restore()
+                signal(s, SIG_DFL)
+                raise(s)
+            }
+        }
+    }
+
+    /// Marks raw mode as exited normally; the hooks become no-ops.
+    static func disarm() {
+        hasSaved = false
+    }
+
+    /// Restores the saved settings. Async-signal-safe: no locks, no
+    /// allocation — it may run inside a signal handler.
+    static func restore() {
+        guard hasSaved else { return }
+        hasSaved = false
+        tcsetattr(STDIN_FILENO, TCSANOW, &saved)
+    }
+}
+
 /// Puts the terminal into raw mode and reads keystrokes on a background thread,
 /// decoding them into ``KeyEvent`` values delivered on the main queue.
 ///
@@ -64,6 +112,9 @@ final class KeyboardReader: @unchecked Sendable {
             }
         }
         tcsetattr(STDIN_FILENO, TCSANOW, &raw)
+        // Make sure the original settings come back even if the process exits
+        // without reaching stop() — exit(), a crash, or a fatal signal.
+        TerminalRestoreGuard.arm(original: originalTermios)
 
         isActive = true
         running = true
@@ -78,6 +129,7 @@ final class KeyboardReader: @unchecked Sendable {
         guard isActive else { return }
         running = false
         tcsetattr(STDIN_FILENO, TCSANOW, &originalTermios)
+        TerminalRestoreGuard.disarm()
         isActive = false
     }
 

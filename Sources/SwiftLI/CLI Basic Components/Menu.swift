@@ -5,6 +5,66 @@
 //  Created by Keisuke Chinone on 2026/07/10.
 //
 
+// MARK: - MenuStyle protocol
+
+/// The values passed to ``MenuStyle/makeBody(configuration:)`` when rendering.
+public struct MenuStyleConfiguration {
+    /// The menu's heading view, or `nil` when the menu has no title.
+    public let label: AnyView?
+    /// The menu items, stacked vertically and not yet indented.
+    public let content: AnyView
+}
+
+/// A type that defines the appearance of a ``Menu``.
+///
+/// Conform to `MenuStyle` and apply it with ``Menu/menuStyle(_:)`` (or
+/// ``View/menuStyle(_:)`` for a whole subtree). The default style is
+/// ``DefaultMenuStyle``.
+public protocol MenuStyle: Sendable {
+    /// The type of view produced by this style.
+    associatedtype Body: View
+
+    /// Returns a view that represents the menu.
+    ///
+    /// - Parameter configuration: The menu's heading and stacked items.
+    @ViewBuilder
+    func makeBody(configuration: MenuStyleConfiguration) -> Body
+}
+
+/// The default menu style — a bold heading with the items indented two
+/// columns beneath it. Equivalent to ``MenuStyle/automatic``.
+public struct DefaultMenuStyle: MenuStyle {
+    public init() {}
+
+    public func makeBody(configuration: MenuStyleConfiguration) -> some View {
+        if let label = configuration.label { label.bold() }
+        configuration.content.padding(.leading, 2)
+    }
+}
+
+public extension MenuStyle where Self == DefaultMenuStyle {
+    /// The default menu style: a bold heading above indented items.
+    static var automatic: Self { .init() }
+}
+
+// MARK: - AnyMenuStyle (type erasure)
+
+/// A type-erased ``MenuStyle`` whose erased result is an ``AnyView`` — a
+/// plain composition of views, matching how ``AnyToggleStyle`` works.
+struct AnyMenuStyle: MenuStyle, @unchecked Sendable {
+    private let _makeBody: (MenuStyleConfiguration) -> any View
+
+    init<S: MenuStyle>(_ style: S) {
+        _makeBody = { style.makeBody(configuration: $0) }
+    }
+
+    func makeBody(configuration: MenuStyleConfiguration) -> AnyView {
+        AnyView(erasing: _makeBody(configuration))
+    }
+}
+
+// MARK: - Menu
+
 /// A titled group of actions, composed of ``Button``s (or any other views)
 /// stacked under a bold heading.
 ///
@@ -22,6 +82,8 @@
 public struct Menu: View {
     let title: AnyView?
     let content: [any View]
+    /// The explicitly applied style, or `nil` to resolve from the environment.
+    let style: AnyMenuStyle?
 
     /// Creates a menu with a localized title.
     /// - Parameters:
@@ -35,6 +97,7 @@ public struct Menu: View {
         let resolved = String(localized: title.localizationValue)
         self.title = resolved.isEmpty ? nil : AnyView(Text(content: resolved))
         self.content = content()._flattenedChildren()
+        self.style = nil
     }
 
     /// Creates a menu with a custom label view as its heading.
@@ -47,15 +110,29 @@ public struct Menu: View {
     ) {
         self.title = AnyView(label())
         self.content = content()._flattenedChildren()
+        self.style = nil
+    }
+
+    // Internal init for style chaining.
+    init(title: AnyView?, content: [any View], style: AnyMenuStyle?) {
+        self.title = title
+        self.content = content
+        self.style = style
     }
 
     public var body: some View {
-        if let title { title.bold() }
-        VStack(alignment: .leading, spacing: 0, children: items)
+        // Nearest wins: instance style, then subtree environment, then default.
+        let resolvedStyle = style ?? EnvironmentStack.current.menuStyle ?? AnyMenuStyle(DefaultMenuStyle())
+        resolvedStyle.makeBody(configuration: MenuStyleConfiguration(
+            label: title,
+            content: AnyView(VStack(alignment: .leading, spacing: 0, children: content))
+        ))
     }
 
-    /// The menu items, indented two columns under the heading.
-    private var items: [any View] {
-        content.map { $0.padding(.leading, 2) }
+    /// Sets the style used to compose this menu.
+    ///
+    /// - Parameter newStyle: A value conforming to ``MenuStyle``.
+    public func menuStyle(_ newStyle: some MenuStyle) -> Self {
+        Self(title: title, content: content, style: AnyMenuStyle(newStyle))
     }
 }

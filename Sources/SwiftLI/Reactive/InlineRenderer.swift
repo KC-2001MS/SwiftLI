@@ -42,6 +42,11 @@ final class InlineRenderer: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
+        // Bracket the pass so the coordinator knows which controls are in
+        // this frame — the idle check keeps the session alive while any are.
+        FocusCoordinator.shared.beginRenderPass()
+        defer { FocusCoordinator.shared.endRenderPass() }
+
         // Clip every line to one less than the terminal width. Leaving the last
         // column empty guarantees a trailing newline never triggers a wrap onto
         // a second physical row (some terminals wrap the moment the final column
@@ -51,8 +56,11 @@ final class InlineRenderer: @unchecked Sendable {
         let clip = Swift.max(0, columns - 1)
         // Inline output has one fewer usable column than the terminal, so the
         // root `\.maxWidth` environment matches what will actually be shown.
+        // Likewise one row is reserved below the body for the parked cursor,
+        // so `\.maxHeight` matches the rows a vertical spacer may fill.
         var rootValues = EnvironmentValues()
         rootValues.maxWidth = clip
+        rootValues.maxHeight = Swift.max(1, size.rows - 1)
         var frame = EnvironmentStack.with(rootValues) {
             NodeLayout.frame(of: view.makeNode())
         }

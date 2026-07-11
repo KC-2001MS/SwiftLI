@@ -157,22 +157,24 @@ public struct Picker: View {
     let label: AnyView?
     let options: [String]
     let selection: Binding<Int>
-    let onSubmit: (() -> Void)?
-    let style: AnyPickerStyle
+    /// The explicitly applied style, or `nil` to resolve from the environment.
+    let style: AnyPickerStyle?
 
     /// Creates a picker with a text label, a selected-index binding, and options.
+    ///
+    /// A picker is a pure value editor — it has no submit hook. Pair it with a
+    /// ``Button`` when a flow needs an explicit confirmation step.
+    ///
     /// - Parameters:
     ///   - label: The text shown beside the control; also the default identity.
     ///   - selection: The bound selected-option index.
     ///   - options: The selectable option titles.
     ///   - id: An explicit identity; defaults to the label.
-    ///   - onSubmit: Called when <kbd>Return</kbd> is pressed while focused.
     public init(
         _ label: LocalizedStringKey = "",
         selection: Binding<Int>,
         options: [String],
-        id: String? = nil,
-        onSubmit: (() -> Void)? = nil
+        id: String? = nil
     ) {
         let resolved = String(localized: label.localizationValue)
         self.header = ""
@@ -180,8 +182,7 @@ public struct Picker: View {
         self.label = resolved.isEmpty ? nil : AnyView(Text(content: resolved))
         self.options = options
         self.selection = selection
-        self.onSubmit = onSubmit
-        self.style = AnyPickerStyle(InlinePickerStyle())
+        self.style = nil
     }
 
     /// Creates a picker with a custom label view.
@@ -190,13 +191,11 @@ public struct Picker: View {
     ///   - options: The selectable option titles.
     ///   - id: An explicit identity; defaults to `"Picker"` — give each picker
     ///     a distinct `id` when a screen shows more than one.
-    ///   - onSubmit: Called when <kbd>Return</kbd> is pressed while focused.
     ///   - label: A ``ViewBuilder`` producing the picker's label.
     public init<Label: View>(
         selection: Binding<Int>,
         options: [String],
         id: String = "Picker",
-        onSubmit: (() -> Void)? = nil,
         @ViewBuilder label: () -> Label
     ) {
         self.header = ""
@@ -204,17 +203,15 @@ public struct Picker: View {
         self.label = AnyView(label())
         self.options = options
         self.selection = selection
-        self.onSubmit = onSubmit
-        self.style = AnyPickerStyle(InlinePickerStyle())
+        self.style = nil
     }
 
-    init(header: String, id: String, label: AnyView?, options: [String], selection: Binding<Int>, onSubmit: (() -> Void)?, style: AnyPickerStyle) {
+    init(header: String, id: String, label: AnyView?, options: [String], selection: Binding<Int>, style: AnyPickerStyle?) {
         self.header = header
         self.id = id
         self.label = label
         self.options = options
         self.selection = selection
-        self.onSubmit = onSubmit
         self.style = style
     }
 
@@ -224,12 +221,12 @@ public struct Picker: View {
 
     @_spi(RenderingInternals)
     public func addHeader(_ newHeader: String) -> Self {
-        Picker(header: newHeader + header, id: id, label: label, options: options, selection: selection, onSubmit: onSubmit, style: style)
+        Picker(header: newHeader + header, id: id, label: label, options: options, selection: selection, style: style)
     }
 
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
-        FocusCoordinator.shared.registerPicker(id: id, selection: selection, count: options.count, onSubmit: onSubmit)
+        FocusCoordinator.shared.registerPicker(id: id, selection: selection, count: options.count)
         KeyInputRouter.shared.ensureStarted()
 
         let index = options.isEmpty ? 0 : Swift.min(Swift.max(selection.wrappedValue, 0), options.count - 1)
@@ -239,13 +236,15 @@ public struct Picker: View {
             selectedIndex: index,
             isFocused: FocusCoordinator.shared.isFocused(id)
         )
-        let node = style.makeBody(configuration: configuration).makeNode()
+        // Nearest wins: instance style, then subtree environment, then default.
+        let resolvedStyle = style ?? EnvironmentStack.current.pickerStyle ?? AnyPickerStyle(InlinePickerStyle())
+        let node = resolvedStyle.makeBody(configuration: configuration).makeNode()
         return header.isEmpty ? node : node.applyingHeader(header)
     }
 
     /// Sets the style used to render this picker.
     /// - Parameter newStyle: A value conforming to ``PickerStyle``.
     public func pickerStyle(_ newStyle: some PickerStyle) -> Self {
-        Picker(header: header, id: id, label: label, options: options, selection: selection, onSubmit: onSubmit, style: AnyPickerStyle(newStyle))
+        Picker(header: header, id: id, label: label, options: options, selection: selection, style: AnyPickerStyle(newStyle))
     }
 }

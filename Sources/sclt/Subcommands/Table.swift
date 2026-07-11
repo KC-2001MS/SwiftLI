@@ -11,7 +11,7 @@ import SwiftLI
 
 /// A full-screen sample for ``Table``: a people grid that fills the terminal
 /// width, with a fixed-width column and truncating cells.
-struct TableCommand: AsyncParsableCommand, FullScreenCommand {
+struct TableCommand: FullScreenCommand {
     static let configuration = CommandConfiguration(
         commandName: "table",
         abstract: "Display of Table structure",
@@ -40,34 +40,22 @@ struct TableCommand: AsyncParsableCommand, FullScreenCommand {
         }
     }
 
-    mutating func run() async throws {
-        startBodyRendering()
-        await waitUntilInterrupted()
-        stopBodyRendering()
-    }
+    // No run() — FullScreenCommand's default runs the session until Ctrl-C.
 
-    var body: some View {
-        Text(" Table ")
-            .bold()
-            .forgroundColor(.black)
-            .background(.cyan)
+    var body: some Scene {
+        NavigationStack {
+            Table(people, selection: $selection, height: 10) {
+                TableColumn("Name") { $0.name }
+                TableColumn("Role", width: 12) { $0.role }
+                TableColumn("Email") { $0.email }
+            }
+                .navigationTitle("Table")
+                .navigationSubtitle("↑/↓: select   Home/End: jump   header stays pinned   Ctrl-C: quit")
 
-        Spacer()
-
-        Text("↑/↓: select   Home/End: jump   header stays pinned   Ctrl-C: quit")
-            .forgroundColor(.eight_bit(240))
-
-        Spacer()
-
-        Table(people, selection: $selection, height: 10) {
-            TableColumn("Name") { $0.name }
-            TableColumn("Role", width: 12) { $0.role }
-            TableColumn("Email") { $0.email }
+            Divider()
+                .padding(.top, 1)
+            Text("Fills the terminal width; body scrolls under a pinned header.")
+                .forgroundColor(.yellow)
         }
-
-        Spacer()
-        Divider()
-        Text("Fills the terminal width; body scrolls under a pinned header.")
-            .forgroundColor(.yellow)
     }
 }

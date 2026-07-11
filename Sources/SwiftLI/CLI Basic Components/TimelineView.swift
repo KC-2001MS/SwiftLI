@@ -166,6 +166,15 @@ final class TimelineCoordinator: @unchecked Sendable {
         StateObserverRegistry.shared.notifyChange()
     }
 
+    /// Whether any timeline timer is counting down. While one is armed the
+    /// display will change again, so an inline session's default `run()`
+    /// stays alive.
+    var hasArmedTimers: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return !timers.isEmpty
+    }
+
     /// Cancels every armed timer. Called when a runtime tears down so stale
     /// timers don't fire into a finished app.
     func reset() {

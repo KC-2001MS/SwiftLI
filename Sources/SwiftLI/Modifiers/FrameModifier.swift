@@ -29,7 +29,12 @@ struct FrameModifier: ViewModifier {
     let alignment: Alignment
 
     func node(for content: RenderNode) -> RenderNode {
-        .frame(width: width, height: height, fillWidth: fillWidth, fillHeight: fillHeight, alignment: alignment, child: content)
+        // A definite height bounds the visual lines a wrapped text may use, so
+        // overflowing text ends in an ellipsis instead of being clipped
+        // mid-sentence. Non-text content is still positioned and clipped by
+        // the frame as before.
+        let child = height.map { RenderNode.lineLimit($0, child: content) } ?? content
+        return .frame(width: width, height: height, fillWidth: fillWidth, fillHeight: fillHeight, alignment: alignment, child: child)
     }
 
     /// A definite width pins the content's available columns to it.

@@ -39,6 +39,71 @@ public enum ProgressSpinner {
     }
 }
 
+// MARK: - ProgressViewStyle protocol
+
+/// The values passed to ``ProgressViewStyle/makeBody(configuration:)`` when rendering.
+public struct ProgressViewStyleConfiguration {
+    /// A label view describing the work in progress. `nil` when the
+    /// ``ProgressView`` has no label.
+    public let label: AnyView?
+    /// The animation phase; each value selects a spinner frame.
+    public let phase: Int
+}
+
+/// A type that defines the appearance of a ``ProgressView``.
+///
+/// Conform to `ProgressViewStyle` and apply it with
+/// ``ProgressView/progressViewStyle(_:)`` (or ``View/progressViewStyle(_:)``
+/// for a whole subtree). The default style is ``DefaultProgressViewStyle``.
+public protocol ProgressViewStyle: Sendable {
+    /// The type of view produced by this style.
+    associatedtype Body: View
+
+    /// Returns a view that represents the progress indicator.
+    ///
+    /// - Parameter configuration: The current state of the progress view,
+    ///   including its label and animation phase.
+    @ViewBuilder
+    func makeBody(configuration: ProgressViewStyleConfiguration) -> Body
+}
+
+/// The default progress view style — a cyan Braille spinner followed by the
+/// label. Equivalent to ``ProgressViewStyle/automatic``.
+public struct DefaultProgressViewStyle: ProgressViewStyle {
+    public init() {}
+
+    public func makeBody(configuration: ProgressViewStyleConfiguration) -> some View {
+        HStack(spacing: 1) {
+            Text(verbatim: String(ProgressSpinner.character(for: configuration.phase)))
+                .forgroundColor(.cyan)
+            if let label = configuration.label {
+                label.forgroundColor(.cyan)
+            }
+        }
+    }
+}
+
+public extension ProgressViewStyle where Self == DefaultProgressViewStyle {
+    /// The default progress view style: a cyan spinner followed by the label.
+    static var automatic: Self { .init() }
+}
+
+// MARK: - AnyProgressViewStyle (type erasure)
+
+/// A type-erased ``ProgressViewStyle`` whose erased result is an ``AnyView`` —
+/// a plain composition of views, matching how ``AnyToggleStyle`` works.
+struct AnyProgressViewStyle: ProgressViewStyle, @unchecked Sendable {
+    private let _makeBody: (ProgressViewStyleConfiguration) -> any View
+
+    init<S: ProgressViewStyle>(_ style: S) {
+        _makeBody = { style.makeBody(configuration: $0) }
+    }
+
+    func makeBody(configuration: ProgressViewStyleConfiguration) -> AnyView {
+        AnyView(erasing: _makeBody(configuration))
+    }
+}
+
 // MARK: - ProgressView
 
 /// An **indeterminate** activity indicator: a spinning glyph that signals work
@@ -53,7 +118,7 @@ public enum ProgressSpinner {
 /// a new frame each tick:
 ///
 /// ```swift
-/// struct Example: AsyncParsableCommand, InlineCommand {
+/// struct Example: InlineCommand {
 ///     @State var tick = 0
 ///     mutating func run() async throws {
 ///         startBodyRendering()
@@ -63,7 +128,7 @@ public enum ProgressSpinner {
 ///         }
 ///         stopBodyRendering()
 ///     }
-///     var body: some View {
+///     var body: some Scene {
 ///         ProgressView("Loading", phase: tick)
 ///     }
 /// }
@@ -79,6 +144,8 @@ public struct ProgressView: View, Sendable {
     public let label: String
     /// The animation phase; each value selects a spinner frame.
     public let phase: Int
+    /// The explicitly applied style, or `nil` to resolve from the environment.
+    let style: AnyProgressViewStyle?
 
     /// Creates an indeterminate progress indicator.
     ///
@@ -90,17 +157,29 @@ public struct ProgressView: View, Sendable {
     public init(_ label: LocalizedStringKey = "", phase: Int = 0) {
         self.label = String(localized: label.localizationValue)
         self.phase = phase
+        self.style = nil
     }
 
     // Internal init for style-header chaining.
-    init(label: String, phase: Int) {
+    init(label: String, phase: Int, style: AnyProgressViewStyle? = nil) {
         self.label = label
         self.phase = phase
+        self.style = style
     }
 
     public var body: some View {
-        let glyph = ProgressSpinner.character(for: phase)
-        let text  = label.isEmpty ? String(glyph) : "\(glyph) \(label)"
-        Text(verbatim: text).forgroundColor(.cyan)
+        // Nearest wins: instance style, then subtree environment, then default.
+        let resolvedStyle = style ?? EnvironmentStack.current.progressViewStyle ?? AnyProgressViewStyle(DefaultProgressViewStyle())
+        resolvedStyle.makeBody(configuration: ProgressViewStyleConfiguration(
+            label: label.isEmpty ? nil : AnyView(Text(content: label)),
+            phase: phase
+        ))
+    }
+
+    /// Sets the style used to compose this progress view.
+    ///
+    /// - Parameter newStyle: A value conforming to ``ProgressViewStyle``.
+    public func progressViewStyle(_ newStyle: some ProgressViewStyle) -> Self {
+        Self(label: label, phase: phase, style: AnyProgressViewStyle(newStyle))
     }
 }

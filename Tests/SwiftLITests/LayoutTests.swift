@@ -196,6 +196,16 @@ struct FrameWrappingTests {
         #expect(size.height == 3)
     }
 
+    @Test("A fixed-height frame ends overflowing text with an ellipsis")
+    func frameHeightEllipsis() {
+        let node = Text("The quick brown fox jumps over the lazy dog")
+            .frame(width: 20, height: 2, alignment: .topLeading)
+            .makeNode()
+        let lines = plainLines(node)
+        #expect(lines.count == 2)
+        #expect(lines.last?.contains("…") == true)
+    }
+
     @Test("A frame clips content taller than its fixed height")
     func fixedFrameClips() {
         let tall = VStack(alignment: .leading) {
@@ -212,7 +222,7 @@ struct FrameWrappingTests {
         let content = RenderNode.vstack(alignment: .leading, spacing: 0, children:
             (0..<10).map { RenderNode.text(header: "", contents: ["Row \($0)"]) })
         // Offset 3, viewport 4, no scrollbar → rows 3..6.
-        let node = RenderNode.scroll(offset: 3, height: 4, thumb: nil, track: nil, child: content)
+        let node = RenderNode.scroll(offset: 3, height: 4, bar: nil, width: nil, child: content)
         let lines = plainLines(node).filter { !$0.isEmpty }
         #expect(lines == ["Row 3", "Row 4", "Row 5", "Row 6"])
         // The viewport height is fixed regardless of content height.
@@ -223,9 +233,43 @@ struct FrameWrappingTests {
     func scrollClampsAtEnd() {
         let content = RenderNode.vstack(alignment: .leading, spacing: 0, children:
             (0..<5).map { RenderNode.text(header: "", contents: ["L\($0)"]) })
-        let node = RenderNode.scroll(offset: 99, height: 3, thumb: nil, track: nil, child: content)
+        let node = RenderNode.scroll(offset: 99, height: 3, bar: nil, width: nil, child: content)
         let lines = plainLines(node).filter { !$0.isEmpty }
         #expect(lines == ["L2", "L3", "L4"])
+    }
+
+    private var plainBar: ScrollBar {
+        ScrollBar(thumbForeground: "\u{001B}[36m",
+                  trackForeground: "\u{001B}[38;5;238m",
+                  trackBackground: "\u{001B}[48;5;238m")
+    }
+
+    @Test("The scrollbar is pinned to the far edge of the viewport's width")
+    func scrollBarAtFarEdge() {
+        let content = RenderNode.vstack(alignment: .leading, spacing: 0, children:
+            (0..<6).map { RenderNode.text(header: "", contents: ["ab\($0)"]) })
+        let node = RenderNode.scroll(offset: 0, height: 3, bar: plainBar, width: 12, child: content)
+        let lines = plainLines(node)
+        #expect(lines.count == 3)
+        for line in lines {
+            // Content on the left, then a gap, then the bar in the last column.
+            #expect(TextMetrics.visibleWidth(line) == 12)
+            #expect(["█", "▀", "▄"].contains(String(line.suffix(1))))
+        }
+        #expect(NodeLayout.measure(node).width == 12)
+    }
+
+    @Test("The scrollbar is a continuous solid strip with half-block end caps")
+    func scrollBarHalfBlockPrecision() {
+        // 8 content rows through a 4-row viewport → the thumb is exactly two
+        // rows (four half rows). Offset 1 shifts it by one half row, so its
+        // ends land mid-cell: ▄ on the entering cell, ▀ on the leaving one,
+        // and the remaining track cells stay solid — no gaps anywhere.
+        let content = RenderNode.vstack(alignment: .leading, spacing: 0, children:
+            (0..<8).map { RenderNode.text(header: "", contents: ["r\($0)"]) })
+        let node = RenderNode.scroll(offset: 1, height: 4, bar: plainBar, width: nil, child: content)
+        let caps = plainLines(node).map { String($0.suffix(1)) }
+        #expect(caps == ["▄", "█", "▀", "█"])
     }
 }
 
@@ -241,7 +285,7 @@ struct HScrollTests {
 
     @Test("An hscroll node shows an extent-wide column window offset from the left")
     func hscrollWindow() {
-        let node = RenderNode.hscroll(offset: 2, extent: 4, thumb: nil, track: nil,
+        let node = RenderNode.hscroll(offset: 2, extent: 4, bar: nil,
                                       child: Text(verbatim: "abcdefghij").makeNode())
         let lines = NodeLayout.frame(of: node).lines.map { TextMetrics.stripANSI($0) }
         #expect(lines.first == "cdef")
@@ -249,7 +293,7 @@ struct HScrollTests {
 
     @Test("An hscroll offset past the end is clamped to the last window")
     func hscrollClampsAtEnd() {
-        let node = RenderNode.hscroll(offset: 999, extent: 4, thumb: nil, track: nil,
+        let node = RenderNode.hscroll(offset: 999, extent: 4, bar: nil,
                                       child: Text(verbatim: "abcdefghij").makeNode())
         let lines = NodeLayout.frame(of: node).lines.map { TextMetrics.stripANSI($0) }
         // 10 columns, window 4 → max offset 6 → last window is "ghij".
@@ -302,6 +346,65 @@ struct ViewThatFitsTests {
             checkWidth: true, checkHeight: false, proposedWidth: 40, lineLimit: nil
         )
         #expect(TextMetrics.stripANSI(NodeLayout.frame(of: chosen).lines.joined()) == "hi")
+    }
+}
+
+// MARK: - Form / Section testing
+
+@Suite("Form / Section Testing")
+struct FormSectionTests {
+    @Test("Section renders its header above indented content and a footer below")
+    func sectionLayout() {
+        let section = Section {
+            Text("Row1")
+            Text("Row2")
+        } header: {
+            Text("HEAD")
+        } footer: {
+            Text("note")
+        }
+        let lines = TextMetrics.stripANSI(section.renderString())
+            .components(separatedBy: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        #expect(lines == ["HEAD", "Row1", "Row2", "note"])
+
+        // The content is indented two columns under the header.
+        let raw = TextMetrics.stripANSI(section.renderString())
+        #expect(raw.contains("  Row1"))
+        #expect(raw.contains("  note"))
+    }
+
+    @Test("A title-only Section has no footer; an untitled one has no header")
+    func sectionVariants() {
+        let titled = TextMetrics.stripANSI(Section("Account") { Text("row") }.renderString())
+        #expect(titled.contains("Account"))
+        #expect(titled.contains("  row"))
+
+        let untitled = TextMetrics.stripANSI(Section { Text("row") }.renderString())
+            .components(separatedBy: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        #expect(untitled == ["row"])
+    }
+
+    @Test("Form stacks sections with a blank line between them")
+    func formSpacing() {
+        let form = Form {
+            Section("A") { Text("r1") }
+            Section("B") { Text("r2") }
+        }
+        let out = TextMetrics.stripANSI(form.renderString())
+        // Sections appear in order…
+        let a = out.range(of: "A")!.lowerBound
+        let r1 = out.range(of: "r1")!.lowerBound
+        let b = out.range(of: "B")!.lowerBound
+        let r2 = out.range(of: "r2")!.lowerBound
+        #expect(a < r1 && r1 < b && b < r2)
+        // …separated by one blank line (VStack spacing 1).
+        let lines = out.components(separatedBy: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+        #expect(lines.contains(""))
     }
 }
 

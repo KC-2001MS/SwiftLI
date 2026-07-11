@@ -35,6 +35,18 @@ struct GaugeDegradationTests {
         #expect(out.contains("50%"))
     }
 
+    @Test("An auto-sized gauge shrinks to its container's width")
+    func gaugeShrinksToFrame() {
+        let out = plain(Gauge(value: 0.5).frame(width: 24, alignment: .topLeading))
+        let lines = out.components(separatedBy: "\n")
+        // Instead of wrapping or being truncated with an ellipsis, the meter's
+        // fillable region shortens so the whole gauge fits on one line.
+        #expect(lines.count == 1)
+        #expect(TextMetrics.visibleWidth(lines[0]) <= 24)
+        #expect(lines[0].hasPrefix("["))
+        #expect(lines[0].contains("50%"))
+    }
+
     @Test("Bar collapses to a spinner glyph plus the label when width runs out")
     func barCollapsesToSpinner() {
         let out = plain(BarGaugeStyle().makeBody(configuration: config(width: 0, label: "Build")))

@@ -18,6 +18,29 @@
 /// ```
 /// View ──makeNode()──▶ RenderNode ──NodeLayout──▶ Frame ──FrameDiff──▶ stdout
 /// ```
+/// The colour palette of a scrollbar.
+///
+/// The bar is drawn as one continuous solid strip — full blocks for the thumb
+/// and the track with no textured gaps. The thumb's ends land on half-cell
+/// boundaries: they use the half blocks (`▀`/`▄` vertically, `▌`/`▐`
+/// horizontally) with the thumb colour in the foreground and the track colour
+/// in the background, so a single cell shows both sides of the boundary.
+public struct ScrollBar: Equatable, Sendable {
+    /// SGR prefix colouring the thumb (used as the foreground).
+    public let thumbForeground: String
+    /// SGR prefix colouring the track (used as the foreground of track cells).
+    public let trackForeground: String
+    /// The track colour as a background, painted behind the thumb's half-block
+    /// end caps.
+    public let trackBackground: String
+
+    public init(thumbForeground: String, trackForeground: String, trackBackground: String) {
+        self.thumbForeground = thumbForeground
+        self.trackForeground = trackForeground
+        self.trackBackground = trackBackground
+    }
+}
+
 public indirect enum RenderNode: Equatable, Sendable {
     /// Renders nothing and occupies no space.
     case empty
@@ -27,9 +50,10 @@ public indirect enum RenderNode: Equatable, Sendable {
     /// (unless a content string itself contains newlines).
     case text(header: String, contents: [String])
 
-    /// Flexible blank space: horizontal (columns) inside an ``HStack``,
-    /// vertical (blank rows) everywhere else.
-    case spacer(header: String, count: Int)
+    /// Flexible blank space. Inside an ``HStack`` it expands to absorb the
+    /// row's leftover width, never shrinking below `minLength` columns.
+    /// Everywhere else it occupies `minLength` blank rows.
+    case spacer(header: String, minLength: Int)
 
     /// A separator: a vertical line inside an ``HStack``, a horizontal line
     /// everywhere else.
@@ -50,8 +74,8 @@ public indirect enum RenderNode: Equatable, Sendable {
     /// Children laid out top-to-bottom, aligned to the leading or trailing edge.
     case vstack(alignment: HorizontalAlignment, spacing: Int, children: [RenderNode])
 
-    /// Blank space around a child.
-    case padding(edges: Edge.Set, length: Int, child: RenderNode)
+    /// Blank space around a child, one amount per edge.
+    case padding(insets: EdgeInsets, child: RenderNode)
 
     /// A fixed- or flexible-size box around a child.
     ///
@@ -69,10 +93,11 @@ public indirect enum RenderNode: Equatable, Sendable {
     /// child.
     ///
     /// The child is laid out in full, then only the rows in
-    /// `offset ..< offset + height` are drawn. `thumb`/`track` are pre-styled
-    /// single-glyph strings for the scrollbar drawn to the right of the content;
-    /// both `nil` hides the scrollbar.
-    case scroll(offset: Int, height: Int, thumb: String?, track: String?, child: RenderNode)
+    /// `offset ..< offset + height` are drawn. `bar` colours the scrollbar
+    /// (`nil` hides it). The bar is pinned to the right edge of `width` (the
+    /// columns allotted to the viewport); a `nil` width places it just right
+    /// of the content.
+    case scroll(offset: Int, height: Int, bar: ScrollBar?, width: Int?, child: RenderNode)
 
     /// A box of Unicode box-drawing characters around a child.
     ///
@@ -96,10 +121,10 @@ public indirect enum RenderNode: Equatable, Sendable {
     /// child.
     ///
     /// The child is laid out in full, then only the columns in
-    /// `offset ..< offset + extent` of each row are drawn. `thumb`/`track` are
-    /// pre-styled single-glyph strings for the scrollbar drawn on the row below
-    /// the content; both `nil` hides the scrollbar.
-    case hscroll(offset: Int, extent: Int, thumb: String?, track: String?, child: RenderNode)
+    /// `offset ..< offset + extent` of each row are drawn. `bar` colours the
+    /// scrollbar drawn on the row below the content, at the bottom edge of the
+    /// viewport; `nil` hides it.
+    case hscroll(offset: Int, extent: Int, bar: ScrollBar?, child: RenderNode)
 
     /// Picks the first candidate whose natural size fits the available space.
     ///
@@ -126,8 +151,8 @@ public indirect enum RenderNode: Equatable, Sendable {
             return self
         case .text(let h, let contents):
             return .text(header: header + h, contents: contents)
-        case .spacer(let h, let count):
-            return .spacer(header: header + h, count: count)
+        case .spacer(let h, let minLength):
+            return .spacer(header: header + h, minLength: minLength)
         case .divider(let h, let character, let verticalCharacter, let count, let fillsWidth):
             return .divider(header: header + h, character: character, verticalCharacter: verticalCharacter, count: count, fillsWidth: fillsWidth)
         case .group(let children):
@@ -136,16 +161,16 @@ public indirect enum RenderNode: Equatable, Sendable {
             return .hstack(alignment: alignment, spacing: spacing, children: children.map { $0.applyingHeader(header) })
         case .vstack(let alignment, let spacing, let children):
             return .vstack(alignment: alignment, spacing: spacing, children: children.map { $0.applyingHeader(header) })
-        case .padding(let edges, let length, let child):
-            return .padding(edges: edges, length: length, child: child.applyingHeader(header))
+        case .padding(let insets, let child):
+            return .padding(insets: insets, child: child.applyingHeader(header))
         case .frame(let width, let height, let fillWidth, let fillHeight, let alignment, let child):
             return .frame(width: width, height: height, fillWidth: fillWidth, fillHeight: fillHeight, alignment: alignment, child: child.applyingHeader(header))
         case .lineLimit(let limit, let child):
             return .lineLimit(limit, child: child.applyingHeader(header))
-        case .scroll(let offset, let height, let thumb, let track, let child):
-            return .scroll(offset: offset, height: height, thumb: thumb, track: track, child: child.applyingHeader(header))
-        case .hscroll(let offset, let extent, let thumb, let track, let child):
-            return .hscroll(offset: offset, extent: extent, thumb: thumb, track: track, child: child.applyingHeader(header))
+        case .scroll(let offset, let height, let bar, let width, let child):
+            return .scroll(offset: offset, height: height, bar: bar, width: width, child: child.applyingHeader(header))
+        case .hscroll(let offset, let extent, let bar, let child):
+            return .hscroll(offset: offset, extent: extent, bar: bar, child: child.applyingHeader(header))
         case .border(let h, let fill, let style, let child):
             return .border(header: header + h, fill: fill, style: style, child: child.applyingHeader(header))
         case .shadow(let h, let child):

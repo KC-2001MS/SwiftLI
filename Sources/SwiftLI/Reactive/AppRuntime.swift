@@ -68,6 +68,9 @@ public final class AppRuntime: @unchecked Sendable {
 
         setupSignalHandlers()
         renderer.setup()
+        // Start with clean lifecycle state so `onAppear`/`task` modifiers in
+        // the app's body fire for this run.
+        SessionLifecycle.shared.reset()
         performRender()
 
         let runLoop = RunLoop.current
@@ -78,6 +81,9 @@ public final class AppRuntime: @unchecked Sendable {
 
         KeyInputRouter.shared.stop()
         renderer.teardown()
+        RenderObservation.shared.invalidate()
+        // Cancel `task` modifiers and clear once-per-session lifecycle state.
+        SessionLifecycle.shared.reset()
         AppRuntime.shared = nil
     }
 
@@ -129,10 +135,17 @@ public final class AppRuntime: @unchecked Sendable {
     }
 
     /// Re-evaluates the app's `body` and renders the resulting view tree.
+    ///
+    /// The whole pass — body evaluation, `makeNode()` lowering, and layout —
+    /// is wrapped in ``RenderObservation/track(_:)`` so any `@Observable`
+    /// property read anywhere in it (view bodies, modifiers, styles,
+    /// `@Environment` values, `Binding` getters) schedules a re-render when
+    /// it changes — the same behaviour `@State` provides.
     private func performRender() {
         lastRenderTime = ProcessInfo.processInfo.systemUptime
-        let views = app.body
-        renderer.renderFullScreen(views)
+        RenderObservation.shared.track {
+            renderer.renderFullScreen(app.body)
+        }
     }
 
     /// Installs UNIX signal handlers for clean shutdown and resize handling.

@@ -108,4 +108,52 @@ struct EnvironmentTests {
         #expect(plain(view) == "base-suffix")
     }
 }
+
+// MARK: - Dynamic colors
+
+/// Applies a scheme-dynamic foreground inside `body`, so the color resolves
+/// during the render pass — inside any enclosing environment scope.
+private struct SecondaryProbe: View {
+    var body: some View {
+        Text("x").forgroundColor(.secondary)
+    }
+}
+
+/// Same, with a custom light/dark pair.
+private struct DynamicPairProbe: View {
+    var body: some View {
+        Text("x").forgroundColor(.dynamic(light: .red, dark: .yellow))
+    }
+}
+
+@Suite("Dynamic Color Testing")
+struct DynamicColorTests {
+    @Test("A dynamic color resolves against the color scheme in scope")
+    func dynamicColorFollowsScheme() {
+        // .secondary = eight_bit(240) on light, eight_bit(245) on dark.
+        let light = SecondaryProbe().environment(\.colorScheme, .light).renderString()
+        #expect(light.contains("38;5;240"))
+
+        let dark = SecondaryProbe().environment(\.colorScheme, .dark).renderString()
+        #expect(dark.contains("38;5;245"))
+    }
+
+    @Test("dynamic(light:dark:) picks the matching side per scheme")
+    func customDynamicColor() {
+        #expect(DynamicPairProbe().environment(\.colorScheme, .light).renderString().contains("\u{001B}[31m"))
+        #expect(DynamicPairProbe().environment(\.colorScheme, .dark).renderString().contains("\u{001B}[33m"))
+    }
+
+    @Test("The SwiftUI standard palette maps to 256-color entries")
+    func standardPalette() {
+        #expect(Color.gray.ansi == "8;5;245")
+        #expect(Color.orange.ansi == "8;5;208")
+        #expect(Color.pink.ansi == "8;5;205")
+        #expect(Color.purple.ansi == "8;5;135")
+        #expect(Color.brown.ansi == "8;5;130")
+        #expect(Color.indigo.ansi == "8;5;63")
+        #expect(Color.mint.ansi == "8;5;43")
+        #expect(Color.teal.ansi == "8;5;38")
+    }
+}
 #endif

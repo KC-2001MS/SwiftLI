@@ -140,27 +140,27 @@ struct SpacerTests {
             string: String,
             int: Int
         ) async throws {
-            let spacer1 = Spacer(int)
+            let spacer1 = Spacer(minLength: int)
             let spacer2 = Spacer()
-            let spacer3 = Spacer(header: string, count: int)
-            
+            let spacer3 = Spacer(header: string, minLength: int)
+
             #expect(spacer1.header.isEmpty)
             #expect(spacer2.header.isEmpty)
             #expect(spacer3.header == string)
         }
-        
-        @Test("Is the value of the count variable correct when initialized?", arguments: [(randomStrings, randomInt)])
-        func countVariableInitialValueTesting(
+
+        @Test("Is the value of the minLength variable correct when initialized?", arguments: [(randomStrings, randomInt)])
+        func minLengthVariableInitialValueTesting(
             string: String,
             int: Int
         ) async throws {
-            let spacer1 = Spacer(int)
+            let spacer1 = Spacer(minLength: int)
             let spacer2 = Spacer()
-            let spacer3 = Spacer(header: string, count: int)
-            
-            #expect(spacer1.count == int)
-            #expect(spacer2.count == 1)
-            #expect(spacer3.count == int)
+            let spacer3 = Spacer(header: string, minLength: int)
+
+            #expect(spacer1.minLength == int)
+            #expect(spacer2.minLength == 1)
+            #expect(spacer3.minLength == int)
         }
         
         @Test("Is the color set by the background function applied to the header variable?", arguments: allColors)
@@ -168,10 +168,53 @@ struct SpacerTests {
             color: Color
         ) async throws {
             let spacer = Spacer().background(color).background(color)
-            
+
             #expect(spacer.header == "\u{001B}[4\(color.ansi)m\u{001B}[4\(color.ansi)m")
         }
-        
+
+        @Test("A Spacer inside an HStack expands to the available width")
+        func spacerExpandsInHStack() async throws {
+            let row = HStack(spacing: 0) {
+                Text("Left")
+                Spacer()
+                Text("Right")
+            }
+            let line = TextMetrics.stripANSI(row.renderString())
+            #expect(line.hasPrefix("Left"))
+            #expect(line.hasSuffix("Right"))
+            // The spacer absorbs all leftover columns up to the top-level width.
+            #expect(line.count == EnvironmentValues().maxWidth)
+        }
+
+        @Test("minLength keeps the floor when the row already fills the width")
+        func spacerRespectsMinLength() async throws {
+            let width = EnvironmentValues().maxWidth
+            let long = String(repeating: "x", count: width)
+            let row = HStack(spacing: 0) {
+                Text(long)
+                Spacer(minLength: 4)
+                Text("R")
+            }
+            let line = TextMetrics.stripANSI(row.renderString())
+            // No leftover space: the spacer stays at its minimum of 4 columns.
+            #expect(line.count == width + 4 + 1)
+        }
+
+        @Test("A Spacer inside a VStack expands to the available height")
+        func spacerVerticalExpansion() async throws {
+            let column = VStack(alignment: .leading, spacing: 0) {
+                Text("A")
+                Spacer()
+                Text("B")
+            }
+            let lines = TextMetrics.stripANSI(column.renderString()).components(separatedBy: "\n")
+            // The spacer absorbs all leftover rows up to the top-level height,
+            // pushing "B" to the bottom edge.
+            #expect(lines.count == EnvironmentValues().maxHeight)
+            #expect(lines.first?.hasPrefix("A") == true)
+            #expect(lines.last?.hasPrefix("B") == true)
+            #expect(lines[1].trimmingCharacters(in: .whitespaces).isEmpty)
+        }
     }
 }
 

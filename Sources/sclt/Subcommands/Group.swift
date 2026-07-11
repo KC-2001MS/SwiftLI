@@ -8,7 +8,9 @@
 import ArgumentParser
 import SwiftLI
 
-struct GroupCommand: AsyncParsableCommand, FullScreenCommand {
+/// A static display of ``Group``, rendered inline so the output stays in the
+/// terminal scrollback.
+struct GroupCommand: InlineCommand {
     static let configuration = CommandConfiguration(
         commandName: "group",
         abstract: "Display of Group structure",
@@ -20,34 +22,18 @@ struct GroupCommand: AsyncParsableCommand, FullScreenCommand {
         helpNames: [.long, .short]
     )
 
-    @State var isActive: Bool = false
+    // No run() — the default inline session renders once and, with nothing
+    // left to do, exits by itself.
 
-    mutating func run() async throws {
-        startBodyRendering()
-        for _ in 0..<3 {
-            try await Task.sleep(nanoseconds: 800_000_000)
-            isActive.toggle()
-        }
-        stopBodyRendering()
-    }
-
-    var body: some View {
-        Text("Group View")
-            .background(Color.white)
-            .forgroundColor(Color.blue)
-            .bold()
-
-        HStack(spacing: 1) {
+    var body: some Scene {
+        NavigationStack {
             Text("Group(@ViewBuilder contents: () -> [View])")
-                .forgroundColor(isActive ? .green : .cyan)
-            Spacer(1)
-            Text(isActive ? "active" : "inactive")
-                .fontWeight(.thin)
-                .forgroundColor(isActive ? .green : .red)
-        }
+                .forgroundColor(.cyan)
+                .navigationTitle("Group")
 
-        Group {
-            Text("Group")
+            Group {
+                Text("Group")
+            }
         }
     }
 }

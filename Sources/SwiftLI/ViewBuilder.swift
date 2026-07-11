@@ -126,6 +126,11 @@ public struct _ConditionalContent<TrueContent: View, FalseContent: View>: View {
 
 /// `Optional` acts as a view when its wrapped type is a view: `nil` renders
 /// nothing. Produced by ``ViewBuilder`` for an `if` without an `else`.
+///
+/// The ``Scene`` conformance must be spelled out: a conditional conformance
+/// to ``View`` does not imply the inherited one.
+extension Optional: Scene where Wrapped: View {}
+
 extension Optional: View where Wrapped: View {
     public var body: some View {
         EmptyView()

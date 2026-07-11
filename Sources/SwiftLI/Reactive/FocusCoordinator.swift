@@ -35,6 +35,11 @@ final class FocusCoordinator: @unchecked Sendable {
     // number of options, routed through ``handlePicker``.
     private var intBindings: [String: Binding<Int>] = [:]
     private var optionCounts: [String: Int] = [:]
+    // Value-range controls (``Slider``): a bound Double plus the range and the
+    // per-keypress step, routed through ``handleSlider``.
+    private var sliderBindings: [String: Binding<Double>] = [:]
+    private var sliderRanges: [String: ClosedRange<Double>] = [:]
+    private var sliderSteps: [String: Double] = [:]
     // Scroll views: the current vertical offset plus the viewport / content
     // heights needed to clamp it, all keyed by scroll-view id.
     private var scrollOffsets: [String: Int] = [:]
@@ -49,12 +54,36 @@ final class FocusCoordinator: @unchecked Sendable {
     // Multi-line editors (``TextEditor``) remember a vertical scroll offset so the
     // view follows the cursor line minimally, keyed by editor id.
     private var editorOffsets: [String: Int] = [:]
+    // Multi-line editors also remember a horizontal scroll offset: long lines
+    // are never wrapped — the window slides to keep the cursor column visible.
+    private var editorHOffsets: [String: Int] = [:]
     // Action controls (``Button``): the closure fired on Return/Space, keyed by id.
     private var buttonActions: [String: () -> Void] = [:]
     private var focusedID: String?
     // The first control to appear is auto-focused, but only once: after the user
     // blurs with Escape we must not silently re-focus it on the next render.
     private var hasAutoFocused = false
+    // Set by `prepareForNewLayer()` to the control focused when navigation
+    // pushed/popped. If that control re-registers in the next pass (a split
+    // view's sidebar link) it silently keeps focus; if it is gone by the end
+    // of the pass (a stack layer that was replaced) focus falls back to the
+    // new layer's first control.
+    private var pendingRefocusID: String?
+    // Render-pass bookkeeping: `currentPassIDs` collects the controls lowered
+    // during the pass in progress (nil outside a pass); `visibleIDs` is the
+    // set from the most recently completed pass — i.e. the controls actually
+    // on screen. The idle check consults it: while a control is visible the
+    // user still has something to do, so the session stays alive.
+    private var currentPassIDs: Set<String>?
+    private var visibleIDs: Set<String> = []
+    // Render passes can nest (a one-shot `renderString()` lowered inside a
+    // session render); only the outermost bracket owns the pass.
+    private var passDepth = 0
+    // While > 0, register* calls are ignored: the controls still render (as
+    // unfocused, inert views) but never join the focus ring or the visible
+    // set. Navigation containers use this to disable the layers beneath the
+    // active one.
+    private var suppressDepth = 0
 
     // `@FocusState` integration. Each `.focused()` modifier pushes its callbacks
     // while its control is lowered; the control's registration links them to its
@@ -81,6 +110,86 @@ final class FocusCoordinator: @unchecked Sendable {
         lock.lock(); if !pendingFocus.isEmpty { pendingFocus.removeLast() }; lock.unlock()
     }
 
+    // MARK: - Render-pass tracking
+
+    /// Marks the start of a render pass; registrations until
+    /// ``endRenderPass()`` define the controls visible in the new frame.
+    func beginRenderPass() {
+        lock.lock()
+        passDepth += 1
+        if passDepth == 1 { currentPassIDs = [] }
+        lock.unlock()
+    }
+
+    /// Marks the end of a render pass, publishing the visible-control set.
+    func endRenderPass() {
+        lock.lock()
+        passDepth = Swift.max(0, passDepth - 1)
+        guard passDepth == 0 else { lock.unlock(); return }
+        visibleIDs = currentPassIDs ?? []
+        currentPassIDs = nil
+        // A sticky refocus that no registration claimed: the control focused
+        // before the navigation push is gone from the new frame. Fire its
+        // unfocus hook and fall back to the new layer's first control.
+        if let pending = pendingRefocusID {
+            pendingRefocusID = nil
+            focusOnUnfocus[pending]?()
+            if focusedID == nil, let first = order.first {
+                hasAutoFocused = true
+                setFocus(to: first, writeback: false)
+            }
+        }
+        lock.unlock()
+    }
+
+    /// Whether the most recent frame contains any interactive control.
+    var hasVisibleControls: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return !visibleIDs.isEmpty
+    }
+
+    /// Records a registration in the pass in progress. Must be called with
+    /// `lock` held.
+    private func noteVisible(_ id: String) {
+        currentPassIDs?.insert(id)
+    }
+
+    // MARK: - Navigation layer support
+
+    /// Runs `body` with control registration suppressed: any control lowered
+    /// inside renders inert — it keeps its (unfocused) appearance but never
+    /// joins the focus ring, receives keys, or counts as a visible control.
+    ///
+    /// Navigation containers wrap the layers beneath the active one in this,
+    /// so only the newest layer's controls stay live.
+    func withRegistrationSuppressed<T>(_ body: () -> T) -> T {
+        lock.lock(); suppressDepth += 1; lock.unlock()
+        defer { lock.lock(); suppressDepth = Swift.max(0, suppressDepth - 1); lock.unlock() }
+        return body()
+    }
+
+    /// Whether registrations are currently suppressed. Must be called with
+    /// `lock` held.
+    private var isSuppressed: Bool { suppressDepth > 0 }
+
+    /// Clears the focus ring so the next render pass rebuilds it from the
+    /// controls that actually register.
+    ///
+    /// Called when navigation pushes (or pops) a layer. Focus is sticky:
+    /// the control focused right now (the activated link) keeps its focus
+    /// if it re-registers in the new frame — activating a split view's
+    /// sidebar link must not move focus. Only when that control is gone
+    /// after the pass (a stack layer that was replaced) does focus move to
+    /// the new layer's first control (resolved in ``endRenderPass()``).
+    func prepareForNewLayer() {
+        lock.lock(); defer { lock.unlock() }
+        pendingRefocusID = focusedID
+        focusedID = nil
+        order.removeAll()
+        hasAutoFocused = false
+    }
+
     // MARK: - Registration (called from TextField.makeNode)
 
     /// Registers a field for this render pass, remembering its latest binding.
@@ -95,22 +204,26 @@ final class FocusCoordinator: @unchecked Sendable {
     ///   inserts a newline, up/down move between lines).
     func register(id: String, binding: Binding<String>, onSubmit: (() -> Void)?, keymap: TextInputKeymap = SingleLineKeymap()) {
         lock.lock(); defer { lock.unlock() }
+        guard !isSuppressed else { return }
         bindings[id] = binding
         submits[id] = onSubmit
         keymaps[id] = keymap
+        noteVisible(id)
         if !order.contains(id) { order.append(id) }
         linkFocus(id: id)
     }
 
     /// Registers a boolean control (a ``Toggle``) in the focus ring.
     ///
-    /// - Parameters:
-    ///   - isOn: The bound boolean the control flips.
-    ///   - onSubmit: Called when <kbd>Return</kbd> is pressed while focused.
-    func registerToggle(id: String, isOn: Binding<Bool>, onSubmit: (() -> Void)?) {
+    /// Value controls are pure editors — confirmation belongs to a ``Button``
+    /// (or a ``TextField``'s `onSubmit`), so no submit hook is taken here.
+    ///
+    /// - Parameter isOn: The bound boolean the control flips.
+    func registerToggle(id: String, isOn: Binding<Bool>) {
         lock.lock(); defer { lock.unlock() }
+        guard !isSuppressed else { return }
         boolBindings[id] = isOn
-        submits[id] = onSubmit
+        noteVisible(id)
         if !order.contains(id) { order.append(id) }
         linkFocus(id: id)
     }
@@ -120,12 +233,29 @@ final class FocusCoordinator: @unchecked Sendable {
     /// - Parameters:
     ///   - selection: The bound selected-option index.
     ///   - count: The number of options (used to wrap and clamp the selection).
-    ///   - onSubmit: Called when <kbd>Return</kbd> is pressed while focused.
-    func registerPicker(id: String, selection: Binding<Int>, count: Int, onSubmit: (() -> Void)?) {
+    func registerPicker(id: String, selection: Binding<Int>, count: Int) {
         lock.lock(); defer { lock.unlock() }
+        guard !isSuppressed else { return }
         intBindings[id] = selection
         optionCounts[id] = count
-        submits[id] = onSubmit
+        noteVisible(id)
+        if !order.contains(id) { order.append(id) }
+        linkFocus(id: id)
+    }
+
+    /// Registers a value-range control (a ``Slider``) in the focus ring.
+    ///
+    /// - Parameters:
+    ///   - value: The bound value the control edits.
+    ///   - range: The closed range the value is clamped to.
+    ///   - step: The amount one arrow keypress moves the value.
+    func registerSlider(id: String, value: Binding<Double>, range: ClosedRange<Double>, step: Double) {
+        lock.lock(); defer { lock.unlock() }
+        guard !isSuppressed else { return }
+        sliderBindings[id] = value
+        sliderRanges[id] = range
+        sliderSteps[id] = step
+        noteVisible(id)
         if !order.contains(id) { order.append(id) }
         linkFocus(id: id)
     }
@@ -136,7 +266,9 @@ final class FocusCoordinator: @unchecked Sendable {
     ///   pressed while focused.
     func registerButton(id: String, action: @escaping () -> Void) {
         lock.lock(); defer { lock.unlock() }
+        guard !isSuppressed else { return }
         buttonActions[id] = action
+        noteVisible(id)
         if !order.contains(id) { order.append(id) }
         linkFocus(id: id)
     }
@@ -147,14 +279,15 @@ final class FocusCoordinator: @unchecked Sendable {
     /// - Parameters:
     ///   - viewportHeight: The number of rows visible at once.
     ///   - contentHeight: The full laid-out height of the scrolled content.
-    func registerScroll(id: String, viewportHeight: Int, contentHeight: Int, onSubmit: (() -> Void)?) {
+    func registerScroll(id: String, viewportHeight: Int, contentHeight: Int) {
         lock.lock(); defer { lock.unlock() }
+        guard !isSuppressed else { return }
         scrollViewportHeights[id] = viewportHeight
         scrollContentHeights[id] = contentHeight
-        submits[id] = onSubmit
         if scrollOffsets[id] == nil { scrollOffsets[id] = 0 }
         // Re-clamp in case the content shrank since the last render.
         scrollOffsets[id] = clampScroll(scrollOffsets[id] ?? 0, id: id)
+        noteVisible(id)
         if !order.contains(id) { order.append(id) }
         linkFocus(id: id)
     }
@@ -179,13 +312,14 @@ final class FocusCoordinator: @unchecked Sendable {
     ///   - count: The number of rows.
     ///   - viewportRows: The visible-row count when the list scrolls, or `nil`
     ///     when the whole list is shown at once.
-    func registerList(id: String, selection: Binding<Int?>, count: Int, viewportRows: Int?, onSubmit: (() -> Void)?) {
+    func registerList(id: String, selection: Binding<Int?>, count: Int, viewportRows: Int?) {
         lock.lock(); defer { lock.unlock() }
+        guard !isSuppressed else { return }
         listSelections[id] = selection
         listCounts[id] = count
         if let viewportRows { listViewports[id] = viewportRows }
-        submits[id] = onSubmit
         if listOffsets[id] == nil { listOffsets[id] = 0 }
+        noteVisible(id)
         if !order.contains(id) { order.append(id) }
         linkFocus(id: id)
     }
@@ -212,6 +346,32 @@ final class FocusCoordinator: @unchecked Sendable {
         return offset
     }
 
+    /// The horizontal scroll offset for a multi-line editor, adjusted to keep
+    /// `cursorColumn` inside a `viewport`-column window. Like the vertical
+    /// offset, it is remembered per id and moves minimally — only when the
+    /// cursor would leave the window.
+    ///
+    /// `totalColumns` is the columns the content can occupy (the longest
+    /// line plus one, so the block cursor fits at the end of that line).
+    func editorHorizontalOffset(id: String, cursorColumn: Int, viewport: Int, totalColumns: Int) -> Int {
+        lock.lock(); defer { lock.unlock() }
+        guard viewport > 0 else { return 0 }
+        var offset = editorHOffsets[id] ?? 0
+        if cursorColumn < offset { offset = cursorColumn }
+        else if cursorColumn >= offset + viewport { offset = cursorColumn - viewport + 1 }
+        let maxOffset = Swift.max(0, totalColumns - viewport)
+        offset = Swift.min(Swift.max(offset, 0), maxOffset)
+        editorHOffsets[id] = offset
+        return offset
+    }
+
+    /// The last horizontal offset stored for `id`, without adjusting it. Used
+    /// while the editor is unfocused, so blurring doesn't jump the view.
+    func editorHorizontalOffset(for id: String) -> Int {
+        lock.lock(); defer { lock.unlock() }
+        return editorHOffsets[id] ?? 0
+    }
+
     /// Links any pending `.focused()` callbacks to `id`, then claims focus if no
     /// control is focused yet or if the app has programmatically requested it.
     /// Must be called with `lock` held.
@@ -221,14 +381,30 @@ final class FocusCoordinator: @unchecked Sendable {
             focusOnUnfocus[id] = hooks.onUnfocus
             focusIsRequested[id] = hooks.isRequested
         }
+        if pendingRefocusID == id {
+            // The control focused before a navigation push re-registered in
+            // the new frame — it keeps focus with no focus-change callbacks
+            // (from the app's point of view, focus never moved).
+            pendingRefocusID = nil
+            hasAutoFocused = true
+            focusedID = id
+            return
+        }
+        if focusedID != id, let requested = focusIsRequested[id], requested() {
+            // A programmatic focus request always wins.
+            pendingRefocusID = nil
+            setFocus(to: id)
+            return
+        }
+        // While a sticky refocus is pending, other controls must not claim
+        // auto-focus — the sticky control may register later in this pass.
+        guard pendingRefocusID == nil else { return }
         if focusedID == nil && !hasAutoFocused {
             // Auto-focus the very first control once, but don't write the binding
             // (that would clobber a focus the app requested before first render).
             // The "once" guard keeps a deliberate blur (Escape) from re-focusing.
             hasAutoFocused = true
             setFocus(to: id, writeback: false)
-        } else if focusedID != id, let requested = focusIsRequested[id], requested() {
-            setFocus(to: id)
         }
     }
 
@@ -290,6 +466,9 @@ final class FocusCoordinator: @unchecked Sendable {
         let toggleBinding = id.flatMap { boolBindings[$0] }
         let pickerBinding = id.flatMap { intBindings[$0] }
         let pickerCount = id.flatMap { optionCounts[$0] } ?? 0
+        let sliderBinding = id.flatMap { sliderBindings[$0] }
+        let sliderRange = id.flatMap { sliderRanges[$0] } ?? 0...1
+        let sliderStep = id.flatMap { sliderSteps[$0] } ?? 0
         let textBinding = id.flatMap { bindings[$0] }
         let submit = id.flatMap { submits[$0] }
         let keymap = id.flatMap { keymaps[$0] } ?? SingleLineKeymap()
@@ -350,24 +529,27 @@ final class FocusCoordinator: @unchecked Sendable {
             return handleButton(key: key, action: buttonAction)
         }
         if let toggleBinding {
-            return handleToggle(id: id, key: key, binding: toggleBinding, submit: submit)
+            return handleToggle(id: id, key: key, binding: toggleBinding)
         }
         if let pickerBinding {
-            return handlePicker(id: id, key: key, binding: pickerBinding, count: pickerCount, submit: submit)
+            return handlePicker(id: id, key: key, binding: pickerBinding, count: pickerCount)
+        }
+        if let sliderBinding {
+            return handleSlider(key: key, binding: sliderBinding, range: sliderRange, step: sliderStep)
         }
         if isScroll {
             return handleScroll(id: id, key: key)
         }
         if isList {
-            return handleList(id: id, key: key, submit: submit)
+            return handleList(id: id, key: key)
         }
         return false
     }
 
     /// Moves the selection of a focused list: Up/Down step one row (clamped),
-    /// Home/End jump to the ends, Return submits. When the list scrolls, the
-    /// offset follows so the selected row stays visible.
-    private func handleList(id: String, key: KeyEvent, submit: (() -> Void)?) -> Bool {
+    /// Home/End jump to the ends. When the list scrolls, the offset follows so
+    /// the selected row stays visible.
+    private func handleList(id: String, key: KeyEvent) -> Bool {
         lock.lock()
         let count = listCounts[id] ?? 0
         let binding = listSelections[id]
@@ -381,7 +563,6 @@ final class FocusCoordinator: @unchecked Sendable {
         case .down:  target = current < 0 ? 0 : Swift.min(count - 1, current + 1)
         case .home:  target = 0
         case .end:   target = count - 1
-        case .enter: submit?(); return true
         default:     return false
         }
         binding?.wrappedValue = target
@@ -436,8 +617,8 @@ final class FocusCoordinator: @unchecked Sendable {
     /// Applies a key to a focused boolean control.
     ///
     /// Space flips the value; the arrows select a side (Left = on/Yes,
-    /// Right = off/No); `y`/`n` set it explicitly; Return submits.
-    private func handleToggle(id: String, key: KeyEvent, binding: Binding<Bool>, submit: (() -> Void)?) -> Bool {
+    /// Right = off/No); `y`/`n` set it explicitly.
+    private func handleToggle(id: String, key: KeyEvent, binding: Binding<Bool>) -> Bool {
         switch key {
         case .character(" "):
             binding.wrappedValue.toggle()
@@ -454,9 +635,6 @@ final class FocusCoordinator: @unchecked Sendable {
         case .character("n"), .character("N"):
             binding.wrappedValue = false
             return true
-        case .enter:
-            submit?()
-            return true
         default:
             return false
         }
@@ -464,9 +642,9 @@ final class FocusCoordinator: @unchecked Sendable {
 
     /// Applies a key to a focused index-selection control.
     ///
-    /// Left/Up select the previous option, Right/Down/Space the next (both wrap),
-    /// a digit `1`–`9` jumps to that option, and Return submits.
-    private func handlePicker(id: String, key: KeyEvent, binding: Binding<Int>, count: Int, submit: (() -> Void)?) -> Bool {
+    /// Left/Up select the previous option, Right/Down/Space the next (both
+    /// wrap), and a digit `1`–`9` jumps to that option.
+    private func handlePicker(id: String, key: KeyEvent, binding: Binding<Int>, count: Int) -> Bool {
         guard count > 0 else { return false }
         let current = Swift.min(Swift.max(binding.wrappedValue, 0), count - 1)
         switch key {
@@ -475,9 +653,6 @@ final class FocusCoordinator: @unchecked Sendable {
             return true
         case .right, .down, .character(" "):
             binding.wrappedValue = (current + 1) % count
-            return true
-        case .enter:
-            submit?()
             return true
         case .character(let c):
             if let digit = c.wholeNumberValue, digit >= 1, digit <= count {
@@ -488,6 +663,24 @@ final class FocusCoordinator: @unchecked Sendable {
         default:
             return false
         }
+    }
+
+    /// Applies a key to a focused value-range control.
+    ///
+    /// Left/Down step the value down and Right/Up step it up (clamped to the
+    /// range); Home/End jump to the minimum/maximum.
+    private func handleSlider(key: KeyEvent, binding: Binding<Double>, range: ClosedRange<Double>, step: Double) -> Bool {
+        let current = Swift.min(Swift.max(binding.wrappedValue, range.lowerBound), range.upperBound)
+        let target: Double
+        switch key {
+        case .left, .down:  target = current - step
+        case .right, .up:   target = current + step
+        case .home:         target = range.lowerBound
+        case .end:          target = range.upperBound
+        default:            return false
+        }
+        binding.wrappedValue = Swift.min(Swift.max(target, range.lowerBound), range.upperBound)
+        return true
     }
 
     /// Moves focus to the next registered field (wrapping around).
@@ -519,6 +712,8 @@ final class FocusCoordinator: @unchecked Sendable {
     /// Clears all focus/cursor state (called when the runtime tears down).
     func reset() {
         lock.lock(); defer { lock.unlock() }
+        currentPassIDs = nil
+        visibleIDs.removeAll()
         order.removeAll()
         cursors.removeAll()
         bindings.removeAll()
@@ -527,6 +722,9 @@ final class FocusCoordinator: @unchecked Sendable {
         boolBindings.removeAll()
         intBindings.removeAll()
         optionCounts.removeAll()
+        sliderBindings.removeAll()
+        sliderRanges.removeAll()
+        sliderSteps.removeAll()
         scrollOffsets.removeAll()
         scrollViewportHeights.removeAll()
         scrollContentHeights.removeAll()
@@ -535,6 +733,7 @@ final class FocusCoordinator: @unchecked Sendable {
         listViewports.removeAll()
         listOffsets.removeAll()
         editorOffsets.removeAll()
+        editorHOffsets.removeAll()
         buttonActions.removeAll()
         pendingFocus.removeAll()
         focusOnFocus.removeAll()
@@ -542,5 +741,7 @@ final class FocusCoordinator: @unchecked Sendable {
         focusIsRequested.removeAll()
         focusedID = nil
         hasAutoFocused = false
+        pendingRefocusID = nil
+        passDepth = 0
     }
 }

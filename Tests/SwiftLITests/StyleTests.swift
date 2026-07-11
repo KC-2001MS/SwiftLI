@@ -105,4 +105,72 @@ struct PickerStyleTests {
     }
 }
 
+// MARK: - Environment style propagation
+
+@Suite("Environment Style Propagation")
+struct EnvironmentStylePropagationTests {
+    private func plain(_ v: some View) -> String {
+        TextMetrics.stripANSI(v.renderString())
+    }
+
+    @Test("A container labelStyle flows down to every label in the subtree")
+    func labelStyleFlowsToSubtree() {
+        let out = plain(
+            VStack {
+                Label(image: "★", title: "Favorite")
+            }
+            .labelStyle(.titleOnly)
+        )
+        #expect(out.contains("Favorite"))
+        #expect(!out.contains("★"))
+    }
+
+    @Test("A style set directly on the control overrides the environment")
+    func instanceStyleOverridesEnvironment() {
+        let out = plain(
+            VStack {
+                Label(image: "★", title: "Favorite").labelStyle(.iconOnly)
+            }
+            .labelStyle(.titleOnly)
+        )
+        #expect(out.contains("★"))
+        #expect(!out.contains("Favorite"))
+    }
+
+    @Test("The innermost subtree style wins over an outer one")
+    func innermostEnvironmentStyleWins() {
+        let out = plain(
+            VStack {
+                VStack {
+                    Label(image: "★", title: "Favorite")
+                }
+                .labelStyle(.iconOnly)
+            }
+            .labelStyle(.titleOnly)
+        )
+        #expect(out.contains("★"))
+        #expect(!out.contains("Favorite"))
+    }
+
+    @Test("Without any style the default rendering is unchanged")
+    func defaultBehaviourUnchanged() {
+        let bare = plain(Label(image: "★", title: "Favorite"))
+        let wrapped = plain(VStack { Label(image: "★", title: "Favorite") })
+        #expect(bare.contains("★"))
+        #expect(bare.contains("Favorite"))
+        #expect(bare == wrapped)
+    }
+
+    @Test("An environment style renders identically to the same instance style")
+    func environmentMatchesInstanceApplication() {
+        let viaEnvironment = plain(
+            VStack { Gauge(value: 0.5, width: 10) }.gaugeStyle(BarGaugeStyle())
+        )
+        let viaInstance = plain(
+            VStack { Gauge(value: 0.5, width: 10).gaugeStyle(BarGaugeStyle()) }
+        )
+        #expect(viaEnvironment == viaInstance)
+    }
+}
+
 #endif

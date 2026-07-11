@@ -10,6 +10,50 @@ import Testing
 @_spi(RenderingInternals) @testable import SwiftLI
 import Foundation
 
+@Suite("Padding Testing")
+struct PaddingTests {
+    @Test("EdgeInsets pads each edge by its own amount")
+    func edgeInsetsMeasurement() {
+        let node = Text("hi")
+            .padding(EdgeInsets(top: 1, leading: 2, bottom: 3, trailing: 4))
+            .makeNode()
+        let size = NodeLayout.measure(node)
+        #expect(size.width == 2 + 2 + 4)
+        #expect(size.height == 1 + 1 + 3)
+    }
+
+    @Test("EdgeInsets offsets the content by its top and leading amounts")
+    func edgeInsetsOffset() {
+        let node = Text("hi")
+            .padding(EdgeInsets(top: 1, leading: 3))
+            .makeNode()
+        let lines = NodeLayout.frame(of: node).lines.map { TextMetrics.stripANSI($0) }
+        #expect(lines.count == 2)
+        #expect(lines[0].trimmingCharacters(in: .whitespaces).isEmpty)
+        #expect(lines[1] == "   hi")
+    }
+
+    @Test("Uniform edge-set padding still works and matches EdgeInsets")
+    func edgeSetEquivalence() {
+        let viaSet = Text("hi").padding(.horizontal, 2).makeNode()
+        let viaInsets = Text("hi").padding(EdgeInsets(leading: 2, trailing: 2)).makeNode()
+        #expect(NodeLayout.measure(viaSet) == NodeLayout.measure(viaInsets))
+    }
+
+    @Test("Asymmetric horizontal insets narrow maxWidth by their sum")
+    func insetsNarrowEnvironment() {
+        struct Probe: View {
+            @Environment(\.maxWidth) var maxWidth
+            var body: some View { Text("W=\(maxWidth)") }
+        }
+        let view = Probe()
+            .padding(EdgeInsets(leading: 3, trailing: 1))
+            .frame(width: 30, alignment: .topLeading)
+        let out = TextMetrics.stripANSI(view.renderString())
+        #expect(out.contains("W=26"))
+    }
+}
+
 @Suite("Border & Shadow Testing")
 struct BorderShadowTests {
     private func plainLines(_ node: RenderNode) -> [String] {

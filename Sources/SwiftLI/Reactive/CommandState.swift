@@ -15,7 +15,7 @@ import Foundation
 /// the command line — set the initial value in the declaration or in `run()`.
 ///
 /// ```swift
-/// struct Example: AsyncParsableCommand, InlineCommand {
+/// struct Example: InlineCommand {
 ///     @Argument var initialValue: Double   // parsed from CLI
 ///     @CommandState var progress: Double = 0.0   // drives the view
 ///
@@ -30,7 +30,7 @@ import Foundation
 ///         stopBodyRendering()
 ///     }
 ///
-///     var body: some View {
+///     var body: some Scene {
 ///         ProgressBar(min: 0, value: $progress, max: 100, width: 40)
 ///     }
 /// }

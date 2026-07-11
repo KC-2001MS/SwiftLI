@@ -29,6 +29,17 @@
 /// ```swift
 /// let binding = Binding.constant(0.5)
 /// ```
+///
+/// Dynamic member lookup derives bindings to the properties of the wrapped
+/// value, so a parent can hand just one field of its state to a child view:
+///
+/// ```swift
+/// struct Form { var name = ""; var age = 0 }
+///
+/// @State var form = Form()
+/// TextField("Name", text: $form.name)   // Binding<String> into form.name
+/// ```
+@dynamicMemberLookup
 public struct Binding<Value: Sendable>: Sendable {
     private let getValue: @Sendable () -> Value
     private let setValue: @Sendable (Value) -> Void
@@ -62,5 +73,25 @@ public struct Binding<Value: Sendable>: Sendable {
     /// - Returns: A `Binding` whose `wrappedValue` always equals `value`.
     public static func constant(_ value: Value) -> Binding<Value> {
         Binding(get: { value }, set: { _ in })
+    }
+
+    /// Derives a binding to a property of the wrapped value.
+    ///
+    /// Writing through the derived binding reads the current parent value,
+    /// updates the one property, and writes the whole value back through the
+    /// parent's setter — so the parent's change notification (a `@State`
+    /// re-render, an `@Observable` mutation) fires exactly as if the parent
+    /// binding had been set directly.
+    public subscript<Subject: Sendable>(
+        dynamicMember keyPath: WritableKeyPath<Value, Subject> & Sendable
+    ) -> Binding<Subject> {
+        Binding<Subject>(
+            get: { self.wrappedValue[keyPath: keyPath] },
+            set: { newValue in
+                var value = self.wrappedValue
+                value[keyPath: keyPath] = newValue
+                self.wrappedValue = value
+            }
+        )
     }
 }

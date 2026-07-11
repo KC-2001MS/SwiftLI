@@ -43,6 +43,9 @@ public final class CLITimer: @unchecked Sendable {
     private let interval: TimeInterval
     private let queue: DispatchQueue
     private let lock = NSLock()
+    /// Whether this timer is currently counted as a session redraw driver.
+    /// A running timer keeps an inline session's default `run()` alive.
+    private var countsAsDriver = false
 
     /// Creates a timer that fires at the specified interval.
     /// - Parameters:
@@ -68,7 +71,10 @@ public final class CLITimer: @unchecked Sendable {
         newSource.resume()
         lock.lock()
         source = newSource
+        let becameDriver = !countsAsDriver
+        countsAsDriver = true
         lock.unlock()
+        if becameDriver { SessionLifecycle.shared.driverBegan() }
     }
 
     /// Stops the timer. Calling this method is idempotent.
@@ -76,8 +82,11 @@ public final class CLITimer: @unchecked Sendable {
         lock.lock()
         let s = source
         source = nil
+        let wasDriver = countsAsDriver
+        countsAsDriver = false
         lock.unlock()
         s?.cancel()
+        if wasDriver { SessionLifecycle.shared.driverEnded() }
     }
 
     deinit {

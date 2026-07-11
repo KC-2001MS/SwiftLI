@@ -8,7 +8,9 @@
 import ArgumentParser
 import SwiftLI
 
-struct TextCommand: AsyncParsableCommand, FullScreenCommand {
+/// A static catalogue of ``Text`` and its modifiers, rendered inline so the
+/// output stays in the terminal scrollback.
+struct TextCommand: InlineCommand {
     static let configuration = CommandConfiguration(
         commandName: "text",
         abstract: "Display of Text structure",
@@ -20,144 +22,115 @@ struct TextCommand: AsyncParsableCommand, FullScreenCommand {
         helpNames: [.long, .short]
     )
 
-    @State var isActive: Bool = false
-    @State var colorIndex: Int = 0
-    @State var message: String = "Hello, SwiftLI!"
+    // No run() — the default inline session renders once and, with nothing
+    // left to do, exits by itself.
 
-    var colors: [Color] { [.red, .green, .yellow, .blue, .magenta, .cyan, .white] }
-    var colorNames: [String] { ["red", "green", "yellow", "blue", "magenta", "cyan", "white"] }
-    var messages: [String] { ["Hello, SwiftLI!", "Text changes!", "Dynamic body!", "Reactive CLI!"] }
+    var body: some Scene {
+        NavigationStack {
+            HStack(spacing: 1) {
+                Text("Text(_ content: String)")
+                    .forgroundColor(.cyan)
+                Spacer(minLength: 2)
+                Text("Hello, SwiftLI!")
+                    .bold()
+            }
+            .navigationTitle("Text")
 
-    mutating func run() async throws {
-        startBodyRendering()
-        for i in 1...7 {
-            try await Task.sleep(nanoseconds: 600_000_000)
-            isActive = i % 2 == 1
-            colorIndex = i % colors.count
-            message = messages[i % messages.count]
-        }
-        stopBodyRendering()
-    }
+            HStack(spacing: 1) {
+                Text("Text.forgroundColor(_ color: Color)")
+                    .forgroundColor(.red)
+                Spacer(minLength: 2)
+                Text(".red")
+                    .fontWeight(.thin)
+                    .forgroundColor(.red)
+            }
 
-    var body: some View {
-        Text("Text View")
-            .background(Color.white)
-            .forgroundColor(Color.blue)
-            .bold()
+            HStack(spacing: 1) {
+                Text("Text.background(_ color: Color)")
+                    .background(.red)
+                Spacer(minLength: 2)
+                Text(".red")
+                    .fontWeight(.thin)
+                    .forgroundColor(.red)
+            }
 
-        // Text content change demo
-        HStack(spacing: 1) {
-            Text("Text(_ content: String)")
-                .forgroundColor(.cyan)
-            Spacer(2)
-            Text(message)
+            Text("Text.bold()")
                 .bold()
-                .forgroundColor(colors[colorIndex])
-        }
 
-        // forgroundColor cycling
-        HStack(spacing: 1) {
-            Text("Text.forgroundColor(_ color: Color)")
-                .forgroundColor(colors[colorIndex])
-            Spacer(2)
-            Text(".\(colorNames[colorIndex])")
-                .fontWeight(.thin)
-                .forgroundColor(colors[colorIndex])
-        }
+            HStack(spacing: 1) {
+                Text("Text.bold(_ isActive: Bool)")
+                    .bold(false)
+                Spacer(minLength: 2)
+                Text("false")
+                    .fontWeight(.thin)
+                    .forgroundColor(.red)
+            }
 
-        // background color cycling
-        HStack(spacing: 1) {
-            Text("Text.background(_ color: Color)")
-                .background(colors[colorIndex])
-            Spacer(2)
-            Text(".\(colorNames[colorIndex])")
-                .fontWeight(.thin)
-                .forgroundColor(.red)
-        }
+            HStack(spacing: 1) {
+                Text("Text.fontWeight(_ weight: Weight)")
+                    .fontWeight(.thin)
+                Spacer(minLength: 2)
+                Text(".thin")
+                    .fontWeight(.thin)
+                    .forgroundColor(.red)
+            }
 
-        // bold toggle
-        Text("Text.bold()")
-            .bold()
+            Text("Text.italic()")
+                .italic()
 
-        HStack(spacing: 1) {
-            Text("Text.bold(_ isActive: Bool)")
-                .bold(isActive)
-            Spacer(2)
-            Text(isActive ? "true" : "false")
-                .fontWeight(.thin)
-                .forgroundColor(isActive ? .green : .red)
-        }
+            HStack(spacing: 1) {
+                Text("Text.italic(_ isActive: Bool)")
+                    .italic(false)
+                Spacer(minLength: 2)
+                Text("false")
+                    .fontWeight(.thin)
+                    .forgroundColor(.red)
+            }
 
-        // fontWeight
-        HStack(spacing: 1) {
-            Text("Text.fontWeight(_ weight: Weight)")
-                .fontWeight(.thin)
-            Spacer(2)
-            Text(".thin")
-                .fontWeight(.thin)
-                .forgroundColor(.red)
-        }
+            Text("Text.underline()")
+                .underline()
 
-        // italic toggle
-        Text("Text.italic()")
-            .italic()
+            HStack(spacing: 1) {
+                Text("Text.underline(_ isActive: Bool)")
+                    .underline(false)
+                Spacer(minLength: 2)
+                Text("false")
+                    .fontWeight(.thin)
+                    .forgroundColor(.red)
+            }
 
-        HStack(spacing: 1) {
-            Text("Text.italic(_ isActive: Bool)")
-                .italic(isActive)
-            Spacer(2)
-            Text(isActive ? "true" : "false")
-                .fontWeight(.thin)
-                .forgroundColor(isActive ? .green : .red)
-        }
+            HStack(spacing: 1) {
+                Text("Text.blink(_ style: BlinkStyle)")
+                    .blink(.default)
+                Spacer(minLength: 2)
+                Text(".default")
+                    .fontWeight(.thin)
+                    .forgroundColor(.red)
+            }
 
-        // underline toggle
-        Text("Text.underline()")
-            .underline()
+            Text("Text.hidden()")
+                .hidden()
 
-        HStack(spacing: 1) {
-            Text("Text.underline(_ isActive: Bool)")
-                .underline(isActive)
-            Spacer(2)
-            Text(isActive ? "true" : "false")
-                .fontWeight(.thin)
-                .forgroundColor(isActive ? .green : .red)
-        }
+            HStack(spacing: 1) {
+                Text("Text.hidden(_ isActive: Bool)")
+                    .hidden(false)
+                Spacer(minLength: 2)
+                Text("false")
+                    .fontWeight(.thin)
+                    .forgroundColor(.red)
+            }
 
-        // blink
-        HStack(spacing: 1) {
-            Text("Text.blink(_ style: BlinkStyle)")
-                .blink(.default)
-            Spacer(2)
-            Text(".default")
-                .fontWeight(.thin)
-                .forgroundColor(.red)
-        }
+            Text("Text.strikethrough()")
+                .strikethrough()
 
-        // hidden toggle
-        Text("Text.hidden()")
-            .hidden()
-
-        HStack(spacing: 1) {
-            Text("Text.hidden(_ isActive: Bool)")
-                .hidden(isActive)
-            Spacer(2)
-            Text(isActive ? "true (invisible above)" : "false")
-                .fontWeight(.thin)
-                .forgroundColor(isActive ? .green : .red)
-        }
-
-        // strikethrough toggle
-        Text("Text.strikethrough()")
-            .strikethrough()
-
-        HStack(spacing: 1) {
-            Text("Text.strikethrough(_ isActive: Bool)")
-                .strikethrough(isActive)
-            Spacer(2)
-            Text(isActive ? "true" : "false")
-                .fontWeight(.thin)
-                .forgroundColor(isActive ? .green : .red)
+            HStack(spacing: 1) {
+                Text("Text.strikethrough(_ isActive: Bool)")
+                    .strikethrough(false)
+                Spacer(minLength: 2)
+                Text("false")
+                    .fontWeight(.thin)
+                    .forgroundColor(.red)
+            }
         }
     }
 }

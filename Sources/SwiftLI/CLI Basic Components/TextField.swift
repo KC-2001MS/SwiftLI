@@ -7,6 +7,102 @@
 
 import Foundation
 
+// MARK: - TextFieldStyle protocol
+
+/// The values passed to ``TextFieldStyle/makeBody(configuration:)`` when rendering.
+public struct TextFieldStyleConfiguration {
+    /// The prompt shown when the field is empty and unfocused.
+    public let placeholder: String
+    /// The field's current text.
+    public let text: String
+    /// Whether the field currently has keyboard focus.
+    public let isFocused: Bool
+    /// The edit position within ``text`` (clamped to its length). Meaningful
+    /// while the field is focused.
+    public let cursorIndex: Int
+}
+
+/// A type that defines the appearance of a ``TextField``.
+///
+/// Conform to `TextFieldStyle` and apply it with ``TextField/textFieldStyle(_:)``
+/// (or ``View/textFieldStyle(_:)`` for a whole subtree). The default style is
+/// ``DefaultTextFieldStyle``.
+public protocol TextFieldStyle: Sendable {
+    /// The type of view produced by this style.
+    associatedtype Body: View
+
+    /// Returns a view that represents the text field.
+    ///
+    /// Keep the result on a single line — the field registers itself as a
+    /// one-line control in the focus ring.
+    ///
+    /// - Parameter configuration: The field's text, placeholder, and focus state.
+    @ViewBuilder
+    func makeBody(configuration: TextFieldStyleConfiguration) -> Body
+}
+
+/// The default text field style — a `>` marker while focused, a block cursor
+/// at the edit position, and the placeholder dimmed when the field is empty
+/// and unfocused. Equivalent to ``TextFieldStyle/automatic``.
+public struct DefaultTextFieldStyle: TextFieldStyle {
+    public init() {}
+
+    public func makeBody(configuration: TextFieldStyleConfiguration) -> some View {
+        let value = configuration.text
+        let focused = configuration.isFocused
+        let marker = focused ? "> " : "  "
+
+        let composed: Group
+        if value.isEmpty && !focused {
+            composed = Group(contents: [
+                Text(content: marker),
+                Text(content: configuration.placeholder).forgroundColor(.eight_bit(240))
+            ])
+        } else if focused {
+            let chars = Array(value)
+            let c = Swift.min(Swift.max(configuration.cursorIndex, 0), chars.count)
+            let before = String(chars[0..<c])
+            let cursorChar = c < chars.count ? String(chars[c]) : " "
+            let after = c < chars.count ? String(chars[(c + 1)...]) : ""
+
+            var children: [any View] = [Text(content: marker).forgroundColor(.cyan)]
+            if !before.isEmpty { children.append(Text(content: before)) }
+            // Block cursor: reverse the foreground/background of the cell.
+            children.append(Text(content: cursorChar).background(.white).forgroundColor(.black))
+            if !after.isEmpty { children.append(Text(content: after)) }
+            composed = Group(contents: children)
+        } else {
+            composed = Group(contents: [Text(content: marker), Text(content: value)])
+        }
+
+        // Lay the pieces out on a single row.
+        return HStack(spacing: 0) { composed }
+    }
+}
+
+public extension TextFieldStyle where Self == DefaultTextFieldStyle {
+    /// The default text field style: a focus marker and a block cursor.
+    static var automatic: Self { .init() }
+}
+
+// MARK: - AnyTextFieldStyle (type erasure)
+
+/// A type-erased ``TextFieldStyle`` whose erased result is an ``AnyView`` — a
+/// plain composition of views, matching how ``AnyToggleStyle`` works.
+struct AnyTextFieldStyle: TextFieldStyle, @unchecked Sendable {
+    private let _makeBody: (TextFieldStyleConfiguration) -> any View
+
+    init<S: TextFieldStyle>(_ style: S) {
+        _makeBody = { style.makeBody(configuration: $0) }
+    }
+
+    func makeBody(configuration: TextFieldStyleConfiguration) -> AnyView {
+        AnyView(erasing: _makeBody(configuration))
+    }
+}
+
+// MARK: - TextField
+
 /// An editable single-line text field bound to a `Binding<String>`.
 ///
 /// `TextField` mirrors SwiftUI's `TextField`. While a reactive runtime is
@@ -40,6 +136,8 @@ public struct TextField: View {
     let placeholder: String
     let text: Binding<String>
     let onSubmit: (() -> Void)?
+    /// The explicitly applied style, or `nil` to resolve from the environment.
+    let style: AnyTextFieldStyle?
 
     /// Creates a text field with a placeholder and a text binding.
     /// - Parameters:
@@ -60,14 +158,16 @@ public struct TextField: View {
         self.placeholder = resolved
         self.text = text
         self.onSubmit = onSubmit
+        self.style = nil
     }
 
-    init(header: String, id: String, placeholder: String, text: Binding<String>, onSubmit: (() -> Void)?) {
+    init(header: String, id: String, placeholder: String, text: Binding<String>, onSubmit: (() -> Void)?, style: AnyTextFieldStyle? = nil) {
         self.header = header
         self.id = id
         self.placeholder = placeholder
         self.text = text
         self.onSubmit = onSubmit
+        self.style = style
     }
 
     public var body: some View {
@@ -76,7 +176,7 @@ public struct TextField: View {
 
     @_spi(RenderingInternals)
     public func addHeader(_ newHeader: String) -> Self {
-        TextField(header: newHeader + header, id: id, placeholder: placeholder, text: text, onSubmit: onSubmit)
+        TextField(header: newHeader + header, id: id, placeholder: placeholder, text: text, onSubmit: onSubmit, style: style)
     }
 
     /// Registers the field for keyboard handling and lowers its current
@@ -89,35 +189,22 @@ public struct TextField: View {
         KeyInputRouter.shared.ensureStarted()
 
         let focused = FocusCoordinator.shared.isFocused(id)
-        let value = text.wrappedValue
-        let marker = focused ? "> " : "  "
 
-        let composed: Group
-        if value.isEmpty && !focused {
-            composed = Group(contents: [
-                Text(content: marker),
-                Text(content: placeholder).forgroundColor(.eight_bit(240))
-            ])
-        } else if focused {
-            let chars = Array(value)
-            let c = Swift.min(Swift.max(FocusCoordinator.shared.cursor(for: id), 0), chars.count)
-            let before = String(chars[0..<c])
-            let cursorChar = c < chars.count ? String(chars[c]) : " "
-            let after = c < chars.count ? String(chars[(c + 1)...]) : ""
-
-            var children: [any View] = [Text(content: marker).forgroundColor(.cyan)]
-            if !before.isEmpty { children.append(Text(content: before)) }
-            // Block cursor: reverse the foreground/background of the cell.
-            children.append(Text(content: cursorChar).background(.white).forgroundColor(.black))
-            if !after.isEmpty { children.append(Text(content: after)) }
-            composed = Group(contents: children)
-        } else {
-            composed = Group(contents: [Text(content: marker), Text(content: value)])
-        }
-
-        // Lay the pieces out on a single row.
-        let row = HStack(spacing: 0) { composed }
-        let node = row.makeNode()
+        // Nearest wins: instance style, then subtree environment, then default.
+        let resolvedStyle = style ?? EnvironmentStack.current.textFieldStyle ?? AnyTextFieldStyle(DefaultTextFieldStyle())
+        let node = resolvedStyle.makeBody(configuration: TextFieldStyleConfiguration(
+            placeholder: placeholder,
+            text: text.wrappedValue,
+            isFocused: focused,
+            cursorIndex: FocusCoordinator.shared.cursor(for: id)
+        )).makeNode()
         return header.isEmpty ? node : node.applyingHeader(header)
+    }
+
+    /// Sets the style used to compose this text field.
+    ///
+    /// - Parameter newStyle: A value conforming to ``TextFieldStyle``.
+    public func textFieldStyle(_ newStyle: some TextFieldStyle) -> Self {
+        TextField(header: header, id: id, placeholder: placeholder, text: text, onSubmit: onSubmit, style: AnyTextFieldStyle(newStyle))
     }
 }

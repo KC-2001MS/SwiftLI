@@ -42,14 +42,15 @@ public struct Label: View {
 
     let title: String
 
-    let style: any LabelStyle
+    /// The explicitly applied style, or `nil` to resolve from the environment.
+    let style: AnyLabelStyle?
 
     /// Initializer used internally for modifier chaining.
     init(
         header: String,
         title: String,
         image: String,
-        style: any LabelStyle = DefaultLabelStyle()
+        style: AnyLabelStyle? = nil
     ) {
         self.header = "\(header)"
         self.title = title
@@ -78,7 +79,7 @@ public struct Label: View {
         self.header = ""
         self.image = image
         self.title = String(localized: title.localizationValue)
-        self.style = DefaultLabelStyle()
+        self.style = nil
     }
 
     /// Creates a label with an explicit icon string and a title.
@@ -93,14 +94,20 @@ public struct Label: View {
         self.header = ""
         self.image = image
         self.title = String(localized: title.localizationValue)
-        self.style = DefaultLabelStyle()
+        self.style = nil
+    }
+
+    /// The style to render with: the explicitly applied one, else the nearest
+    /// ``View/labelStyle(_:)`` in the environment, else the default.
+    private var resolvedStyle: AnyLabelStyle {
+        style ?? EnvironmentStack.current.labelStyle ?? AnyLabelStyle(DefaultLabelStyle())
     }
 
     public var body: some View {
-        AnyView(erasing: style.makeBody(configuration: LabelStyleConfiguration(
+        resolvedStyle.makeBody(configuration: LabelStyleConfiguration(
             icon: AnyView(Text(content: image)),
             title: AnyView(Text(content: title))
-        )))
+        ))
     }
 
     @_spi(RenderingInternals)
@@ -112,7 +119,7 @@ public struct Label: View {
     /// own style header onto the resulting node.
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
-        let node = style.makeBody(configuration: LabelStyleConfiguration(
+        let node = resolvedStyle.makeBody(configuration: LabelStyleConfiguration(
             icon: AnyView(Text(content: image)),
             title: AnyView(Text(content: title))
         )).makeNode()
@@ -124,6 +131,6 @@ public struct Label: View {
     /// - Parameter newStyle: The new ``LabelStyle`` to apply.
     /// - Returns: A copy of the label using `newStyle`.
     public func labelStyle(_ newStyle: some LabelStyle) -> Self {
-        return .init(header: self.header, title: self.title, image: self.image, style: newStyle)
+        return .init(header: self.header, title: self.title, image: self.image, style: AnyLabelStyle(newStyle))
     }
 }

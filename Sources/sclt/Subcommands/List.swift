@@ -11,7 +11,7 @@ import SwiftLI
 
 /// A full-screen sample for ``List``: a selectable, scrolling list of items.
 /// Arrow keys move the selection, the list scrolls to follow, Ctrl-C quits.
-struct ListCommand: AsyncParsableCommand, FullScreenCommand {
+struct ListCommand: FullScreenCommand {
     static let configuration = CommandConfiguration(
         commandName: "list",
         abstract: "Display of List structure",
@@ -29,32 +29,20 @@ struct ListCommand: AsyncParsableCommand, FullScreenCommand {
 
     private var items: [String] { (1...40).map { "Item \($0)" } }
 
-    mutating func run() async throws {
-        startBodyRendering()
-        await waitUntilInterrupted()
-        stopBodyRendering()
-    }
+    // No run() — FullScreenCommand's default runs the session until Ctrl-C.
 
-    var body: some View {
-        Text(" List ")
-            .bold()
-            .forgroundColor(.black)
-            .background(.cyan)
+    var body: some Scene {
+        NavigationStack {
+            List(items, selection: $selection, height: 10) { item in
+                Text(item)
+            }
+                .navigationTitle("List")
+                .navigationSubtitle("↑/↓: select   Home/End: jump   Ctrl-C: quit")
 
-        Spacer()
-
-        Text("↑/↓: select   Home/End: jump   Ctrl-C: quit")
-            .forgroundColor(.eight_bit(240))
-
-        Spacer()
-
-        List(items, selection: $selection, height: 10) { item in
-            Text(item)
+            Divider()
+                .padding(.top, 1)
+            Text("Selected: \(selection.map { items[$0] } ?? "none")")
+                .forgroundColor(.yellow)
         }
-
-        Spacer()
-        Divider()
-        Text("Selected: \(selection.map { items[$0] } ?? "none")")
-            .forgroundColor(.yellow)
     }
 }

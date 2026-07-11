@@ -35,6 +35,11 @@ import Foundation
 /// Each line is drawn with a left gutter; the focused line shows a block cursor.
 /// An empty, unfocused editor shows its placeholder dimmed.
 ///
+/// Long lines are never wrapped: the editor keeps one row per line and
+/// **scrolls horizontally** instead — when a line is wider than the terminal,
+/// the whole viewport slides to keep the cursor column in view, moving
+/// minimally like the vertical cursor-following scroll.
+///
 /// > Note: Identity is keyed by ``id`` (defaults to the placeholder). Give a
 /// > distinct `id` when several editors share a placeholder.
 public struct TextEditor: View {
@@ -121,15 +126,36 @@ public struct TextEditor: View {
         }
 
         let lines = value.components(separatedBy: "\n")
+
+        // Long lines are never wrapped: the editor keeps one row per line and
+        // scrolls horizontally instead, sliding a shared window over every
+        // line so the cursor column stays visible (the whole viewport shifts,
+        // like a terminal editor in no-wrap mode).
+        let gutterWidth = 2
+        let scrollsVertically = height.map { lines.count > $0 } ?? false
+        let contentWidth = Swift.max(1, EnvironmentStack.current.maxWidth - gutterWidth - (scrollsVertically ? 1 : 0))
+        // One extra column so the block cursor fits at the end of the longest line.
+        let totalColumns = lines.reduce(0) { Swift.max($0, $1.count) } + 1
+        let hOffset: Int
+        if totalColumns <= contentWidth {
+            hOffset = 0
+        } else if focused {
+            hOffset = FocusCoordinator.shared.editorHorizontalOffset(id: id, cursorColumn: cursorColumn, viewport: contentWidth, totalColumns: totalColumns)
+        } else {
+            // Keep the last position while blurred, clamped to the current content.
+            hOffset = Swift.min(FocusCoordinator.shared.editorHorizontalOffset(for: id), totalColumns - contentWidth)
+        }
+
         var rows: [any View] = []
         for (index, line) in lines.enumerated() {
             let gutter = Text(content: "│ ").forgroundColor(focused ? .cyan : .eight_bit(240))
+            let lineChars = Array(line)
+            let windowEnd = Swift.min(lineChars.count, hOffset + contentWidth)
             if focused && index == cursorLine {
-                let lineChars = Array(line)
-                let col = Swift.min(cursorColumn, lineChars.count)
-                let before = String(lineChars[0..<col])
+                let col = Swift.min(Swift.max(cursorColumn, hOffset), lineChars.count)
+                let before = hOffset < col ? String(lineChars[hOffset..<col]) : ""
                 let cursorChar = col < lineChars.count ? String(lineChars[col]) : " "
-                let after = col < lineChars.count ? String(lineChars[(col + 1)...]) : ""
+                let after = (col + 1) < windowEnd ? String(lineChars[(col + 1)..<windowEnd]) : ""
 
                 var cells: [any View] = [gutter]
                 if !before.isEmpty { cells.append(Text(content: before)) }
@@ -137,8 +163,9 @@ public struct TextEditor: View {
                 if !after.isEmpty { cells.append(Text(content: after)) }
                 rows.append(HStack(spacing: 0) { Group(contents: cells) })
             } else {
+                let visible = hOffset < lineChars.count ? String(lineChars[hOffset..<windowEnd]) : ""
                 rows.append(HStack(spacing: 0) {
-                    Group(contents: [gutter, Text(content: line)])
+                    Group(contents: [gutter, Text(content: visible)])
                 })
             }
         }

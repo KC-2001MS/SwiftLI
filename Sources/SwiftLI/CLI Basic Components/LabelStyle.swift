@@ -131,6 +131,24 @@ public struct TitleAndIconLabelStyle: LabelStyle {
     }
 }
 
+// MARK: - AnyLabelStyle (type erasure)
+
+/// A type-erased ``LabelStyle`` whose erased result is an ``AnyView`` — a
+/// plain composition of views, matching how ``AnyToggleStyle`` works.
+///
+/// Internal, mirroring SwiftUI where the label-style eraser is not public API.
+struct AnyLabelStyle: LabelStyle, @unchecked Sendable {
+    private let _makeBody: (LabelStyleConfiguration) -> any View
+
+    init<S: LabelStyle>(_ style: S) {
+        _makeBody = { style.makeBody(configuration: $0) }
+    }
+
+    func makeBody(configuration: LabelStyleConfiguration) -> AnyView {
+        AnyView(erasing: _makeBody(configuration))
+    }
+}
+
 public extension LabelStyle where Self == DefaultLabelStyle {
     /// The default label style: icon · space · title.
     static var automatic: Self { .init() }

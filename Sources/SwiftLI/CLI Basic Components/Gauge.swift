@@ -309,8 +309,8 @@ public struct Gauge: View, @unchecked Sendable {
     public let emptyCharacter: Character
     /// A label view shown in the trailing status area. `nil` when there is none.
     public let label: AnyView?
-    /// The type-erased style used to compose this gauge.
-    let style: AnyGaugeStyle
+    /// The explicitly applied style, or `nil` to resolve from the environment.
+    let style: AnyGaugeStyle?
 
     // The current value — stored either as a plain Double or as a Binding.
     private let valueSource: ValueSource
@@ -350,7 +350,7 @@ public struct Gauge: View, @unchecked Sendable {
         self.filledCharacter = filledCharacter
         self.emptyCharacter = emptyCharacter
         self.valueSource = .constant(value)
-        self.style = AnyGaugeStyle(BarGaugeStyle())
+        self.style = nil
     }
 
     /// Creates a gauge with a **plain value** and a custom label view.
@@ -373,7 +373,7 @@ public struct Gauge: View, @unchecked Sendable {
         self.filledCharacter = filledCharacter
         self.emptyCharacter = emptyCharacter
         self.valueSource = .constant(value)
-        self.style = AnyGaugeStyle(BarGaugeStyle())
+        self.style = nil
     }
 
     /// Creates a gauge driven by a **`Binding`** for live updates.
@@ -397,7 +397,7 @@ public struct Gauge: View, @unchecked Sendable {
         self.filledCharacter = filledCharacter
         self.emptyCharacter = emptyCharacter
         self.valueSource = .binding(value)
-        self.style = AnyGaugeStyle(BarGaugeStyle())
+        self.style = nil
     }
 
     /// Creates a gauge driven by a **`Binding`** with a custom label view.
@@ -420,7 +420,7 @@ public struct Gauge: View, @unchecked Sendable {
         self.filledCharacter = filledCharacter
         self.emptyCharacter = emptyCharacter
         self.valueSource = .binding(value)
-        self.style = AnyGaugeStyle(BarGaugeStyle())
+        self.style = nil
     }
 
     // Internal init for style chaining.
@@ -432,7 +432,7 @@ public struct Gauge: View, @unchecked Sendable {
         width: Int?,
         filledCharacter: Character,
         emptyCharacter: Character,
-        style: AnyGaugeStyle
+        style: AnyGaugeStyle?
     ) {
         self.label = label
         self.min = min
@@ -455,10 +455,17 @@ public struct Gauge: View, @unchecked Sendable {
         let range    = max - min
         let fraction = range == 0 ? 0 : (clamped - min) / range
 
+        // Nearest wins: instance style, then subtree environment, then default.
+        let resolvedStyle = style ?? EnvironmentStack.current.gaugeStyle ?? AnyGaugeStyle(BarGaugeStyle())
         let labelReserve = label.map { NodeLayout.measure($0.makeNode()).width + 1 } ?? 0
-        let resolvedWidth = width ?? Swift.max(0, TerminalSize.current.columns - style.reservedColumns - labelReserve)
+        // Auto-size to the columns this gauge is actually allotted: the whole
+        // terminal at the top level, or the container's width inside e.g.
+        // `.frame(width:)`. Ellipsis truncation would garble a meter, so the
+        // gauge shortens its fillable region instead.
+        let available = EnvironmentStack.current.maxWidth
+        let resolvedWidth = width ?? Swift.max(0, available - resolvedStyle.reservedColumns - labelReserve)
 
-        style.makeBody(configuration: GaugeStyleConfiguration(
+        resolvedStyle.makeBody(configuration: GaugeStyleConfiguration(
             fractionCompleted: fraction,
             width: resolvedWidth,
             filledCharacter: filledCharacter,

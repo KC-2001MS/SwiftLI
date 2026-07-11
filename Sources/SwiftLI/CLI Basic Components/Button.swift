@@ -163,7 +163,8 @@ public struct Button: View {
     let label: AnyView
     let role: ButtonRole?
     let action: () -> Void
-    let style: AnyButtonStyle
+    /// The explicitly applied style, or `nil` to resolve from the environment.
+    let style: AnyButtonStyle?
 
     /// Creates a button with a localized title.
     /// - Parameters:
@@ -185,7 +186,7 @@ public struct Button: View {
         self.label = AnyView(Text(content: resolved))
         self.role = role
         self.action = action
-        self.style = AnyButtonStyle(DefaultButtonStyle())
+        self.style = nil
     }
 
     /// Creates a button with a custom label view.
@@ -207,10 +208,10 @@ public struct Button: View {
         self.label = AnyView(label())
         self.role = role
         self.action = action
-        self.style = AnyButtonStyle(DefaultButtonStyle())
+        self.style = nil
     }
 
-    init(header: String, id: String, label: AnyView, role: ButtonRole?, action: @escaping () -> Void, style: AnyButtonStyle) {
+    init(header: String, id: String, label: AnyView, role: ButtonRole?, action: @escaping () -> Void, style: AnyButtonStyle?) {
         self.header = header
         self.id = id
         self.label = label
@@ -238,7 +239,9 @@ public struct Button: View {
             role: role,
             isFocused: FocusCoordinator.shared.isFocused(id)
         )
-        let node = style.makeBody(configuration: configuration).makeNode()
+        // Nearest wins: instance style, then subtree environment, then default.
+        let resolvedStyle = style ?? EnvironmentStack.current.buttonStyle ?? AnyButtonStyle(DefaultButtonStyle())
+        let node = resolvedStyle.makeBody(configuration: configuration).makeNode()
         return header.isEmpty ? node : node.applyingHeader(header)
     }
 

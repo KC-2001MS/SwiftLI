@@ -8,7 +8,9 @@
 import ArgumentParser
 import SwiftLI
 
-struct EmoticonCommand: AsyncParsableCommand, FullScreenCommand {
+/// A static catalogue of ``Emoticon``, rendered inline so the output stays in
+/// the terminal scrollback.
+struct EmoticonCommand: InlineCommand {
     static let configuration = CommandConfiguration(
         commandName: "emoticon",
         abstract: "Display of Emoticon structure",
@@ -20,80 +22,49 @@ struct EmoticonCommand: AsyncParsableCommand, FullScreenCommand {
         helpNames: [.long, .short]
     )
 
-    @State var eyeIndex: Int = 0
-    @State var mouthIndex: Int = 0
+    // No run() — the default inline session renders once and, with nothing
+    // left to do, exits by itself.
 
-    var eyes: [EyesStyle] { EyesStyle.allCases }
-    var mouths: [MouthStyle] { MouthStyle.allCases }
+    var body: some Scene {
+        NavigationStack {
+            Text("init()")
+                .forgroundColor(Color.cyan)
+                .navigationTitle("Emoticon")
 
-    mutating func run() async throws {
-        startBodyRendering()
-        let steps = max(eyes.count, mouths.count)
-        for i in 0..<steps {
-            try await Task.sleep(nanoseconds: 400_000_000)
-            eyeIndex = i % eyes.count
-            mouthIndex = i % mouths.count
-        }
-        stopBodyRendering()
-    }
-
-    var body: some View {
-        Text("Emoticon View")
-            .background(Color.white)
-            .forgroundColor(Color.blue)
-            .bold()
-
-        Text("init()")
-            .forgroundColor(Color.cyan)
-
-        HStack(spacing: 1) {
-            Emoticon()
-            Spacer(1)
-            Text("Emoticon()  ← default :)")
-                .fontWeight(.thin)
-                .forgroundColor(.red)
-        }
-
-        Spacer()
-
-        Text("init(eye:mouth:)  — cycling through all cases")
-            .forgroundColor(Color.cyan)
-
-        HStack(spacing: 1) {
-            Emoticon(eye: eyes[eyeIndex], mouth: mouths[mouthIndex])
-            Spacer(1)
-            Text("eye: .\(eyes[eyeIndex])  mouth: .\(mouths[mouthIndex])")
-                .fontWeight(.thin)
-                .forgroundColor(.red)
-        }
-
-        Spacer()
-
-        Text("EyesStyle cases")
-            .forgroundColor(Color.cyan)
-
-        ForEach(EyesStyle.allCases) { eye in
             HStack(spacing: 1) {
-                Emoticon(eye: eye, mouth: .default)
-                Spacer(1)
-                Text(".\(eye)")
+                Emoticon()
+                Spacer()
+                Text("Emoticon()  ← default :)")
                     .fontWeight(.thin)
-                    .forgroundColor(eye == eyes[eyeIndex] ? .green : .red)
+                    .forgroundColor(.red)
             }
-        }
 
-        Spacer()
+            Text("EyesStyle cases")
+                .forgroundColor(Color.cyan)
+                .padding(.top, 1)
 
-        Text("MouthStyle cases")
-            .forgroundColor(Color.cyan)
+            ForEach(EyesStyle.allCases) { eye in
+                HStack(spacing: 1) {
+                    Emoticon(eye: eye, mouth: .default)
+                    Spacer()
+                    Text(".\(eye)")
+                        .fontWeight(.thin)
+                        .forgroundColor(.red)
+                }
+            }
 
-        ForEach(MouthStyle.allCases) { mouth in
-            HStack(spacing: 1) {
-                Emoticon(eye: .default, mouth: mouth)
-                Spacer(1)
-                Text(".\(mouth)")
-                    .fontWeight(.thin)
-                    .forgroundColor(mouth == mouths[mouthIndex] ? .green : .red)
+            Text("MouthStyle cases")
+                .forgroundColor(Color.cyan)
+                .padding(.top, 1)
+
+            ForEach(MouthStyle.allCases) { mouth in
+                HStack(spacing: 1) {
+                    Emoticon(eye: .default, mouth: mouth)
+                    Spacer()
+                    Text(".\(mouth)")
+                        .fontWeight(.thin)
+                        .forgroundColor(.red)
+                }
             }
         }
     }

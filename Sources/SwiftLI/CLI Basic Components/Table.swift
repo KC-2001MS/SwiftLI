@@ -46,6 +46,86 @@ public enum TableColumnBuilder<RowValue> {
     public static func buildArray(_ components: [[TableColumn<RowValue>]]) -> [TableColumn<RowValue>] { components.flatMap { $0 } }
 }
 
+// MARK: - TableStyle protocol
+
+/// The values passed to ``TableStyle/makeBody(configuration:)`` when rendering.
+///
+/// A ``Table`` calls its style once per row — the header row first, then one
+/// body row per element — so a style decorates rows while the table keeps
+/// ownership of column layout, the header rule, and scrolling.
+public struct TableStyleConfiguration {
+    /// One laid-out table row: the cells clipped to their column widths on a
+    /// single line, not yet decorated.
+    public let row: AnyView
+    /// Whether this row is the header row (the column titles).
+    public let isHeader: Bool
+    /// Whether this row is the selected row.
+    public let isSelected: Bool
+    /// Whether the table currently has keyboard focus.
+    public let isFocused: Bool
+}
+
+/// A type that defines the appearance of a ``Table``'s rows.
+///
+/// Conform to `TableStyle` and apply it with ``Table/tableStyle(_:)`` (or
+/// ``View/tableStyle(_:)`` for a whole subtree). The default style is
+/// ``DefaultTableStyle``.
+public protocol TableStyle: Sendable {
+    /// The type of view produced by this style.
+    associatedtype Body: View
+
+    /// Returns a view that represents one table row.
+    ///
+    /// Keep the result on a single line so the table's row-per-line scroll
+    /// tracking stays accurate.
+    ///
+    /// - Parameter configuration: The laid-out row and its header/selection state.
+    @ViewBuilder
+    func makeBody(configuration: TableStyleConfiguration) -> Body
+}
+
+/// The default table style — a bold header row, and the selected row cyan and
+/// bold while focused (dimmed when not). Equivalent to ``TableStyle/automatic``.
+public struct DefaultTableStyle: TableStyle {
+    public init() {}
+
+    public func makeBody(configuration: TableStyleConfiguration) -> AnyView {
+        if configuration.isHeader {
+            return AnyView(erasing: configuration.row.bold())
+        }
+        if configuration.isSelected && configuration.isFocused {
+            return AnyView(erasing: configuration.row.forgroundColor(.cyan).bold())
+        }
+        if configuration.isSelected {
+            return AnyView(erasing: configuration.row.forgroundColor(.eight_bit(245)))
+        }
+        return configuration.row
+    }
+}
+
+public extension TableStyle where Self == DefaultTableStyle {
+    /// The default table style: a bold header and a highlighted selected row.
+    static var automatic: Self { .init() }
+}
+
+// MARK: - AnyTableStyle (type erasure)
+
+/// A type-erased ``TableStyle`` whose erased result is an ``AnyView`` — a
+/// plain composition of views, matching how ``AnyToggleStyle`` works.
+struct AnyTableStyle: TableStyle, @unchecked Sendable {
+    private let _makeBody: (TableStyleConfiguration) -> any View
+
+    init<S: TableStyle>(_ style: S) {
+        _makeBody = { style.makeBody(configuration: $0) }
+    }
+
+    func makeBody(configuration: TableStyleConfiguration) -> AnyView {
+        AnyView(erasing: _makeBody(configuration))
+    }
+}
+
+// MARK: - Table
+
 /// A data-driven grid of rows and columns, laid out to fill the terminal width.
 ///
 /// `Table` mirrors SwiftUI's `Table`: you give it a collection and describe its
@@ -89,22 +169,25 @@ public struct Table<Data: RandomAccessCollection>: View, @unchecked Sendable {
     private let columns: [TableColumn<Data.Element>]
     private let selection: Binding<Int?>?
     private let height: Int?
-    private let onSubmit: (() -> Void)?
+    /// The explicitly applied style, or `nil` to resolve from the environment.
+    private let style: AnyTableStyle?
 
     /// Creates a table over `data`, described by the columns in the builder.
+    ///
+    /// The selection is a pure value — the table has no submit hook. Pair it
+    /// with a ``Button`` when a flow needs to act on the chosen row.
+    ///
     /// - Parameters:
     ///   - data: The rows' backing collection.
     ///   - selection: A bound selected-row index; pass `nil` for no selection.
     ///   - height: The visible body-row count; when exceeded the body scrolls.
     ///   - id: A stable identity for focus/scroll state.
-    ///   - onSubmit: Called on <kbd>Return</kbd> while focused.
     ///   - columns: The column definitions.
     public init(
         _ data: Data,
         selection: Binding<Int?>? = nil,
         height: Int? = nil,
         id: String = "Table",
-        onSubmit: (() -> Void)? = nil,
         @TableColumnBuilder<Data.Element> columns: () -> [TableColumn<Data.Element>]
     ) {
         self.header = ""
@@ -113,17 +196,17 @@ public struct Table<Data: RandomAccessCollection>: View, @unchecked Sendable {
         self.columns = columns()
         self.selection = selection
         self.height = height
-        self.onSubmit = onSubmit
+        self.style = nil
     }
 
-    init(header: String, id: String, data: Data, columns: [TableColumn<Data.Element>], selection: Binding<Int?>?, height: Int?, onSubmit: (() -> Void)?) {
+    init(header: String, id: String, data: Data, columns: [TableColumn<Data.Element>], selection: Binding<Int?>?, height: Int?, style: AnyTableStyle? = nil) {
         self.header = header
         self.id = id
         self.data = data
         self.columns = columns
         self.selection = selection
         self.height = height
-        self.onSubmit = onSubmit
+        self.style = style
     }
 
     public var body: some View {
@@ -132,7 +215,7 @@ public struct Table<Data: RandomAccessCollection>: View, @unchecked Sendable {
 
     @_spi(RenderingInternals)
     public func addHeader(_ newHeader: String) -> Self {
-        Table(header: newHeader + header, id: id, data: data, columns: columns, selection: selection, height: height, onSubmit: onSubmit)
+        Table(header: newHeader + header, id: id, data: data, columns: columns, selection: selection, height: height, style: style)
     }
 
     @_spi(RenderingInternals)
@@ -149,27 +232,34 @@ public struct Table<Data: RandomAccessCollection>: View, @unchecked Sendable {
         var focused = false
         var selectedIndex: Int? = nil
         if let selection {
-            FocusCoordinator.shared.registerList(id: id, selection: selection, count: rows.count, viewportRows: scrolls ? height : nil, onSubmit: onSubmit)
+            FocusCoordinator.shared.registerList(id: id, selection: selection, count: rows.count, viewportRows: scrolls ? height : nil)
             KeyInputRouter.shared.ensureStarted()
             focused = FocusCoordinator.shared.isFocused(id)
             selectedIndex = selection.wrappedValue
         } else if scrolls {
-            FocusCoordinator.shared.registerScroll(id: id, viewportHeight: height ?? 0, contentHeight: rows.count, onSubmit: onSubmit)
+            FocusCoordinator.shared.registerScroll(id: id, viewportHeight: height ?? 0, contentHeight: rows.count)
             KeyInputRouter.shared.ensureStarted()
             focused = FocusCoordinator.shared.isFocused(id)
         }
 
-        // Pinned header row (bold) and the rule beneath it.
-        let headerNode = row(cells: columns.map { $0.title }, widths: widths, gap: gap, bold: true, highlight: nil)
-            .makeNode()
+        // Nearest wins: instance style, then subtree environment, then default.
+        let resolvedStyle = style ?? EnvironmentStack.current.tableStyle ?? AnyTableStyle(DefaultTableStyle())
+
+        // Pinned header row (decorated by the style) and the rule beneath it.
+        let headerNode = resolvedStyle.makeBody(configuration: TableStyleConfiguration(
+            row: AnyView(erasing: row(cells: columns.map { $0.title }, widths: widths, gap: gap)),
+            isHeader: true, isSelected: false, isFocused: focused
+        )).makeNode()
         let ruleNode = Text(repeating: "─", count: Swift.max(totalWidth, 0))
             .forgroundColor(.eight_bit(240)).makeNode()
 
-        // Body: one row per element, with the selected row highlighted.
+        // Body: one row per element, each decorated by the style.
         var bodyRows: [any View] = []
         for (index, element) in rows.enumerated() {
-            let mark: RowHighlight? = (index == selectedIndex) ? (focused ? .focused : .selected) : nil
-            bodyRows.append(row(cells: columns.map { $0.value(element) }, widths: widths, gap: gap, bold: false, highlight: mark))
+            bodyRows.append(resolvedStyle.makeBody(configuration: TableStyleConfiguration(
+                row: AnyView(erasing: row(cells: columns.map { $0.value(element) }, widths: widths, gap: gap)),
+                isHeader: false, isSelected: index == selectedIndex, isFocused: focused
+            )))
         }
         // Pin the header/rule; scroll only the body by composing a controlled
         // ``ScrollView`` (which owns the .scroll IR and the scrollbar).
@@ -185,26 +275,25 @@ public struct Table<Data: RandomAccessCollection>: View, @unchecked Sendable {
         return header.isEmpty ? node : node.applyingHeader(header)
     }
 
-    /// How a body row is emphasised.
-    private enum RowHighlight { case selected, focused }
-
-    /// Builds one table row: each cell clipped to its column width on a single
-    /// line, optionally highlighted when it is the selected row.
-    private func row(cells: [String], widths: [Int], gap: Int, bold: Bool, highlight: RowHighlight?) -> any View {
+    /// Builds one undecorated table row: each cell clipped to its column width
+    /// on a single line. Emphasis (header bold, selection highlight) is applied
+    /// by the active ``TableStyle``.
+    private func row(cells: [String], widths: [Int], gap: Int) -> any View {
         var views: [any View] = []
         for (i, text) in cells.enumerated() where i < widths.count {
             let cell = Text(content: text)
-                .bold(bold)
                 .frame(width: widths[i], alignment: .topLeading)
                 .lineLimit(1)
             views.append(cell)
         }
-        let base = HStack(alignment: .top, spacing: gap) { Group(contents: views) }
-        switch highlight {
-        case .focused:  return base.forgroundColor(.cyan).bold()
-        case .selected: return base.forgroundColor(.eight_bit(245))
-        case .none:     return base
-        }
+        return HStack(alignment: .top, spacing: gap) { Group(contents: views) }
+    }
+
+    /// Sets the style used to decorate this table's rows.
+    ///
+    /// - Parameter newStyle: A value conforming to ``TableStyle``.
+    public func tableStyle(_ newStyle: some TableStyle) -> Self {
+        Table(header: header, id: id, data: data, columns: columns, selection: selection, height: height, style: AnyTableStyle(newStyle))
     }
 
     /// Resolves each column's width so the row fills the terminal: flexible

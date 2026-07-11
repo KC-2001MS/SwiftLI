@@ -155,28 +155,29 @@ public struct Toggle: View {
     let id: String
     let label: AnyView?
     let isOn: Binding<Bool>
-    let onSubmit: (() -> Void)?
-    let style: AnyToggleStyle
+    /// The explicitly applied style, or `nil` to resolve from the environment.
+    let style: AnyToggleStyle?
 
     /// Creates a toggle with a text label and a boolean binding.
+    ///
+    /// A toggle is a pure value editor — it has no submit hook. Pair it with a
+    /// ``Button`` when a flow needs an explicit confirmation step.
+    ///
     /// - Parameters:
     ///   - label: The text shown beside the control; also the default identity.
     ///   - isOn: The bound boolean.
     ///   - id: An explicit identity; defaults to the label.
-    ///   - onSubmit: Called when <kbd>Return</kbd> is pressed while focused.
     public init(
         _ label: LocalizedStringKey = "",
         isOn: Binding<Bool>,
-        id: String? = nil,
-        onSubmit: (() -> Void)? = nil
+        id: String? = nil
     ) {
         let resolved = String(localized: label.localizationValue)
         self.header = ""
         self.id = id ?? (resolved.isEmpty ? "Toggle" : resolved)
         self.label = resolved.isEmpty ? nil : AnyView(Text(content: resolved))
         self.isOn = isOn
-        self.onSubmit = onSubmit
-        self.style = AnyToggleStyle(YesNoToggleStyle())
+        self.style = nil
     }
 
     /// Creates a toggle with a custom label view.
@@ -184,28 +185,24 @@ public struct Toggle: View {
     ///   - isOn: The bound boolean.
     ///   - id: An explicit identity; defaults to `"Toggle"` — give each toggle
     ///     a distinct `id` when a screen shows more than one.
-    ///   - onSubmit: Called when <kbd>Return</kbd> is pressed while focused.
     ///   - label: A ``ViewBuilder`` producing the toggle's label.
     public init<Label: View>(
         isOn: Binding<Bool>,
         id: String = "Toggle",
-        onSubmit: (() -> Void)? = nil,
         @ViewBuilder label: () -> Label
     ) {
         self.header = ""
         self.id = id
         self.label = AnyView(label())
         self.isOn = isOn
-        self.onSubmit = onSubmit
-        self.style = AnyToggleStyle(YesNoToggleStyle())
+        self.style = nil
     }
 
-    init(header: String, id: String, label: AnyView?, isOn: Binding<Bool>, onSubmit: (() -> Void)?, style: AnyToggleStyle) {
+    init(header: String, id: String, label: AnyView?, isOn: Binding<Bool>, style: AnyToggleStyle?) {
         self.header = header
         self.id = id
         self.label = label
         self.isOn = isOn
-        self.onSubmit = onSubmit
         self.style = style
     }
 
@@ -215,12 +212,12 @@ public struct Toggle: View {
 
     @_spi(RenderingInternals)
     public func addHeader(_ newHeader: String) -> Self {
-        Toggle(header: newHeader + header, id: id, label: label, isOn: isOn, onSubmit: onSubmit, style: style)
+        Toggle(header: newHeader + header, id: id, label: label, isOn: isOn, style: style)
     }
 
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
-        FocusCoordinator.shared.registerToggle(id: id, isOn: isOn, onSubmit: onSubmit)
+        FocusCoordinator.shared.registerToggle(id: id, isOn: isOn)
         KeyInputRouter.shared.ensureStarted()
 
         let configuration = ToggleStyleConfiguration(
@@ -228,13 +225,15 @@ public struct Toggle: View {
             isOn: isOn.wrappedValue,
             isFocused: FocusCoordinator.shared.isFocused(id)
         )
-        let node = style.makeBody(configuration: configuration).makeNode()
+        // Nearest wins: instance style, then subtree environment, then default.
+        let resolvedStyle = style ?? EnvironmentStack.current.toggleStyle ?? AnyToggleStyle(YesNoToggleStyle())
+        let node = resolvedStyle.makeBody(configuration: configuration).makeNode()
         return header.isEmpty ? node : node.applyingHeader(header)
     }
 
     /// Sets the style used to render this toggle.
     /// - Parameter newStyle: A value conforming to ``ToggleStyle``.
     public func toggleStyle(_ newStyle: some ToggleStyle) -> Self {
-        Toggle(header: header, id: id, label: label, isOn: isOn, onSubmit: onSubmit, style: AnyToggleStyle(newStyle))
+        Toggle(header: header, id: id, label: label, isOn: isOn, style: AnyToggleStyle(newStyle))
     }
 }
