@@ -265,7 +265,7 @@ struct MouseRoutingTests {
         publish("scroll", rect: Rect(origin: Point(column: 0, row: 1), size: Size(width: 40, height: 5)))
 
         #expect(coord.handleMouse(MouseEvent(kind: .scrollDown, column: 3, row: 2)))
-        #expect(coord.scrollOffset(for: "scroll") == 1)
+        #expect(coord.scrollOffset(for: "scroll") == 3)
         #expect(coord.handleMouse(MouseEvent(kind: .scrollUp, column: 3, row: 2)))
         #expect(coord.scrollOffset(for: "scroll") == 0)
         // Clamped at the top; still consumed.
@@ -286,7 +286,7 @@ struct MouseRoutingTests {
         publish("list", rect: Rect(origin: .zero, size: Size(width: 20, height: 4)))
 
         #expect(coord.handleMouse(MouseEvent(kind: .scrollDown, column: 0, row: 0)))
-        #expect(coord.listOffset(for: "list") == 1)
+        #expect(coord.listOffset(for: "list") == 3)
         #expect(box.value == 0)   // wheel scrolls the window, not the selection
     }
 
