@@ -57,6 +57,22 @@ struct SpacerCommand: InlineCommand {
                     .fontWeight(.thin)
                     .forgroundColor(.red)
             }
+
+            // Spacer-specific modifier: background paints the flexible gap
+            // itself, making the space the spacer claims visible.
+            Text("Spacer.background(_ color: Color)")
+                .forgroundColor(Color.cyan)
+                .padding(.top, 1)
+
+            HStack(spacing: 0) {
+                Text("Left")
+                    .forgroundColor(.red)
+                Spacer()
+                    .background(.blue)
+                Text("Right ← the gap is painted blue")
+                    .fontWeight(.thin)
+                    .forgroundColor(.red)
+            }
         }
     }
 }

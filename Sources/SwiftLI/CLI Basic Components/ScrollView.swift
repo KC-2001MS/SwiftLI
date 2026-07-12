@@ -5,28 +5,50 @@
 //  Created by Keisuke Chinone on 2026/07/07.
 //
 
-/// A fixed-height viewport that scrolls a taller stack of content vertically.
+// MARK: - Axis
+
+/// The two layout axes, mirroring SwiftUI's `Axis` type.
+public struct Axis: Sendable {
+    /// A set of axes. Use `.vertical`, `.horizontal`, or both.
+    public struct Set: Equatable, Sendable {
+        let rawValue: Int
+        public static let vertical   = Set(rawValue: 1)
+        public static let horizontal = Set(rawValue: 2)
+        var isHorizontal: Bool { self == .horizontal }
+    }
+}
+
+// MARK: - ScrollView
+
+/// A viewport that scrolls its content along one axis.
 ///
-/// `ScrollView` lays its content out in full, then shows only a `height`-row
-/// window of it. While a reactive runtime is active and the scroll view is
-/// focused, the arrow keys move the window: <kbd>↑</kbd>/<kbd>↓</kbd> by one
-/// line, <kbd>Space</kbd> by a page, and <kbd>Home</kbd>/<kbd>End</kbd> jump to
-/// the ends. <kbd>Tab</kbd> / <kbd>Shift-Tab</kbd> move focus to the next
-/// control, so a scroll view participates in the same focus ring as text fields
-/// and toggles.
+/// `ScrollView` lays its content out in full and shows a windowed portion of
+/// it. While a reactive runtime is active and the scroll view is focused, the
+/// arrow keys move the window: <kbd>↑</kbd>/<kbd>↓</kbd> by one line for
+/// vertical viewports, <kbd>←</kbd>/<kbd>→</kbd> for horizontal ones,
+/// <kbd>Space</kbd> by a page, and <kbd>Home</kbd>/<kbd>End</kbd> jump to the
+/// ends. <kbd>Tab</kbd> / <kbd>Shift-Tab</kbd> cycle focus.
 ///
-/// A proportional scrollbar is drawn as a continuous solid strip with
-/// half-cell precision, pinned to the trailing edge of the viewport's
-/// allotted width — a horizontal viewport draws it along its bottom edge.
-/// It is hidden when everything already fits, or when `showsIndicators` is
-/// `false`.
+/// A proportional scrollbar is drawn as a solid strip with half-cell
+/// precision. For vertical viewports it is pinned to the trailing edge; for
+/// horizontal viewports it runs along the bottom edge. It is hidden when
+/// everything already fits, or when `showsIndicators` is `false`.
+///
+/// The viewport size defaults to the full available space in the scroll axis.
+/// Use `.frame(height:)` or `.frame(width:)` to constrain it:
 ///
 /// ```swift
-/// ScrollView(height: 10) {
-///     ForEach(0..<100) { i in
-///         Text("Row \(i)")
-///     }
+/// // Vertical: 10-row window over a tall list.
+/// ScrollView {
+///     ForEach(0..<100) { i in Text("Row \(i)") }
 /// }
+/// .frame(height: 10)
+///
+/// // Horizontal: 40-column window over a wide row.
+/// ScrollView(.horizontal) {
+///     HStack { /* wide content */ }
+/// }
+/// .frame(width: 40)
 /// ```
 ///
 /// > Note: Identity is keyed by `id`; give each scroll view a distinct `id`
@@ -44,56 +66,39 @@ public struct ScrollView: View, @unchecked Sendable {
     }
 
     /// The visible extent of the viewport: rows when vertical, columns when
-    /// horizontal.
-    private let extent: Int
+    /// horizontal. `nil` fills the available space in the scroll axis.
+    private let extent: Int?
     /// Whether the viewport scrolls horizontally (columns) instead of vertically.
     private let isHorizontal: Bool
     private let showsIndicators: Bool
     private let content: [any View]
     private let driver: Driver
 
-    /// Creates a self-scrolling **vertical** viewport.
-    /// - Parameters:
-    ///   - height: The number of rows visible at once.
-    ///   - showsIndicators: Whether to draw the scrollbar. Defaults to `true`.
-    ///   - id: A stable identity used to track focus and scroll offset.
-    ///   - content: A ``ViewBuilder`` closure producing the scrolled content.
-    public init<Content: View>(
-        height: Int,
-        showsIndicators: Bool = true,
-        id: String = "ScrollView",
-        @ViewBuilder content: () -> Content
-    ) {
-        self.extent = height
-        self.isHorizontal = false
-        self.showsIndicators = showsIndicators
-        self.content = content()._flattenedChildren()
-        self.driver = .managed(id: id)
-    }
-
-    /// Creates a self-scrolling **horizontal** viewport.
+    /// Creates a self-scrolling viewport along `axes`.
     ///
-    /// Shows a `width`-column window of wider content; while focused, the
-    /// <kbd>←</kbd>/<kbd>→</kbd> arrows move the window (with <kbd>Home</kbd>/
-    /// <kbd>End</kbd> jumping to the ends). A proportional scrollbar is drawn on
-    /// the row below the content.
+    /// The viewport fills the available space in the scroll axis by default.
+    /// Constrain it with `.frame(height:)` for a vertical viewport or
+    /// `.frame(width:)` for a horizontal one.
     ///
     /// - Parameters:
-    ///   - width: The number of columns visible at once.
+    ///   - axes: The scroll axis. Pass `.vertical` (the default) or
+    ///     `.horizontal`.
     ///   - showsIndicators: Whether to draw the scrollbar. Defaults to `true`.
     ///   - id: A stable identity used to track focus and scroll offset.
+    ///     Defaults to `"ScrollView"` for vertical, `"HScrollView"` for
+    ///     horizontal.
     ///   - content: A ``ViewBuilder`` closure producing the scrolled content.
     public init<Content: View>(
-        width: Int,
+        _ axes: Axis.Set = .vertical,
         showsIndicators: Bool = true,
-        id: String = "HScrollView",
+        id: String? = nil,
         @ViewBuilder content: () -> Content
     ) {
-        self.extent = width
-        self.isHorizontal = true
+        self.extent = nil
+        self.isHorizontal = axes.isHorizontal
         self.showsIndicators = showsIndicators
         self.content = content()._flattenedChildren()
-        self.driver = .managed(id: id)
+        self.driver = .managed(id: id ?? (axes.isHorizontal ? "HScrollView" : "ScrollView"))
     }
 
     /// Creates a viewport whose offset is controlled by an enclosing view.
@@ -109,6 +114,7 @@ public struct ScrollView: View, @unchecked Sendable {
         self.driver = .controlled(offset: offset, focused: focused)
     }
 
+    /// The body of the scroll view; rendering is performed by ``makeNode()`` rather than this property.
     public var body: some View {
         EmptyView()
     }
@@ -116,6 +122,11 @@ public struct ScrollView: View, @unchecked Sendable {
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
         let childNode = Group(contents: content).makeNode()
+
+        // nil extent fills the available space in the scroll axis.
+        let resolvedExtent: Int = isHorizontal
+            ? (extent ?? EnvironmentStack.current.maxWidth)
+            : (extent ?? EnvironmentStack.current.maxHeight)
 
         let offset: Int
         let focused: Bool
@@ -126,7 +137,7 @@ public struct ScrollView: View, @unchecked Sendable {
             let contentExtent = isHorizontal
                 ? NodeLayout.measure(childNode).width
                 : NodeLayout.measure(childNode).height
-            FocusCoordinator.shared.registerScroll(id: id, viewportHeight: extent, contentHeight: contentExtent)
+            FocusCoordinator.shared.registerScroll(id: id, viewportHeight: resolvedExtent, contentHeight: contentExtent, isHorizontal: isHorizontal)
             KeyInputRouter.shared.ensureStarted()
             offset = FocusCoordinator.shared.scrollOffset(for: id)
             focused = FocusCoordinator.shared.isFocused(id)
@@ -136,13 +147,21 @@ public struct ScrollView: View, @unchecked Sendable {
         }
 
         let bar = showsIndicators ? Self.scrollBar(focused: focused) : nil
+        let node: RenderNode
         if isHorizontal {
             // The horizontal bar sits on the bottom edge of the viewport.
-            return .hscroll(offset: offset, extent: extent, bar: bar, child: childNode)
+            node = .hscroll(offset: offset, extent: resolvedExtent, bar: bar, child: childNode)
+        } else {
+            // Pin the scrollbar to the far edge of the columns this viewport is
+            // allotted, macOS-style, instead of hugging the content's own width.
+            node = .scroll(offset: offset, height: resolvedExtent, bar: bar, width: EnvironmentStack.current.maxWidth, child: childNode)
         }
-        // Pin the scrollbar to the far edge of the columns this viewport is
-        // allotted, macOS-style, instead of hugging the content's own width.
-        return .scroll(offset: offset, height: extent, bar: bar, width: EnvironmentStack.current.maxWidth, child: childNode)
+        // Only a self-managed viewport is a control of its own; a controlled
+        // one belongs to its owner (List/Table), which wraps the node itself.
+        if case .managed(let id) = driver {
+            return node.asControl(id: id)
+        }
+        return node
     }
 
     /// The scrollbar palette: a cyan thumb while focused (dim white otherwise)
@@ -150,9 +169,8 @@ public struct ScrollView: View, @unchecked Sendable {
     /// a controlled ``ScrollView``) get an identical scrollbar.
     static func scrollBar(focused: Bool) -> ScrollBar {
         ScrollBar(
-            thumbForeground: focused ? "\u{001B}[36m" : "\u{001B}[38;5;245m",
-            trackForeground: "\u{001B}[38;5;238m",
-            trackBackground: "\u{001B}[48;5;238m"
+            thumb: focused ? .cyan : .eight_bit(245),
+            track: .eight_bit(238)
         )
     }
 }

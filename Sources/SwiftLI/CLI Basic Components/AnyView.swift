@@ -18,13 +18,14 @@ public struct AnyView: View {
         self.content = view
     }
 
+    /// The content and behavior of the view.
     public var body: some View {
         EmptyView()
     }
 
     @_spi(RenderingInternals)
-    public func addHeader(_ header: String) -> Self {
-        AnyView(erasing: content.addHeader(header))
+    public func applyingStyle(_ style: TextStyle) -> Self {
+        AnyView(erasing: content.applyingStyle(style))
     }
 
     init(erasing content: any View) {

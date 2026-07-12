@@ -57,6 +57,7 @@ public final class TerminalRenderer: @unchecked Sendable {
     private var previousColumns: Int?
     private let lock = NSLock()
 
+    /// Creates a new `TerminalRenderer` with no previously rendered frame.
     public init() {}
 
     // MARK: - Alternate screen session
@@ -114,6 +115,9 @@ public final class TerminalRenderer: @unchecked Sendable {
         // this frame — the idle check keeps the session alive while any are.
         FocusCoordinator.shared.beginRenderPass()
         defer { FocusCoordinator.shared.endRenderPass() }
+        // Full-screen frames start at the terminal's first row, so mouse
+        // coordinates address the frame directly.
+        MouseTargetRegistry.shared.setFullScreenOrigin()
 
         // Wrap all views in an implicit root VStack so they stack vertically.
         let root = RenderNode.vstack(alignment: .leading, spacing: 0, children: views.map { $0.makeNode() })

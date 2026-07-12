@@ -35,7 +35,7 @@ struct ScrollViewCommand: FullScreenCommand {
             Text("Vertical — a 10-row window onto 50 rows:").forgroundColor(.cyan)
                 .navigationTitle("ScrollView")
                 .navigationSubtitle("↑/↓ or ←/→: scroll   Space: page   Home/End: jump   Tab: switch   Ctrl-C: quit")
-            ScrollView(height: 10) {
+            ScrollView {
                 ForEach(0..<50) { i in
                     HStack(spacing: 1) {
                         Text(String(format: "%3d", i)).forgroundColor(.eight_bit(240))
@@ -44,10 +44,11 @@ struct ScrollViewCommand: FullScreenCommand {
                     }
                 }
             }
+            .frame(height: 10)
 
             Text("Horizontal — a 40-column window onto one wide row:").forgroundColor(.cyan)
                 .padding(.top, 1)
-            ScrollView(width: 40) {
+            ScrollView(.horizontal) {
                 HStack(spacing: 0) {
                     ForEach(0..<26) { i in
                         Text(" \(Character(UnicodeScalar(65 + i)!))\(i) ")
@@ -55,6 +56,7 @@ struct ScrollViewCommand: FullScreenCommand {
                     }
                 }
             }
+            .frame(width: 40)
 
             Divider()
                 .padding(.top, 1)

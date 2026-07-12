@@ -70,8 +70,12 @@ public protocol ProgressViewStyle: Sendable {
 /// The default progress view style — a cyan Braille spinner followed by the
 /// label. Equivalent to ``ProgressViewStyle/automatic``.
 public struct DefaultProgressViewStyle: ProgressViewStyle {
+    /// Creates a default progress view style.
     public init() {}
 
+    /// Returns a view rendering a cyan spinner glyph followed by the label.
+    ///
+    /// - Parameter configuration: The current state of the progress view.
     public func makeBody(configuration: ProgressViewStyleConfiguration) -> some View {
         HStack(spacing: 1) {
             Text(verbatim: String(ProgressSpinner.character(for: configuration.phase)))
@@ -167,6 +171,7 @@ public struct ProgressView: View, Sendable {
         self.style = style
     }
 
+    /// The rendered content of the progress view, produced by the resolved style.
     public var body: some View {
         // Nearest wins: instance style, then subtree environment, then default.
         let resolvedStyle = style ?? EnvironmentStack.current.progressViewStyle ?? AnyProgressViewStyle(DefaultProgressViewStyle())

@@ -6,6 +6,16 @@
 //
 
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#elseif os(Windows)
+import WinSDK
+// Windows CRT POSIX-style file-descriptor aliases.
+private let STDIN_FILENO: Int32 = 0
+private let STDOUT_FILENO: Int32 = 1
+#endif
 
 /// Writes renderer output to the real terminal, bypassing any active
 /// ``SessionPrintCapture`` redirection of `stdout`.
@@ -24,8 +34,17 @@ enum TerminalOutput {
         let bytes = Array(string.utf8)
         var offset = 0
         while offset < bytes.count {
-            let written = bytes[offset...].withUnsafeBytes { buffer in
-                Darwin.write(fd, buffer.baseAddress, buffer.count)
+            let written = bytes[offset...].withUnsafeBytes { buffer -> Int in
+                guard let base = buffer.baseAddress else { return -1 }
+                #if canImport(Darwin)
+                return Darwin.write(fd, base, buffer.count)
+                #elseif canImport(Glibc)
+                return Glibc.write(fd, base, buffer.count)
+                #elseif os(Windows)
+                return Int(_write(fd, base, UInt32(buffer.count)))
+                #else
+                return -1
+                #endif
             }
             if written <= 0 { return }
             offset += written
@@ -71,18 +90,35 @@ final class SessionPrintCapture: @unchecked Sendable {
         guard !active else { return false }
 
         var fds: [Int32] = [0, 0]
+        #if os(Windows)
+        guard _pipe(&fds, 4096, 0x8000 /* _O_BINARY */) == 0 else { return false }
+        let saved = _dup(STDOUT_FILENO)
+        #else
         guard pipe(&fds) == 0 else { return false }
         let saved = dup(STDOUT_FILENO)
+        #endif
         guard saved >= 0 else {
+            #if os(Windows)
+            _close(fds[0]); _close(fds[1])
+            #else
             close(fds[0]); close(fds[1])
+            #endif
             return false
         }
         fflush(stdout)
+        #if os(Windows)
+        guard _dup2(fds[1], STDOUT_FILENO) >= 0 else {
+            _close(fds[0]); _close(fds[1]); _close(saved)
+            return false
+        }
+        _close(fds[1])
+        #else
         guard dup2(fds[1], STDOUT_FILENO) >= 0 else {
             close(fds[0]); close(fds[1]); close(saved)
             return false
         }
         close(fds[1])
+        #endif
         // stdout now feeds a pipe (not a TTY), which would switch stdio to
         // full buffering — force line buffering so prints arrive promptly.
         setvbuf(stdout, nil, _IOLBF, 0)
@@ -99,7 +135,11 @@ final class SessionPrintCapture: @unchecked Sendable {
             var pending: [UInt8] = []
             var buffer = [UInt8](repeating: 0, count: 4096)
             while true {
+                #if os(Windows)
+                let count = Int(_read(readFD, &buffer, UInt32(buffer.count)))
+                #else
                 let count = read(readFD, &buffer, buffer.count)
+                #endif
                 if count <= 0 { break }
                 pending.append(contentsOf: buffer[0..<count])
                 // Deliver complete lines; keep a partial tail (and any split
@@ -136,11 +176,21 @@ final class SessionPrintCapture: @unchecked Sendable {
         lock.unlock()
 
         fflush(stdout)                  // push straggling stdio bytes into the pipe
-        dup2(saved, STDOUT_FILENO)      // the pipe loses its last writer → EOF
+        #if os(Windows)
+        _dup2(saved, STDOUT_FILENO)     // the pipe loses its last writer → EOF
+        #else
+        dup2(saved, STDOUT_FILENO)
+        #endif
         setvbuf(stdout, nil, _IOLBF, 0)
         TerminalOutput.fd = STDOUT_FILENO
+        #if os(Windows)
+        _close(saved)
+        done?.wait()
+        _close(readFD)
+        #else
         close(saved)
         done?.wait()                    // the drain thread has delivered everything
         close(readFD)
+        #endif
     }
 }

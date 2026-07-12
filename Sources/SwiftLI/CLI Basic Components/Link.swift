@@ -36,7 +36,7 @@ import Foundation
 /// the destination with the system `open` command. A one-shot `render()`
 /// outside a runtime keeps the plain, non-focusable output above.
 public struct Link: View, Sendable {
-    let header: String
+    let style: TextStyle
     let label: String
     let destination: String
 
@@ -46,42 +46,40 @@ public struct Link: View, Sendable {
     ///   - label: The visible, localized text.
     ///   - destination: The URL opened when the link is activated.
     public init(_ label: LocalizedStringKey, destination: String) {
-        self.header = ""
+        self.style = .plain
         self.label = String(localized: label.localizationValue)
         self.destination = destination
     }
 
-    init(header: String, label: String, destination: String) {
-        self.header = header
+    init(style: TextStyle, label: String, destination: String) {
+        self.style = style
         self.label = label
         self.destination = destination
     }
 
-    /// The OSC 8 "open" sequence carrying the destination, terminated by ST.
-    private var openSequence: String {
-        "\u{001B}]8;;\(destination)\u{001B}\\"
-    }
-
+    /// The content of this view; always empty because ``Link`` is rendered
+    /// entirely through ``makeNode()``.
     public var body: some View {
         EmptyView()
     }
 
     @_spi(RenderingInternals)
-    public func addHeader(_ header: String) -> Self {
-        .init(header: header + self.header, label: label, destination: destination)
+    public func applyingStyle(_ style: TextStyle) -> Self {
+        .init(style: self.style.inheriting(style), label: label, destination: destination)
     }
 
-    /// Lowers to a styled ``RenderNode/text`` whose header opens the OSC 8
-    /// hyperlink. The rendering pipeline measures only the label's width (the
-    /// escape occupies no columns) and the canvas emits each label cell as a
-    /// self-contained clickable unit.
+    /// Lowers to a styled ``RenderNode/text`` whose style carries the OSC 8
+    /// hyperlink destination. The rendering pipeline measures only the label's
+    /// width (the escape occupies no columns) and the canvas emits each label
+    /// cell as a self-contained clickable unit.
     ///
     /// Inside a reactive runtime the link additionally registers itself in the
     /// focus ring so <kbd>Return</kbd>/<kbd>Space</kbd> open the destination.
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
-        var head = header
+        var resolved = style
         let interactive = AppRuntime.shared != nil || BodyRenderingStore.shared.sessionActive
+        var controlID: String?
         if interactive {
             let id = "Link:\(destination):\(label)"
             let destination = self.destination
@@ -89,23 +87,40 @@ public struct Link: View, Sendable {
                 LinkOpener.handler(destination)
             }
             KeyInputRouter.shared.ensureStarted()
+            controlID = id
             if FocusCoordinator.shared.isFocused(id) {
-                // Focused: cyan + underline, like a highlighted hyperlink.
-                head = "\u{001B}[36m\u{001B}[4m" + head
+                // Focused: cyan + underline, like a highlighted hyperlink —
+                // a fallback the link's own style overrides.
+                resolved = resolved.inheriting(TextStyle(foreground: .cyan, isUnderlined: true))
             }
         }
-        return .text(header: openSequence + head, contents: [label])
+        if resolved.link == nil {
+            resolved.link = destination
+        }
+        let node = RenderNode.text(style: resolved.resolving(), contents: [label])
+        return controlID.map { node.asControl(id: $0) } ?? node
     }
 }
 
 /// Opens a ``Link``'s destination. The handler is swappable so tests can
 /// observe activations without launching the system opener.
 enum LinkOpener {
-    /// Launches the system `open` command with the destination.
+    /// Launches the system URL opener with the destination.
+    ///
+    /// Uses `open` on macOS and `xdg-open` on Linux.
     nonisolated(unsafe) static var handler: (String) -> Void = { destination in
         let process = Process()
+        #if os(macOS)
         process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
         process.arguments = [destination]
+        #elseif os(Windows)
+        // cmd /c start "" <url> opens the URL in the default browser.
+        process.executableURL = URL(fileURLWithPath: "C:\\Windows\\System32\\cmd.exe")
+        process.arguments = ["/c", "start", "", destination]
+        #else
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/xdg-open")
+        process.arguments = [destination]
+        #endif
         try? process.run()
     }
 }

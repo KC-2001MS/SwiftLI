@@ -44,11 +44,15 @@ struct TableCommand: FullScreenCommand {
 
     var body: some Scene {
         NavigationStack {
-            Table(people, selection: $selection, height: 10) {
+            // Table-specific modifier: tableStyle picks the table chrome
+            // (.automatic is the built-in style).
+            Table(people, selection: $selection) {
                 TableColumn("Name") { $0.name }
                 TableColumn("Role", width: 12) { $0.role }
                 TableColumn("Email") { $0.email }
             }
+                .tableStyle(.automatic)
+                .frame(height: 10)
                 .navigationTitle("Table")
                 .navigationSubtitle("↑/↓: select   Home/End: jump   header stays pinned   Ctrl-C: quit")
 

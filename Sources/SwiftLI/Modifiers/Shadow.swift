@@ -8,10 +8,10 @@
 
 /// A modifier that draws a drop shadow along a view's right and bottom edges.
 struct ShadowModifier: ViewModifier {
-    let header: String
+    let style: TextStyle
 
     func node(for content: RenderNode) -> RenderNode {
-        .shadow(header: header, child: content)
+        .shadow(style: style.resolving(), child: content)
     }
 
     /// The shadow band occupies one column to the right of the content.
@@ -35,6 +35,6 @@ public extension View {
     ///   grey from the 256-colour palette (index 236).
     /// - Returns: A view with a drop shadow along its right and bottom edges.
     func shadow(_ color: Color = .eight_bit(236)) -> some View {
-        modifier(ShadowModifier(header: "\u{001B}[4\(color.ansi)m"))
+        modifier(ShadowModifier(style: TextStyle(background: color)))
     }
 }

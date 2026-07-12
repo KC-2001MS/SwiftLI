@@ -27,7 +27,7 @@ public struct VStack: View, @unchecked Sendable {
     private let children: [any View]
     private let spacing: Int
     private let alignment: HorizontalAlignment
-    private let header: String
+    private let style: TextStyle
 
     /// Creates a VStack with the given children and optional spacing.
     /// - Parameters:
@@ -42,7 +42,7 @@ public struct VStack: View, @unchecked Sendable {
         self.alignment = alignment
         self.spacing = spacing
         self.children = content()._flattenedChildren()
-        self.header = ""
+        self.style = .plain
     }
 
     /// Creates a VStack directly from an array of views (bypasses ``ViewBuilder``).
@@ -55,28 +55,29 @@ public struct VStack: View, @unchecked Sendable {
         self.alignment = alignment
         self.spacing = spacing
         self.children = children
-        self.header = ""
+        self.style = .plain
     }
 
     init(
         alignment: HorizontalAlignment,
         spacing: Int,
         children: [any View],
-        header: String
+        style: TextStyle
     ) {
         self.alignment = alignment
         self.spacing = spacing
         self.children = children
-        self.header = header
+        self.style = style
     }
 
+    /// The content of this view; rendering is delegated to ``makeNode()``.
     public var body: some View {
         EmptyView()
     }
 
     @_spi(RenderingInternals)
-    public func addHeader(_ newHeader: String) -> VStack {
-        VStack(alignment: alignment, spacing: spacing, children: children, header: newHeader + header)
+    public func applyingStyle(_ style: TextStyle) -> VStack {
+        VStack(alignment: alignment, spacing: spacing, children: children, style: self.style.inheriting(style))
     }
 
     /// Lowers this stack into an ``RenderNode/vstack`` node.
@@ -91,6 +92,6 @@ public struct VStack: View, @unchecked Sendable {
             spacing: spacing,
             children: children.map { $0.makeNode() }
         )
-        return header.isEmpty ? node : node.applyingHeader(header)
+        return style.isPlain ? node : node.applyingStyle(style)
     }
 }

@@ -93,17 +93,18 @@ public struct _ConditionalContent<TrueContent: View, FalseContent: View>: View {
 
     let storage: Storage
 
+    /// The rendered content of the active branch; rendering is delegated to the internal render system.
     public var body: some View {
         EmptyView()
     }
 
     @_spi(RenderingInternals)
-    public func addHeader(_ header: String) -> Self {
+    public func applyingStyle(_ style: TextStyle) -> Self {
         switch storage {
         case .trueContent(let content):
-            return .init(storage: .trueContent(content.addHeader(header)))
+            return .init(storage: .trueContent(content.applyingStyle(style)))
         case .falseContent(let content):
-            return .init(storage: .falseContent(content.addHeader(header)))
+            return .init(storage: .falseContent(content.applyingStyle(style)))
         }
     }
 
@@ -132,13 +133,14 @@ public struct _ConditionalContent<TrueContent: View, FalseContent: View>: View {
 extension Optional: Scene where Wrapped: View {}
 
 extension Optional: View where Wrapped: View {
+    /// The rendered content; produces ``EmptyView`` when the value is `nil`.
     public var body: some View {
         EmptyView()
     }
 
     @_spi(RenderingInternals)
-    public func addHeader(_ header: String) -> Self {
-        self?.addHeader(header)
+    public func applyingStyle(_ style: TextStyle) -> Self {
+        self?.applyingStyle(style)
     }
 
     @_spi(RenderingInternals)
@@ -151,4 +153,3 @@ extension Optional: View where Wrapped: View {
         self?._flattenedChildren() ?? []
     }
 }
-

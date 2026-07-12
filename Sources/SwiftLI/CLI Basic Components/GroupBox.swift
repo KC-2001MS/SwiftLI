@@ -35,8 +35,12 @@ public protocol GroupBoxStyle: Sendable {
 /// The default group box style — a bold title above the content, wrapped in a
 /// padded rounded border. Equivalent to ``GroupBoxStyle/automatic``.
 public struct DefaultGroupBoxStyle: GroupBoxStyle {
+    /// Creates a default group box style.
     public init() {}
 
+    /// Returns a view that renders a bold title above the grouped content in a padded rounded border.
+    ///
+    /// - Parameter configuration: The box's title and grouped content.
     public func makeBody(configuration: GroupBoxStyleConfiguration) -> some View {
         var items: [any View] = []
         if let label = configuration.label {
@@ -110,6 +114,7 @@ public struct GroupBox: View {
         self.style = style
     }
 
+    /// The rendered output of this group box, composed using the resolved style.
     public var body: some View {
         // Nearest wins: instance style, then subtree environment, then default.
         let resolvedStyle = style ?? EnvironmentStack.current.groupBoxStyle ?? AnyGroupBoxStyle(DefaultGroupBoxStyle())

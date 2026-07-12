@@ -162,6 +162,7 @@ public struct OnAppearView: View {
         self.key = key
     }
 
+    /// The nominal view body; not used by the runtime because `makeNode()` is overridden.
     public var body: some View {
         // makeNode() is overridden, so body is not used by the runtime.
         EmptyView()
@@ -208,6 +209,7 @@ public struct TaskView: View, @unchecked Sendable {
         self.action = action
     }
 
+    /// The nominal view body; not used by the runtime because `makeNode()` is overridden.
     public var body: some View {
         // makeNode() is overridden, so body is not used by the runtime.
         EmptyView()

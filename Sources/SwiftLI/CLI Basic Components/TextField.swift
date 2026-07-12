@@ -20,6 +20,9 @@ public struct TextFieldStyleConfiguration {
     /// The edit position within ``text`` (clamped to its length). Meaningful
     /// while the field is focused.
     public let cursorIndex: Int
+    /// The owning field's identity, so built-in styles can mark the text run
+    /// as a pointer sub-region (a click on it moves the cursor there).
+    var _controlID: String? = nil
 }
 
 /// A type that defines the appearance of a ``TextField``.
@@ -45,18 +48,28 @@ public protocol TextFieldStyle: Sendable {
 /// at the edit position, and the placeholder dimmed when the field is empty
 /// and unfocused. Equivalent to ``TextFieldStyle/automatic``.
 public struct DefaultTextFieldStyle: TextFieldStyle {
+    /// Creates a default text field style.
     public init() {}
 
+    /// Returns a view that renders the text field with a focus marker and block cursor.
+    ///
+    /// - Parameter configuration: The field's placeholder, text, focus state, and cursor position.
     public func makeBody(configuration: TextFieldStyleConfiguration) -> some View {
         let value = configuration.text
         let focused = configuration.isFocused
         let marker = focused ? "> " : "  "
 
+        // The editable run is a pointer sub-region: a click on it moves the
+        // cursor to the clicked column.
+        func textRegion(_ content: any View) -> HitRegion {
+            HitRegion(controlID: configuration._controlID, role: MouseTargetRegistry.textRole, content: content)
+        }
+
         let composed: Group
         if value.isEmpty && !focused {
             composed = Group(contents: [
                 Text(content: marker),
-                Text(content: configuration.placeholder).forgroundColor(.eight_bit(240))
+                textRegion(Text(content: configuration.placeholder).forgroundColor(.eight_bit(240)))
             ])
         } else if focused {
             let chars = Array(value)
@@ -65,14 +78,17 @@ public struct DefaultTextFieldStyle: TextFieldStyle {
             let cursorChar = c < chars.count ? String(chars[c]) : " "
             let after = c < chars.count ? String(chars[(c + 1)...]) : ""
 
-            var children: [any View] = [Text(content: marker).forgroundColor(.cyan)]
-            if !before.isEmpty { children.append(Text(content: before)) }
+            var cells: [any View] = []
+            if !before.isEmpty { cells.append(Text(content: before)) }
             // Block cursor: reverse the foreground/background of the cell.
-            children.append(Text(content: cursorChar).background(.white).forgroundColor(.black))
-            if !after.isEmpty { children.append(Text(content: after)) }
-            composed = Group(contents: children)
+            cells.append(Text(content: cursorChar).background(.white).forgroundColor(.black))
+            if !after.isEmpty { cells.append(Text(content: after)) }
+            composed = Group(contents: [
+                Text(content: marker).forgroundColor(.cyan),
+                textRegion(HStack(spacing: 0) { Group(contents: cells) })
+            ])
         } else {
-            composed = Group(contents: [Text(content: marker), Text(content: value)])
+            composed = Group(contents: [Text(content: marker), textRegion(Text(content: value))])
         }
 
         // Lay the pieces out on a single row.
@@ -130,7 +146,7 @@ struct AnyTextFieldStyle: TextFieldStyle, @unchecked Sendable {
 /// > text. Give each field a distinct placeholder, or pass an explicit `id`,
 /// > when several share the same placeholder.
 public struct TextField: View {
-    let header: String
+    let textStyle: TextStyle
     /// Stable identity used to track focus and cursor position across renders.
     let id: String
     let placeholder: String
@@ -153,7 +169,7 @@ public struct TextField: View {
         onSubmit: (() -> Void)? = nil
     ) {
         let resolved = String(localized: placeholder.localizationValue)
-        self.header = ""
+        self.textStyle = .plain
         self.id = id ?? resolved
         self.placeholder = resolved
         self.text = text
@@ -161,8 +177,8 @@ public struct TextField: View {
         self.style = nil
     }
 
-    init(header: String, id: String, placeholder: String, text: Binding<String>, onSubmit: (() -> Void)?, style: AnyTextFieldStyle? = nil) {
-        self.header = header
+    init(textStyle: TextStyle, id: String, placeholder: String, text: Binding<String>, onSubmit: (() -> Void)?, style: AnyTextFieldStyle? = nil) {
+        self.textStyle = textStyle
         self.id = id
         self.placeholder = placeholder
         self.text = text
@@ -170,13 +186,14 @@ public struct TextField: View {
         self.style = style
     }
 
+    /// The view content of the text field; rendering is handled by ``makeNode()``.
     public var body: some View {
         EmptyView()
     }
 
     @_spi(RenderingInternals)
-    public func addHeader(_ newHeader: String) -> Self {
-        TextField(header: newHeader + header, id: id, placeholder: placeholder, text: text, onSubmit: onSubmit, style: style)
+    public func applyingStyle(_ style: TextStyle) -> Self {
+        TextField(textStyle: textStyle.inheriting(style), id: id, placeholder: placeholder, text: text, onSubmit: onSubmit, style: self.style)
     }
 
     /// Registers the field for keyboard handling and lowers its current
@@ -192,19 +209,21 @@ public struct TextField: View {
 
         // Nearest wins: instance style, then subtree environment, then default.
         let resolvedStyle = style ?? EnvironmentStack.current.textFieldStyle ?? AnyTextFieldStyle(DefaultTextFieldStyle())
-        let node = resolvedStyle.makeBody(configuration: TextFieldStyleConfiguration(
+        var configuration = TextFieldStyleConfiguration(
             placeholder: placeholder,
             text: text.wrappedValue,
             isFocused: focused,
             cursorIndex: FocusCoordinator.shared.cursor(for: id)
-        )).makeNode()
-        return header.isEmpty ? node : node.applyingHeader(header)
+        )
+        configuration._controlID = id
+        let node = resolvedStyle.makeBody(configuration: configuration).makeNode()
+        return (textStyle.isPlain ? node : node.applyingStyle(textStyle)).asControl(id: id)
     }
 
     /// Sets the style used to compose this text field.
     ///
     /// - Parameter newStyle: A value conforming to ``TextFieldStyle``.
     public func textFieldStyle(_ newStyle: some TextFieldStyle) -> Self {
-        TextField(header: header, id: id, placeholder: placeholder, text: text, onSubmit: onSubmit, style: AnyTextFieldStyle(newStyle))
+        TextField(textStyle: textStyle, id: id, placeholder: placeholder, text: text, onSubmit: onSubmit, style: AnyTextFieldStyle(newStyle))
     }
 }

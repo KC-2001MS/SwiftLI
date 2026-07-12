@@ -53,7 +53,7 @@ public struct TextEditor: View {
         case indent
     }
 
-    let header: String
+    let style: TextStyle
     let id: String
     let placeholder: String
     let text: Binding<String>
@@ -71,7 +71,7 @@ public struct TextEditor: View {
     ///     scrollbar). `nil` grows to fit all lines.
     public init(_ placeholder: LocalizedStringKey = "", text: Binding<String>, id: String? = nil, tabBehavior: TabBehavior = .focus, height: Int? = nil) {
         let resolved = String(localized: placeholder.localizationValue)
-        self.header = ""
+        self.style = .plain
         self.id = id ?? (resolved.isEmpty ? "TextEditor" : resolved)
         self.placeholder = resolved
         self.text = text
@@ -79,8 +79,8 @@ public struct TextEditor: View {
         self.height = height
     }
 
-    init(header: String, id: String, placeholder: String, text: Binding<String>, tabBehavior: TabBehavior, height: Int?) {
-        self.header = header
+    init(style: TextStyle, id: String, placeholder: String, text: Binding<String>, tabBehavior: TabBehavior, height: Int?) {
+        self.style = style
         self.id = id
         self.placeholder = placeholder
         self.text = text
@@ -88,13 +88,14 @@ public struct TextEditor: View {
         self.height = height
     }
 
+    /// The content and behavior of the text editor view.
     public var body: some View {
         EmptyView()
     }
 
     @_spi(RenderingInternals)
-    public func addHeader(_ newHeader: String) -> Self {
-        TextEditor(header: newHeader + header, id: id, placeholder: placeholder, text: text, tabBehavior: tabBehavior, height: height)
+    public func applyingStyle(_ style: TextStyle) -> Self {
+        TextEditor(style: self.style.inheriting(style), id: id, placeholder: placeholder, text: text, tabBehavior: tabBehavior, height: height)
     }
 
     @_spi(RenderingInternals)
@@ -113,7 +114,7 @@ public struct TextEditor: View {
                 Text(content: placeholder).forgroundColor(.eight_bit(240))
             }
             let node = row.makeNode()
-            return header.isEmpty ? node : node.applyingHeader(header)
+            return (style.isPlain ? node : node.applyingStyle(style)).asControl(id: id)
         }
 
         // Locate the cursor's line and column from its flat character offset.
@@ -132,7 +133,8 @@ public struct TextEditor: View {
         // line so the cursor column stays visible (the whole viewport shifts,
         // like a terminal editor in no-wrap mode).
         let gutterWidth = 2
-        let scrollsVertically = height.map { lines.count > $0 } ?? false
+        let resolvedHeight = height ?? EnvironmentStack.current.maxHeight
+        let scrollsVertically = lines.count > resolvedHeight
         let contentWidth = Swift.max(1, EnvironmentStack.current.maxWidth - gutterWidth - (scrollsVertically ? 1 : 0))
         // One extra column so the block cursor fits at the end of the longest line.
         let totalColumns = lines.reduce(0) { Swift.max($0, $1.count) } + 1
@@ -151,21 +153,30 @@ public struct TextEditor: View {
             let gutter = Text(content: "│ ").forgroundColor(focused ? .cyan : .eight_bit(240))
             let lineChars = Array(line)
             let windowEnd = Swift.min(lineChars.count, hOffset + contentWidth)
+            // Each line's visible text (after the gutter) is a pointer
+            // sub-region: a click on it moves the cursor to that position.
+            func lineRegion(_ content: any View) -> HitRegion {
+                HitRegion(controlID: id, role: MouseTargetRegistry.lineRole(index), content: content)
+            }
             if focused && index == cursorLine {
                 let col = Swift.min(Swift.max(cursorColumn, hOffset), lineChars.count)
                 let before = hOffset < col ? String(lineChars[hOffset..<col]) : ""
                 let cursorChar = col < lineChars.count ? String(lineChars[col]) : " "
                 let after = (col + 1) < windowEnd ? String(lineChars[(col + 1)..<windowEnd]) : ""
 
-                var cells: [any View] = [gutter]
+                var cells: [any View] = []
                 if !before.isEmpty { cells.append(Text(content: before)) }
                 cells.append(Text(content: cursorChar).background(.white).forgroundColor(.black))
                 if !after.isEmpty { cells.append(Text(content: after)) }
-                rows.append(HStack(spacing: 0) { Group(contents: cells) })
+                rows.append(HStack(spacing: 0) {
+                    Group(contents: [gutter, lineRegion(HStack(spacing: 0) { Group(contents: cells) })])
+                })
             } else {
                 let visible = hOffset < lineChars.count ? String(lineChars[hOffset..<windowEnd]) : ""
+                // An empty window still gets a one-cell region, so clicking
+                // an empty line can land the cursor on it.
                 rows.append(HStack(spacing: 0) {
-                    Group(contents: [gutter, Text(content: visible)])
+                    Group(contents: [gutter, lineRegion(Text(content: visible.isEmpty ? " " : visible))])
                 })
             }
         }
@@ -174,12 +185,12 @@ public struct TextEditor: View {
         // controlled ``ScrollView`` (same viewport machinery as List/Table);
         // otherwise grow to fit every line.
         let node: RenderNode
-        if let height, rows.count > height {
-            let offset = FocusCoordinator.shared.editorScrollOffset(id: id, cursorLine: cursorLine, viewport: height, totalLines: rows.count)
-            node = ScrollView(height: height, offset: offset, focused: focused, showsIndicators: true, content: rows).makeNode()
+        if scrollsVertically {
+            let offset = FocusCoordinator.shared.editorScrollOffset(id: id, cursorLine: cursorLine, viewport: resolvedHeight, totalLines: rows.count)
+            node = ScrollView(height: resolvedHeight, offset: offset, focused: focused, showsIndicators: true, content: rows).makeNode()
         } else {
             node = VStack(alignment: .leading, children: rows).makeNode()
         }
-        return header.isEmpty ? node : node.applyingHeader(header)
+        return (style.isPlain ? node : node.applyingStyle(style)).asControl(id: id)
     }
 }

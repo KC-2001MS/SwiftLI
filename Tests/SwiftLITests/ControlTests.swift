@@ -962,6 +962,111 @@ struct SessionPrintCaptureTests {
         #expect(elapsed < 1.5)      // the default linger would be at least 2 s
     }
 
+    @Test(".commands adds a menu bar whose title toggles its items open and closed")
+    func menuBarCommands() async throws {
+        struct Fixture: FullScreenCommand {
+            var body: some Scene {
+                Text("content")
+                    .commands {
+                        CommandMenu("File") {
+                            Button("Open") { }
+                            Button("Save") { }
+                        }
+                        CommandMenu("Help") {
+                            Button("About") { }
+                        }
+                    }
+            }
+        }
+
+        let coord = FocusCoordinator.shared
+        coord.reset()
+        MenuBarCoordinator.shared.reset()
+        defer {
+            coord.reset()
+            MenuBarCoordinator.shared.reset()
+        }
+
+        let fixture = Fixture()
+
+        // Closed: the bar shows the titles, not the items.
+        var out = TextMetrics.stripANSI(fixture._composedSceneRoot().renderString())
+        #expect(out.contains("File"))
+        #expect(out.contains("Help"))
+        #expect(out.contains("content"))
+        #expect(!out.contains("Open"))
+
+        // The first title auto-focuses; activating it opens the menu.
+        #expect(coord.handle(.enter))
+        out = TextMetrics.stripANSI(fixture._composedSceneRoot().renderString())
+        #expect(out.contains("Open"))
+        #expect(out.contains("Save"))
+
+        // Activating the focused title again closes it.
+        #expect(coord.handle(.enter))
+        out = TextMetrics.stripANSI(fixture._composedSceneRoot().renderString())
+        #expect(!out.contains("Open"))
+    }
+
+    @Test("The menu bar is opt-in, sits above the title bar and toolbar, and expands downward")
+    func menuBarPlacement() async throws {
+        struct Bare: FullScreenCommand {
+            var body: some Scene {
+                NavigationStack {
+                    Text("content").navigationTitle("Doc")
+                }
+            }
+        }
+        struct WithBar: FullScreenCommand {
+            var body: some Scene {
+                NavigationStack {
+                    Text("content")
+                        .navigationTitle("Doc")
+                        .toolbar {
+                            ToolbarItem { Text("tool") }
+                        }
+                }
+                .commands {
+                    CommandMenu("File") { Button("Open") { } }
+                    CommandMenu("Edit") { Button("Cut") { } }
+                }
+            }
+        }
+
+        let coord = FocusCoordinator.shared
+        coord.reset()
+        MenuBarCoordinator.shared.reset()
+        defer {
+            coord.reset()
+            MenuBarCoordinator.shared.reset()
+        }
+
+        // Opt-in: without .commands no bar is composed.
+        let bare = TextMetrics.stripANSI(Bare()._composedSceneRoot().renderString())
+        #expect(!bare.contains("File"))
+
+        // The bar row precedes the title bar and its toolbar items, and the
+        // titles run leading-first in declaration order.
+        let out = TextMetrics.stripANSI(WithBar()._composedSceneRoot().renderString())
+        let file = try #require(out.range(of: "File"))
+        let edit = try #require(out.range(of: "Edit"))
+        let title = try #require(out.range(of: "Doc"))
+        let tool = try #require(out.range(of: "tool"))
+        #expect(file.lowerBound < edit.lowerBound)     // leading side first
+        #expect(edit.upperBound < title.lowerBound)    // bar above the title bar
+        #expect(edit.upperBound < tool.lowerBound)     // …and above the toolbar
+
+        // Opening a menu expands its items downward: beneath the bar row,
+        // above the content that follows.
+        #expect(coord.handle(.enter))                  // first control = "File"
+        let open = TextMetrics.stripANSI(WithBar()._composedSceneRoot().renderString())
+        let bar = try #require(open.range(of: "Edit"))
+        let item = try #require(open.range(of: "Open"))
+        let content = try #require(open.range(of: "content"))
+        #expect(bar.upperBound < item.lowerBound)
+        #expect(item.upperBound < content.lowerBound)
+    }
+
     @Test("DismissAction requests the session exit that the run loops poll")
     func dismissRequestsExit() {
         BodyRenderingStore.shared.resetExit()

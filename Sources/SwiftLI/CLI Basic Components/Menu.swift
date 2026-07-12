@@ -34,8 +34,12 @@ public protocol MenuStyle: Sendable {
 /// The default menu style — a bold heading with the items indented two
 /// columns beneath it. Equivalent to ``MenuStyle/automatic``.
 public struct DefaultMenuStyle: MenuStyle {
+    /// Creates a default menu style.
     public init() {}
 
+    /// Returns a view that renders the menu with a bold heading above indented items.
+    ///
+    /// - Parameter configuration: The menu's heading and stacked items.
     public func makeBody(configuration: MenuStyleConfiguration) -> some View {
         if let label = configuration.label { label.bold() }
         configuration.content.padding(.leading, 2)
@@ -120,6 +124,7 @@ public struct Menu: View {
         self.style = style
     }
 
+    /// The rendered view produced by applying the resolved menu style.
     public var body: some View {
         // Nearest wins: instance style, then subtree environment, then default.
         let resolvedStyle = style ?? EnvironmentStack.current.menuStyle ?? AnyMenuStyle(DefaultMenuStyle())

@@ -70,7 +70,7 @@ struct DashboardCommand: FullScreenCommand {
                     ForEach(0..<tasks.count) { index in
                         HStack(spacing: 1) {
                             Text(pad(tasks[index], to: 9))
-                            Gauge(value: progress(for: index), width: 18)
+                            Gauge(value: progress(for: index)).frame(width: 18, alignment: .topLeading)
                         }
                     }
                 }
@@ -80,7 +80,7 @@ struct DashboardCommand: FullScreenCommand {
                 // Right: overall progress and live stats.
                 VStack(alignment: .leading) {
                     Text("Overall").bold().underline().forgroundColor(.cyan)
-                    Gauge(value: overall, width: 24)
+                    Gauge(value: overall).frame(width: 24, alignment: .topLeading)
                     Text("Completed : \(completed)/\(tasks.count)").forgroundColor(.green)
                         .padding(.top, 1)
                     Text("Remaining : \(tasks.count - completed)").forgroundColor(.yellow)

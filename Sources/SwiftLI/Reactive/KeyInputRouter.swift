@@ -36,11 +36,28 @@ final class KeyInputRouter: @unchecked Sendable {
     func ensureStarted() {
         lock.lock()
         guard reader == nil else { lock.unlock(); return }
-        let r = KeyboardReader { key in
+        // Mouse reporting is on for every interactive session. Full-screen
+        // frames start at the terminal's first row, so a report's coordinates
+        // address the frame directly; an inline frame sits wherever the
+        // scrollback put it, so ``InlineRenderer`` follows each render with a
+        // cursor-position query (CSI 6n) and the report below resolves the
+        // frame's origin row.
+        let r = KeyboardReader(enableMouse: true) { key in
             switch key {
             case .interrupt:
                 AppRuntime.shared?.stop()
                 BodyRenderingStore.shared.requestExit()
+            case .mouse(let event):
+                // Only redraw when something reacted — motion reports would
+                // otherwise schedule render after render.
+                if FocusCoordinator.shared.handleMouse(event) {
+                    AppRuntime.shared?.scheduleRender()
+                    StateObserverRegistry.shared.notifyChange()
+                }
+            case .cursorPosition(let row, _):
+                // The answer to the inline renderer's origin query — pure
+                // bookkeeping, never a reason to redraw.
+                MouseTargetRegistry.shared.resolveInlineOrigin(parkedRow: row)
             default:
                 _ = FocusCoordinator.shared.handle(key)
                 // Redraw so focus/cursor moves show even without a text change.
@@ -51,6 +68,14 @@ final class KeyInputRouter: @unchecked Sendable {
         reader = r
         lock.unlock()
         r.start()
+    }
+
+    /// Whether the terminal is currently reporting mouse events. The inline
+    /// renderer checks this before emitting its cursor-position query, so a
+    /// non-interactive render never writes escape queries into piped output.
+    var isMouseTrackingActive: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return reader?.isMouseTracking == true
     }
 
     /// Stops the reader and restores the terminal. Safe to call when never

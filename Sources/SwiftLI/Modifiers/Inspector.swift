@@ -51,8 +51,8 @@ struct InspectorModifier: View, @unchecked Sendable {
     }
 
     @_spi(RenderingInternals)
-    public func addHeader(_ header: String) -> Self {
-        InspectorModifier(content: content.addHeader(header), isPresented: isPresented, inspector: inspector)
+    public func applyingStyle(_ style: TextStyle) -> Self {
+        InspectorModifier(content: content.applyingStyle(style), isPresented: isPresented, inspector: inspector)
     }
 
     @_spi(RenderingInternals)

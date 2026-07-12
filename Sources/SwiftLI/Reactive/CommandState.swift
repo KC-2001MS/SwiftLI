@@ -39,6 +39,9 @@ import Foundation
 public struct CommandState<Value: Sendable>: Sendable {
     private let storage: CommandStateStorage<Value>
 
+    /// Creates a `CommandState` with an initial value.
+    ///
+    /// - Parameter wrappedValue: The initial value of the state.
     public init(wrappedValue: Value) {
         self.storage = CommandStateStorage(value: wrappedValue)
     }

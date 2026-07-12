@@ -47,7 +47,10 @@ struct TextFieldCommand: FullScreenCommand {
                 .navigationSubtitle("Tab: move focus   Enter on Name: jump to Email   Ctrl-C: quit")
             HStack(spacing: 1) {
                 Text("Email :")
+                // TextField-specific modifier: textFieldStyle picks the field
+                // chrome (.automatic is the built-in style).
                 TextField("Enter your email", text: $email, onSubmit: { submitted = true })
+                    .textFieldStyle(.automatic)
                     .focused($focus, equals: .email)
             }
 

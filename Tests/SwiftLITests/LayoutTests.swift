@@ -220,7 +220,7 @@ struct FrameWrappingTests {
     @Test("A scroll node shows a height-row window offset from the top")
     func scrollWindow() {
         let content = RenderNode.vstack(alignment: .leading, spacing: 0, children:
-            (0..<10).map { RenderNode.text(header: "", contents: ["Row \($0)"]) })
+            (0..<10).map { RenderNode.text(style: .plain, contents: ["Row \($0)"]) })
         // Offset 3, viewport 4, no scrollbar → rows 3..6.
         let node = RenderNode.scroll(offset: 3, height: 4, bar: nil, width: nil, child: content)
         let lines = plainLines(node).filter { !$0.isEmpty }
@@ -232,22 +232,20 @@ struct FrameWrappingTests {
     @Test("A scroll offset past the end is clamped to the last window")
     func scrollClampsAtEnd() {
         let content = RenderNode.vstack(alignment: .leading, spacing: 0, children:
-            (0..<5).map { RenderNode.text(header: "", contents: ["L\($0)"]) })
+            (0..<5).map { RenderNode.text(style: .plain, contents: ["L\($0)"]) })
         let node = RenderNode.scroll(offset: 99, height: 3, bar: nil, width: nil, child: content)
         let lines = plainLines(node).filter { !$0.isEmpty }
         #expect(lines == ["L2", "L3", "L4"])
     }
 
     private var plainBar: ScrollBar {
-        ScrollBar(thumbForeground: "\u{001B}[36m",
-                  trackForeground: "\u{001B}[38;5;238m",
-                  trackBackground: "\u{001B}[48;5;238m")
+        ScrollBar(thumb: .cyan, track: .eight_bit(238))
     }
 
     @Test("The scrollbar is pinned to the far edge of the viewport's width")
     func scrollBarAtFarEdge() {
         let content = RenderNode.vstack(alignment: .leading, spacing: 0, children:
-            (0..<6).map { RenderNode.text(header: "", contents: ["ab\($0)"]) })
+            (0..<6).map { RenderNode.text(style: .plain, contents: ["ab\($0)"]) })
         let node = RenderNode.scroll(offset: 0, height: 3, bar: plainBar, width: 12, child: content)
         let lines = plainLines(node)
         #expect(lines.count == 3)
@@ -266,7 +264,7 @@ struct FrameWrappingTests {
         // ends land mid-cell: ▄ on the entering cell, ▀ on the leaving one,
         // and the remaining track cells stay solid — no gaps anywhere.
         let content = RenderNode.vstack(alignment: .leading, spacing: 0, children:
-            (0..<8).map { RenderNode.text(header: "", contents: ["r\($0)"]) })
+            (0..<8).map { RenderNode.text(style: .plain, contents: ["r\($0)"]) })
         let node = RenderNode.scroll(offset: 1, height: 4, bar: plainBar, width: nil, child: content)
         let caps = plainLines(node).map { String($0.suffix(1)) }
         #expect(caps == ["▄", "█", "▀", "█"])

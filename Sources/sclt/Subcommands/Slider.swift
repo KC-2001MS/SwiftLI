@@ -31,10 +31,13 @@ struct SliderCommand: FullScreenCommand {
 
     var body: some Scene {
         NavigationStack {
-            Slider("Volume", value: $volume, in: 0...100, step: 5, width: 30)
+            Slider("Volume", value: $volume, in: 0...100, step: 5)
                 .navigationTitle("Slider")
                 .navigationSubtitle("←/→: step   Home/End: min/max   Tab: focus   Ctrl-C: quit")
-            Slider("Brightness", value: $brightness, width: 30)
+            // Slider-specific modifier: sliderStyle picks the track's
+            // appearance (.automatic is the filled track with a round thumb).
+            Slider("Brightness", value: $brightness)
+                .sliderStyle(.automatic)
 
             Divider()
                 .padding(.top, 1)

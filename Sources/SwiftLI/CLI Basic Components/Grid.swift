@@ -35,6 +35,7 @@ public struct VGrid: View {
         self.children = content()._flattenedChildren()
     }
 
+    /// The content of the grid, rendered as a vertical stack of rows.
     public var body: some View {
         VStack(alignment: .leading, spacing: spacing, children: rows)
     }
@@ -58,7 +59,7 @@ public struct VGrid: View {
             for c in 0..<(end - i) {
                 cells.append(children[i + c].frame(width: colWidth[c], alignment: .topLeading))
             }
-            rows.append(HStack(alignment: .top, spacing: spacing, children: cells, header: ""))
+            rows.append(HStack(alignment: .top, spacing: spacing, children: cells, style: .plain))
             i = end
         }
         return rows
@@ -93,8 +94,9 @@ public struct HGrid: View {
         self.children = content()._flattenedChildren()
     }
 
+    /// The content of the grid, rendered as a horizontal stack of columns.
     public var body: some View {
-        HStack(alignment: .top, spacing: spacing, children: columns, header: "")
+        HStack(alignment: .top, spacing: spacing, children: columns, style: .plain)
     }
 
     /// The children chunked into columns, each cell padded to its row height.

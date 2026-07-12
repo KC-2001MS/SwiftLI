@@ -42,6 +42,16 @@ struct MenuCommand: FullScreenCommand {
                 .navigationTitle("Menu")
                 .navigationSubtitle("Tab: focus   Return/Space: activate   Ctrl-C: quit")
 
+            // Menu-specific modifier: menuStyle picks how the heading and
+            // items are composed (.automatic indents the items beneath a
+            // bold heading).
+            Menu("Edit") {
+                Button("Copy") { lastAction = "Copy" }
+                Button("Paste") { lastAction = "Paste" }
+            }
+                .menuStyle(.automatic)
+                .padding(.top, 1)
+
             HStack(spacing: 1) {
                 Text("Docs:")
                 Link("SwiftLI on GitHub", destination: "https://github.com/KC-2001MS/SwiftLI")

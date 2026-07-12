@@ -91,6 +91,15 @@ final class InlineRenderer: @unchecked Sendable {
         previousFrame = frame
         previousColumns = columns
         previousRows = size.rows
+
+        // Mouse reports carry absolute screen coordinates, but an inline
+        // frame sits wherever the scrollback put it. The cursor now rests on
+        // the row just below the frame, so ask the terminal where that is
+        // (CSI 6n); the reply resolves the frame's origin row for routing.
+        if KeyInputRouter.shared.isMouseTrackingActive {
+            MouseTargetRegistry.shared.noteInlineFrame(height: frame.lines.count)
+            TerminalOutput.write("\u{001B}[6n")
+        }
     }
 
     /// Called once when body rendering is complete.

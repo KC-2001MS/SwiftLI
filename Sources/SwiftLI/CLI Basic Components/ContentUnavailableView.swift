@@ -21,14 +21,14 @@
 /// .render()
 /// ```
 public struct ContentUnavailableView: View {
-    let header: String
+    let style: TextStyle
     let image: String
     let title: String
     let description: String?
 
     /// Initializer used internally for modifier chaining.
-    init(header: String, image: String, title: String, description: String?) {
-        self.header = header
+    init(style: TextStyle, image: String, title: String, description: String?) {
+        self.style = style
         self.image = image
         self.title = title
         self.description = description
@@ -46,12 +46,13 @@ public struct ContentUnavailableView: View {
         image: String = "",
         description: LocalizedStringKey? = nil
     ) {
-        self.header = ""
+        self.style = .plain
         self.image = image
         self.title = String(localized: title.localizationValue)
         self.description = description.map { String(localized: $0.localizationValue) }
     }
 
+    /// The rendered content of the empty-state view: an optional icon, a bold title, and an optional dimmed description.
     public var body: some View {
         if !image.isEmpty {
             Text(content: image)
@@ -63,15 +64,15 @@ public struct ContentUnavailableView: View {
     }
 
     @_spi(RenderingInternals)
-    public func addHeader(_ header: String) -> Self {
-        .init(header: header + self.header, image: image, title: title, description: description)
+    public func applyingStyle(_ style: TextStyle) -> Self {
+        .init(style: self.style.inheriting(style), image: image, title: title, description: description)
     }
 
     /// Lowers the empty-state view by building its body, then cascading the
-    /// view's own style header onto the resulting node.
+    /// view's own style onto the resulting node.
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
         let node = body.makeNode()
-        return header.isEmpty ? node : node.applyingHeader(header)
+        return style.isPlain ? node : node.applyingStyle(style)
     }
 }

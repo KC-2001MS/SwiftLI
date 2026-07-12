@@ -21,6 +21,7 @@ public struct KeyDecoder: Sendable {
     /// complete key (a split UTF-8 character or escape sequence).
     private var pending: [UInt8] = []
 
+    /// Creates a new, empty `KeyDecoder` with no pending bytes.
     public init() {}
 
     /// Feeds raw bytes and returns every fully-decoded key event.
@@ -102,6 +103,21 @@ public struct KeyDecoder: Sendable {
             return (.escape, 1, false)
         }
 
+        // Legacy X10 mouse report: "ESC [ M" followed by three raw bytes
+        // (button+32, column+32, row+32). The 'M' would otherwise read as a
+        // final byte with no parameters, leaving the three payload bytes to
+        // be misdecoded as typed characters.
+        if second == 0x5B, start + 2 < buf.count, buf[start + 2] == 0x4D /* M */ {
+            guard start + 6 <= buf.count else { return (nil, 0, true) }
+            let cb = Int(buf[start + 3]) - 32
+            let column = Int(buf[start + 4]) - 33   // 1-based → 0-based
+            let row = Int(buf[start + 5]) - 33
+            // X10 encodes a release as button code 3, without saying which
+            // button; report it as the primary button.
+            let event = mouseEvent(cb: cb, column: column, row: row, isRelease: (cb & 0b11) == 3)
+            return (event, 6, false)
+        }
+
         // Collect until a final byte in the range 0x40...0x7E.
         var j = start + 2
         while j < buf.count {
@@ -120,6 +136,29 @@ public struct KeyDecoder: Sendable {
 
     /// Maps a CSI/SS3 final byte (and any numeric parameters) to a ``KeyEvent``.
     private static func interpretCSI(final: UInt8, params: [UInt8]) -> KeyEvent? {
+        // SGR mouse report: "ESC [ < cb ; cx ; cy M" (press/motion/wheel) or
+        // "... m" (release), with 1-based coordinates.
+        if params.first == 0x3C /* < */, final == 0x4D /* M */ || final == 0x6D /* m */ {
+            let fields = String(decoding: params.dropFirst(), as: UTF8.self)
+                .split(separator: ";")
+                .compactMap { Int($0) }
+            guard fields.count == 3 else { return nil }
+            return mouseEvent(cb: fields[0], column: fields[1] - 1, row: fields[2] - 1, isRelease: final == 0x6D)
+        }
+        // Cursor-position report: "ESC [ row ; col R" (1-based), the answer
+        // to a CSI 6n query. Both parameters must be present — a bare
+        // "ESC [ R" (some terminals' F3) is not a report. A parametrised
+        // "ESC [ 1;2R" is indistinguishable from Shift-F3 on rxvt-family
+        // terminals; it is decoded as a position report and silently ignored
+        // by resolveInlineOrigin when no cursor query is outstanding, so
+        // Shift-F3 will not arrive as a key event on those terminals.
+        if final == 0x52 /* R */ {
+            let fields = String(decoding: params, as: UTF8.self)
+                .split(separator: ";")
+                .compactMap { Int($0) }
+            guard fields.count == 2 else { return nil }
+            return .cursorPosition(row: fields[0] - 1, column: fields[1] - 1)
+        }
         switch final {
         case 0x41: return .up        // A
         case 0x42: return .down      // B
@@ -138,6 +177,45 @@ public struct KeyDecoder: Sendable {
         default:
             return nil
         }
+    }
+
+    /// Builds a ``KeyEvent/mouse(_:)`` from a decoded button code and 0-based
+    /// position, or `nil` for reports SwiftLI doesn't act on.
+    ///
+    /// The button code packs the button in bits 0–1, modifiers in bits 2–4
+    /// (ignored), motion in bit 5, and the wheel in bit 6.
+    private static func mouseEvent(cb: Int, column: Int, row: Int, isRelease: Bool) -> KeyEvent? {
+        guard column >= 0, row >= 0 else { return nil }
+        let kind: MouseEvent.Kind
+        if cb & 64 != 0 {
+            // Wheel/swipe: 64=up, 65=down, 66=left, 67=right.
+            switch cb & 0b11 {
+            case 0: kind = .scrollUp
+            case 1: kind = .scrollDown
+            case 2: kind = .scrollLeft
+            case 3: kind = .scrollRight
+            default: return nil
+            }
+        } else {
+            let button: MouseEvent.Button?
+            switch cb & 0b11 {
+            case 0: button = .left
+            case 1: button = .middle
+            case 2: button = .right
+            default: button = nil   // 3 = "no button" (X10 release / motion)
+            }
+            if cb & 32 != 0 {
+                // Motion while tracking: a drag with a button, else a move.
+                kind = button.map { .drag($0) } ?? .move
+            } else if isRelease {
+                kind = .release(button ?? .left)
+            } else if let button {
+                kind = .press(button)
+            } else {
+                return nil
+            }
+        }
+        return .mouse(MouseEvent(kind: kind, column: column, row: row))
     }
 
     // MARK: - UTF-8

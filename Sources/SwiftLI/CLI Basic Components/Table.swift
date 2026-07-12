@@ -41,8 +41,11 @@ public struct TableColumn<RowValue>: @unchecked Sendable {
 /// A result builder that collects the ``TableColumn``s of a ``Table``.
 @resultBuilder
 public enum TableColumnBuilder<RowValue> {
+    /// Lifts a single ``TableColumn`` expression into the builder pipeline.
     public static func buildExpression(_ expression: TableColumn<RowValue>) -> TableColumn<RowValue> { expression }
+    /// Combines multiple ``TableColumn`` expressions into an ordered array.
     public static func buildBlock(_ components: TableColumn<RowValue>...) -> [TableColumn<RowValue>] { components }
+    /// Flattens an array of column arrays produced by control-flow statements such as `for`-`in`.
     public static func buildArray(_ components: [[TableColumn<RowValue>]]) -> [TableColumn<RowValue>] { components.flatMap { $0 } }
 }
 
@@ -87,8 +90,12 @@ public protocol TableStyle: Sendable {
 /// The default table style — a bold header row, and the selected row cyan and
 /// bold while focused (dimmed when not). Equivalent to ``TableStyle/automatic``.
 public struct DefaultTableStyle: TableStyle {
+    /// Creates a default table style instance.
     public init() {}
 
+    /// Returns a decorated view for one table row using the default styling rules.
+    ///
+    /// - Parameter configuration: The laid-out row and its header/selection state.
     public func makeBody(configuration: TableStyleConfiguration) -> AnyView {
         if configuration.isHeader {
             return AnyView(erasing: configuration.row.bold())
@@ -163,7 +170,7 @@ public struct Table<Data: RandomAccessCollection>: View, @unchecked Sendable {
     /// Columns are separated by this many blank columns.
     private static var columnGap: Int { 2 }
 
-    private let header: String
+    private let textStyle: TextStyle
     private let id: String
     private let data: Data
     private let columns: [TableColumn<Data.Element>]
@@ -190,7 +197,7 @@ public struct Table<Data: RandomAccessCollection>: View, @unchecked Sendable {
         id: String = "Table",
         @TableColumnBuilder<Data.Element> columns: () -> [TableColumn<Data.Element>]
     ) {
-        self.header = ""
+        self.textStyle = .plain
         self.id = id
         self.data = data
         self.columns = columns()
@@ -199,8 +206,8 @@ public struct Table<Data: RandomAccessCollection>: View, @unchecked Sendable {
         self.style = nil
     }
 
-    init(header: String, id: String, data: Data, columns: [TableColumn<Data.Element>], selection: Binding<Int?>?, height: Int?, style: AnyTableStyle? = nil) {
-        self.header = header
+    init(textStyle: TextStyle, id: String, data: Data, columns: [TableColumn<Data.Element>], selection: Binding<Int?>?, height: Int?, style: AnyTableStyle? = nil) {
+        self.textStyle = textStyle
         self.id = id
         self.data = data
         self.columns = columns
@@ -209,13 +216,14 @@ public struct Table<Data: RandomAccessCollection>: View, @unchecked Sendable {
         self.style = style
     }
 
+    /// The view body; rendering is performed entirely inside ``makeNode()``.
     public var body: some View {
         EmptyView()
     }
 
     @_spi(RenderingInternals)
-    public func addHeader(_ newHeader: String) -> Self {
-        Table(header: newHeader + header, id: id, data: data, columns: columns, selection: selection, height: height, style: style)
+    public func applyingStyle(_ style: TextStyle) -> Self {
+        Table(textStyle: textStyle.inheriting(style), id: id, data: data, columns: columns, selection: selection, height: height, style: self.style)
     }
 
     @_spi(RenderingInternals)
@@ -228,16 +236,17 @@ public struct Table<Data: RandomAccessCollection>: View, @unchecked Sendable {
         let totalWidth = widths.reduce(0, +) + gap * (widths.count - 1)
 
         // Register for input; decide focus + selection + scroll behaviour.
-        let scrolls = height != nil && rows.count > (height ?? 0)
+        let resolvedHeight = height ?? EnvironmentStack.current.maxHeight
+        let scrolls = rows.count > resolvedHeight
         var focused = false
         var selectedIndex: Int? = nil
         if let selection {
-            FocusCoordinator.shared.registerList(id: id, selection: selection, count: rows.count, viewportRows: scrolls ? height : nil)
+            FocusCoordinator.shared.registerList(id: id, selection: selection, count: rows.count, viewportRows: scrolls ? resolvedHeight : nil)
             KeyInputRouter.shared.ensureStarted()
             focused = FocusCoordinator.shared.isFocused(id)
             selectedIndex = selection.wrappedValue
         } else if scrolls {
-            FocusCoordinator.shared.registerScroll(id: id, viewportHeight: height ?? 0, contentHeight: rows.count)
+            FocusCoordinator.shared.registerScroll(id: id, viewportHeight: resolvedHeight, contentHeight: rows.count)
             KeyInputRouter.shared.ensureStarted()
             focused = FocusCoordinator.shared.isFocused(id)
         }
@@ -264,15 +273,17 @@ public struct Table<Data: RandomAccessCollection>: View, @unchecked Sendable {
         // Pin the header/rule; scroll only the body by composing a controlled
         // ``ScrollView`` (which owns the .scroll IR and the scrollbar).
         let bodyNode: RenderNode
-        if scrolls, let height {
+        if scrolls {
             let offset = selection != nil ? FocusCoordinator.shared.listOffset(for: id) : FocusCoordinator.shared.scrollOffset(for: id)
-            bodyNode = ScrollView(height: height, offset: offset, focused: focused, showsIndicators: true, content: bodyRows).makeNode()
+            bodyNode = ScrollView(height: resolvedHeight, offset: offset, focused: focused, showsIndicators: true, content: bodyRows).makeNode()
         } else {
             bodyNode = VStack(alignment: .leading, spacing: 0, children: bodyRows).makeNode()
         }
 
         let node = RenderNode.vstack(alignment: .leading, spacing: 0, children: [headerNode, ruleNode, bodyNode])
-        return header.isEmpty ? node : node.applyingHeader(header)
+        let styled = textStyle.isPlain ? node : node.applyingStyle(textStyle)
+        // Interactive only when it registered above (selectable or scrolling).
+        return (selection != nil || scrolls) ? styled.asControl(id: id) : styled
     }
 
     /// Builds one undecorated table row: each cell clipped to its column width
@@ -293,7 +304,7 @@ public struct Table<Data: RandomAccessCollection>: View, @unchecked Sendable {
     ///
     /// - Parameter newStyle: A value conforming to ``TableStyle``.
     public func tableStyle(_ newStyle: some TableStyle) -> Self {
-        Table(header: header, id: id, data: data, columns: columns, selection: selection, height: height, style: AnyTableStyle(newStyle))
+        Table(textStyle: textStyle, id: id, data: data, columns: columns, selection: selection, height: height, style: AnyTableStyle(newStyle))
     }
 
     /// Resolves each column's width so the row fills the terminal: flexible

@@ -27,6 +27,9 @@ public struct ToggleStyleConfiguration {
 /// ``SwitchToggleStyle``.
 public protocol ToggleStyle: Sendable {
     associatedtype Body: View
+    /// Produces the view representing the toggle for the given configuration.
+    /// - Parameter configuration: The toggle's current state and label.
+    /// - Returns: A view that renders the toggle.
     @ViewBuilder func makeBody(configuration: ToggleStyleConfiguration) -> Body
 }
 
@@ -35,8 +38,12 @@ public protocol ToggleStyle: Sendable {
 /// A `Yes` / `No` selector — the classic confirmation prompt. The chosen side
 /// is bracketed and coloured; the focused control brightens both options.
 public struct YesNoToggleStyle: ToggleStyle {
+    /// Creates a `YesNoToggleStyle`.
     public init() {}
 
+    /// Produces a `Yes` / `No` selector view for the given configuration.
+    /// - Parameter configuration: The toggle's current state and label.
+    /// - Returns: A view displaying the `Yes` and `No` options.
     public func makeBody(configuration: ToggleStyleConfiguration) -> some View {
         let on = configuration.isOn
         let focused = configuration.isFocused
@@ -58,8 +65,12 @@ public struct YesNoToggleStyle: ToggleStyle {
 
 /// A `[x]` / `[ ]` checkbox followed by the label.
 public struct CheckboxToggleStyle: ToggleStyle {
+    /// Creates a `CheckboxToggleStyle`.
     public init() {}
 
+    /// Produces a checkbox view for the given configuration.
+    /// - Parameter configuration: The toggle's current state and label.
+    /// - Returns: A view displaying a `[x]` or `[ ]` checkbox with the label.
     public func makeBody(configuration: ToggleStyleConfiguration) -> some View {
         let box = configuration.isOn ? "[x]" : "[ ]"
         return HStack(spacing: 1) {
@@ -73,8 +84,12 @@ public struct CheckboxToggleStyle: ToggleStyle {
 /// the value is unambiguous: `[──●] ON` in green when on, `[●──] OFF` in grey
 /// when off. The label precedes it, and a focused switch shows a `>` marker.
 public struct SwitchToggleStyle: ToggleStyle {
+    /// Creates a `SwitchToggleStyle`.
     public init() {}
 
+    /// Produces a sliding-knob switch view for the given configuration.
+    /// - Parameter configuration: The toggle's current state and label.
+    /// - Returns: A view displaying a track, knob, and colour-coded state word.
     public func makeBody(configuration: ToggleStyleConfiguration) -> some View {
         let on = configuration.isOn
         // The knob sits on the side that is active, and the state word repeats
@@ -97,8 +112,12 @@ public struct SwitchToggleStyle: ToggleStyle {
 /// answer is echoed after the colon (with a block cursor while focused) and
 /// <kbd>Return</kbd> confirms.
 public struct PromptToggleStyle: ToggleStyle {
+    /// Creates a `PromptToggleStyle`.
     public init() {}
 
+    /// Produces a typed `[y/n]` prompt view for the given configuration.
+    /// - Parameter configuration: The toggle's current state and label.
+    /// - Returns: A view displaying the label, `[y/n]:` hint, and the current answer.
     public func makeBody(configuration: ToggleStyleConfiguration) -> some View {
         let answer = configuration.isOn ? "y" : "n"
         return HStack(spacing: 0) {
@@ -151,7 +170,7 @@ struct AnyToggleStyle: ToggleStyle, @unchecked Sendable {
 /// }
 /// ```
 public struct Toggle: View {
-    let header: String
+    let textStyle: TextStyle
     let id: String
     let label: AnyView?
     let isOn: Binding<Bool>
@@ -173,7 +192,7 @@ public struct Toggle: View {
         id: String? = nil
     ) {
         let resolved = String(localized: label.localizationValue)
-        self.header = ""
+        self.textStyle = .plain
         self.id = id ?? (resolved.isEmpty ? "Toggle" : resolved)
         self.label = resolved.isEmpty ? nil : AnyView(Text(content: resolved))
         self.isOn = isOn
@@ -191,28 +210,30 @@ public struct Toggle: View {
         id: String = "Toggle",
         @ViewBuilder label: () -> Label
     ) {
-        self.header = ""
+        self.textStyle = .plain
         self.id = id
         self.label = AnyView(label())
         self.isOn = isOn
         self.style = nil
     }
 
-    init(header: String, id: String, label: AnyView?, isOn: Binding<Bool>, style: AnyToggleStyle?) {
-        self.header = header
+    init(textStyle: TextStyle, id: String, label: AnyView?, isOn: Binding<Bool>, style: AnyToggleStyle?) {
+        self.textStyle = textStyle
         self.id = id
         self.label = label
         self.isOn = isOn
         self.style = style
     }
 
+    /// The content and behavior of the toggle; always an `EmptyView` because
+    /// rendering is driven by ``makeNode()`` rather than the SwiftUI body pipeline.
     public var body: some View {
         EmptyView()
     }
 
     @_spi(RenderingInternals)
-    public func addHeader(_ newHeader: String) -> Self {
-        Toggle(header: newHeader + header, id: id, label: label, isOn: isOn, style: style)
+    public func applyingStyle(_ style: TextStyle) -> Self {
+        Toggle(textStyle: textStyle.inheriting(style), id: id, label: label, isOn: isOn, style: self.style)
     }
 
     @_spi(RenderingInternals)
@@ -228,12 +249,12 @@ public struct Toggle: View {
         // Nearest wins: instance style, then subtree environment, then default.
         let resolvedStyle = style ?? EnvironmentStack.current.toggleStyle ?? AnyToggleStyle(YesNoToggleStyle())
         let node = resolvedStyle.makeBody(configuration: configuration).makeNode()
-        return header.isEmpty ? node : node.applyingHeader(header)
+        return (textStyle.isPlain ? node : node.applyingStyle(textStyle)).asControl(id: id)
     }
 
     /// Sets the style used to render this toggle.
     /// - Parameter newStyle: A value conforming to ``ToggleStyle``.
     public func toggleStyle(_ newStyle: some ToggleStyle) -> Self {
-        Toggle(header: header, id: id, label: label, isOn: isOn, style: AnyToggleStyle(newStyle))
+        Toggle(textStyle: textStyle, id: id, label: label, isOn: isOn, style: AnyToggleStyle(newStyle))
     }
 }

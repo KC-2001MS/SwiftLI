@@ -48,19 +48,19 @@ struct GaugeCommand: FullScreenCommand {
 
             HStack(spacing: 1) {
                 Text("Bar        ").forgroundColor(.red)
-                Gauge(min: min, value: progress, max: max, width: 30)
+                Gauge(min: min, value: progress, max: max).frame(width: 30, alignment: .topLeading)
             }
                 .padding(.top, 1)
 
             HStack(spacing: 1) {
                 Text("Linear     ").forgroundColor(.red)
-                Gauge(min: min, value: progress, max: max, width: 30)
+                Gauge(min: min, value: progress, max: max).frame(width: 30, alignment: .topLeading)
                     .gaugeStyle(LinearGaugeStyle())
             }
 
             HStack(spacing: 1) {
                 Text("Percentage ").forgroundColor(.red)
-                Gauge(min: min, value: progress, max: max, width: 30)
+                Gauge(min: min, value: progress, max: max).frame(width: 30, alignment: .topLeading)
                     .gaugeStyle(PercentageGaugeStyle())
             }
 

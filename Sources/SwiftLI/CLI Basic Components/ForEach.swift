@@ -53,7 +53,7 @@
 ///     .forgroundColor(.green)   // every row becomes green
 /// ```
 public struct ForEach<Data: RandomAccessCollection, Content: View>: View {
-    let header: String
+    let style: TextStyle
 
     /// The collection whose elements drive the iteration.
     let data: Data
@@ -72,28 +72,29 @@ public struct ForEach<Data: RandomAccessCollection, Content: View>: View {
         _ data: Data,
         @ViewBuilder content: @escaping (Data.Element) -> Content
     ) {
-        self.header = ""
+        self.style = .plain
         self.data = data
         self.content = content
     }
 
     init(
-        header: String,
+        style: TextStyle,
         data: Data,
         content: @escaping (Data.Element) -> Content
     ) {
-        self.header = header
+        self.style = style
         self.data = data
         self.content = content
     }
 
+    /// The content and behavior of this view.
     public var body: some View {
         EmptyView()
     }
 
     @_spi(RenderingInternals)
-    public func addHeader(_ header: String) -> Self {
-        ForEach(header: header + self.header, data: data, content: content)
+    public func applyingStyle(_ style: TextStyle) -> Self {
+        ForEach(style: self.style.inheriting(style), data: data, content: content)
     }
 
     /// Lowers the iteration into a transparent ``RenderNode/group`` node whose
@@ -101,19 +102,19 @@ public struct ForEach<Data: RandomAccessCollection, Content: View>: View {
     ///
     /// Because the result is a group, the layout engine flattens it into the
     /// enclosing stack — a `ForEach` adds no spacing or alignment of its own.
-    /// Any accumulated style header is cascaded onto every generated child.
+    /// Any accumulated style is cascaded onto every generated child.
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
         let node = RenderNode.group(children: data.map { content($0).makeNode() })
-        return header.isEmpty ? node : node.applyingHeader(header)
+        return style.isPlain ? node : node.applyingStyle(style)
     }
 
     /// A `ForEach` is transparent: every generated view (itself flattened)
     /// joins the enclosing container individually, with the accumulated style
-    /// header cascaded onto each.
+    /// cascaded onto each.
     @_spi(RenderingInternals)
     public func _flattenedChildren() -> [any View] {
         let views = data.flatMap { content($0)._flattenedChildren() }
-        return header.isEmpty ? views : views.map { $0.addHeader(header) }
+        return style.isPlain ? views : views.map { $0.applyingStyle(style) }
     }
 }

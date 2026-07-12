@@ -53,6 +53,14 @@ struct ProgressViewCommand: FullScreenCommand {
                 ProgressView(phase: tick)
             }
 
+            // ProgressView-specific modifier: progressViewStyle picks the
+            // indicator's appearance (.automatic is the cyan spinner).
+            HStack(spacing: 1) {
+                Text(".progressViewStyle(.automatic)").forgroundColor(.red)
+                ProgressView("Styled", phase: tick)
+                    .progressViewStyle(.automatic)
+            }
+
             Divider()
                 .padding(.top, 1)
             Text("Ctrl-C to quit").forgroundColor(.eight_bit(240))

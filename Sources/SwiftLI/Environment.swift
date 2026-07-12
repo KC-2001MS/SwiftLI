@@ -236,6 +236,9 @@ private struct DismissKey: EnvironmentKey {
 // mirroring how `@FocusState` participates in decoding. Other environment
 // values belong in child views, which have no `Decodable` requirement.
 extension Environment: Decodable where Value == DismissAction {
+    /// Creates the wrapper by decoding `\.dismiss` from the environment,
+    /// enabling `@Environment(\.dismiss)` to appear directly in an
+    /// `AsyncParsableCommand` without breaking its `Decodable` synthesis.
     public init(from decoder: any Decoder) throws {
         self.init(\.dismiss)
     }
@@ -373,6 +376,8 @@ public struct Environment<Value>: @unchecked Sendable {
         self.read = { EnvironmentStack.current[T.self] }
     }
 
+    /// The current environment value for the key path or object type this
+    /// wrapper was initialised with, read from the active environment scope.
     public var wrappedValue: Value {
         read()
     }
@@ -390,8 +395,8 @@ struct EnvironmentWritingView: View, @unchecked Sendable {
         EmptyView()
     }
 
-    func addHeader(_ header: String) -> Self {
-        EnvironmentWritingView(content: content.addHeader(header), transform: transform)
+    func applyingStyle(_ style: TextStyle) -> Self {
+        EnvironmentWritingView(content: content.applyingStyle(style), transform: transform)
     }
 
     func makeNode() -> RenderNode {

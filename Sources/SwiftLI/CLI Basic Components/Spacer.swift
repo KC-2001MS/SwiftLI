@@ -37,7 +37,7 @@
 /// }
 /// ```
 public struct Spacer: View, Sendable, Equatable {
-    let header: String
+    let style: TextStyle
 
     /// The minimum number of cells the spacer occupies — space columns
     /// inside an ``HStack`` (where it then expands to the available width),
@@ -52,24 +52,27 @@ public struct Spacer: View, Sendable, Equatable {
     ///   ``HStack``, before expansion) or blank rows (everywhere else) to
     ///   insert. `nil` — the default — means one cell.
     public init(minLength: Int? = nil) {
-        self.header = ""
+        self.style = .plain
         self.minLength = minLength ?? 1
     }
 
-    init(header: String, minLength: Int) {
-        self.header = header
+    init(style: TextStyle, minLength: Int) {
+        self.style = style
         self.minLength = minLength
     }
 
     // MARK: - View (vertical / default context)
 
+    /// The content of this spacer, which renders as an empty view.
+    ///
+    /// The actual spacing behaviour is provided by the layout engine via ``makeNode()``.
     public var body: some View {
         EmptyView()
     }
 
     @_spi(RenderingInternals)
-    public func addHeader(_ header: String) -> Self {
-        return Spacer(header: header + self.header, minLength: self.minLength)
+    public func applyingStyle(_ style: TextStyle) -> Self {
+        return Spacer(style: self.style.inheriting(style), minLength: self.minLength)
     }
 
     /// Lowers this spacer into a direction-adaptive ``RenderNode/spacer`` node.
@@ -78,7 +81,7 @@ public struct Spacer: View, Sendable, Equatable {
     /// inside an ``HStack`` and as vertical blank rows everywhere else.
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
-        .spacer(header: header, minLength: minLength)
+        .spacer(style: style.resolving(), minLength: minLength)
     }
 
     // MARK: - Modifiers
@@ -90,6 +93,6 @@ public struct Spacer: View, Sendable, Equatable {
     ///
     /// - Parameter color: The background color to apply.
     public func background(_ color: Color) -> Spacer {
-        return .init(header: "\(header)\u{001B}[4\(color.ansi)m", minLength: minLength)
+        return .init(style: TextStyle(background: color).inheriting(style), minLength: minLength)
     }
 }

@@ -45,6 +45,7 @@ final class FocusCoordinator: @unchecked Sendable {
     private var scrollOffsets: [String: Int] = [:]
     private var scrollViewportHeights: [String: Int] = [:]
     private var scrollContentHeights: [String: Int] = [:]
+    private var scrollIsHorizontal: [String: Bool] = [:]
     // Selectable lists (``List``): a selected-row binding, the row count, and —
     // when the list scrolls — the viewport height and current row offset.
     private var listSelections: [String: Binding<Int?>] = [:]
@@ -85,6 +86,20 @@ final class FocusCoordinator: @unchecked Sendable {
     // active one.
     private var suppressDepth = 0
 
+    // The slider whose track a left press captured: while held, every drag
+    // report re-maps the pointer's column onto the track, so the thumb
+    // follows the pointer. Cleared on release (or a press elsewhere).
+    private var mouseDragSliderID: String?
+
+    // Momentum scrolling: a repeating timer that continues advancing the
+    // scroll offset after the pointing device gesture ends. The timer fires
+    // every 16 ms (≈ 60 fps) with a decaying velocity, giving the same
+    // "flick" feel as native scroll views. A new gesture cancels any in-
+    // flight momentum and restarts it from the new velocity.
+    private var momentumTimer: DispatchSourceTimer?
+    private var momentumScrollID: String?
+    private var momentumVelocity: Double = 0
+
     // `@FocusState` integration. Each `.focused()` modifier pushes its callbacks
     // while its control is lowered; the control's registration links them to its
     // id. `onFocus`/`onUnfocus` sync the binding on focus changes; `isRequested`
@@ -117,8 +132,13 @@ final class FocusCoordinator: @unchecked Sendable {
     func beginRenderPass() {
         lock.lock()
         passDepth += 1
-        if passDepth == 1 { currentPassIDs = [] }
+        let outermost = passDepth == 1
+        if outermost { currentPassIDs = [] }
         lock.unlock()
+        // The hit-region registry double-buffers per pass in lockstep.
+        if outermost { MouseTargetRegistry.shared.beginPass() }
+        // Clear focused values so stale entries from removed views don't persist.
+        if outermost { FocusedValuesStore.shared.clear() }
     }
 
     /// Marks the end of a render pass, publishing the visible-control set.
@@ -126,6 +146,7 @@ final class FocusCoordinator: @unchecked Sendable {
         lock.lock()
         passDepth = Swift.max(0, passDepth - 1)
         guard passDepth == 0 else { lock.unlock(); return }
+        MouseTargetRegistry.shared.endPass()
         visibleIDs = currentPassIDs ?? []
         currentPassIDs = nil
         // A sticky refocus that no registration claimed: the control focused
@@ -172,6 +193,14 @@ final class FocusCoordinator: @unchecked Sendable {
     /// Whether registrations are currently suppressed. Must be called with
     /// `lock` held.
     private var isSuppressed: Bool { suppressDepth > 0 }
+
+    /// Whether control registration is currently suppressed — i.e. views are
+    /// being lowered for an inert navigation layer. Controls consult this so
+    /// inert layers don't record pointer hit regions either.
+    var isRegistrationSuppressed: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return suppressDepth > 0
+    }
 
     /// Clears the focus ring so the next render pass rebuilds it from the
     /// controls that actually register.
@@ -277,13 +306,18 @@ final class FocusCoordinator: @unchecked Sendable {
     /// to clamp its offset.
     ///
     /// - Parameters:
-    ///   - viewportHeight: The number of rows visible at once.
-    ///   - contentHeight: The full laid-out height of the scrolled content.
-    func registerScroll(id: String, viewportHeight: Int, contentHeight: Int) {
+    ///   - viewportHeight: The number of rows (or columns, for a horizontal
+    ///     viewport) visible at once.
+    ///   - contentHeight: The full laid-out height (or width) of the scrolled
+    ///     content.
+    ///   - isHorizontal: Whether the viewport scrolls horizontally. Affects
+    ///     which wheel/swipe events are routed here by the pointer handler.
+    func registerScroll(id: String, viewportHeight: Int, contentHeight: Int, isHorizontal: Bool = false) {
         lock.lock(); defer { lock.unlock() }
         guard !isSuppressed else { return }
         scrollViewportHeights[id] = viewportHeight
         scrollContentHeights[id] = contentHeight
+        scrollIsHorizontal[id] = isHorizontal
         if scrollOffsets[id] == nil { scrollOffsets[id] = 0 }
         // Re-clamp in case the content shrank since the last render.
         scrollOffsets[id] = clampScroll(scrollOffsets[id] ?? 0, id: id)
@@ -546,6 +580,314 @@ final class FocusCoordinator: @unchecked Sendable {
         return false
     }
 
+    // MARK: - Pointer handling (called from the runtime, main thread)
+
+    /// Routes a pointer event to the control under it.
+    ///
+    /// - A left-button press focuses the control and activates it the way its
+    ///   primary key would: a ``Button`` fires, a ``Toggle`` flips, a
+    ///   ``Picker`` advances, a ``List`` selects the clicked row. A click on
+    ///   a ``Slider``'s track jumps to the clicked value, and a click inside
+    ///   a ``TextField``/``TextEditor``'s text moves the cursor there. A
+    ///   press outside every control closes any open menu-bar menu.
+    /// - A press on a ``Slider``'s track also captures the pointer: while the
+    ///   button stays down, drag reports keep the thumb following the
+    ///   pointer's column, and the release lets go.
+    /// - The scroll wheel scrolls the ``ScrollView`` or scrolling ``List``
+    ///   under the pointer without moving focus.
+    ///
+    /// - Returns: `true` when the event was consumed (and the display should
+    ///   be refreshed).
+    @discardableResult
+    func handleMouse(_ event: MouseEvent) -> Bool {
+        // Reports use absolute screen coordinates; hit regions live in frame
+        // coordinates. Full-screen frames start at row 0; an inline frame's
+        // origin was resolved from a cursor-position report.
+        let column = event.column
+        let row = event.row - MouseTargetRegistry.shared.frameOriginRow
+
+        switch event.kind {
+        case .scrollUp, .scrollDown:
+            // Vertical wheel: step 3 cells per tick for a comfortable feel.
+            // Routes to any scroll view under the pointer regardless of axis,
+            // so vertical scroll also drives horizontal viewports on terminals
+            // that do not forward horizontal swipe events.
+            let delta = event.kind == .scrollUp ? -3 : 3
+            for region in MouseTargetRegistry.shared.hits(atColumn: column, row: row) {
+                let (id, role) = MouseTargetRegistry.parseRegionID(region.id)
+                guard role == nil else { continue }
+                if wheelScroll(id: id, by: delta) {
+                    launchMomentum(id: id, velocity: Double(delta))
+                    return true
+                }
+            }
+            return false
+        case .scrollLeft, .scrollRight:
+            // Horizontal swipe: step 3 columns per tick, routed only to
+            // horizontal scroll views. Works on terminals that send button
+            // codes 66/67 (iTerm2, kitty, WezTerm, etc.).
+            let delta = event.kind == .scrollLeft ? 3 : -3
+            for region in MouseTargetRegistry.shared.hits(atColumn: column, row: row) {
+                let (id, role) = MouseTargetRegistry.parseRegionID(region.id)
+                guard role == nil else { continue }
+                if wheelScrollHorizontal(id: id, by: delta) {
+                    launchMomentum(id: id, velocity: Double(delta))
+                    return true
+                }
+            }
+            return false
+        case .press(.left):
+            // A new press supersedes any capture still held from a previous
+            // one (its release may have been lost to a dropped report).
+            lock.lock(); mouseDragSliderID = nil; lock.unlock()
+            for region in MouseTargetRegistry.shared.hits(atColumn: column, row: row) {
+                let (id, role) = MouseTargetRegistry.parseRegionID(region.id)
+                if let role {
+                    if activatePart(of: id, role: role, rect: region.rect, column: column, row: row) {
+                        return true
+                    }
+                } else if activate(id: id, rect: region.rect, column: column, row: row) {
+                    return true
+                }
+            }
+            // A press on empty space closes an open menu-bar menu, the way a
+            // click outside a menu does on a desktop.
+            return MenuBarCoordinator.shared.closeIfOpen()
+        case .drag(.left):
+            // A drag captured by a slider's track: keep the thumb on the
+            // pointer's column, tracking the control's *current* rectangle
+            // (gaining focus on the press may have shifted it).
+            lock.lock(); let dragID = mouseDragSliderID; lock.unlock()
+            guard let dragID,
+                  let track = MouseTargetRegistry.shared.region(
+                      withID: MouseTargetRegistry.regionID(control: dragID, role: MouseTargetRegistry.trackRole))
+            else { return false }
+            return setSliderValue(id: dragID, trackRect: track.rect, column: column)
+        case .release:
+            // The button came up: end any capture. Nothing changed on screen.
+            lock.lock(); mouseDragSliderID = nil; lock.unlock()
+            return false
+        case .press, .drag, .move:
+            return false
+        }
+    }
+
+    /// Scrolls any wheel-scrollable control (``ScrollView`` or scrolling
+    /// ``List``) by `delta` cells, clamped. Returns `false` when `id` doesn't
+    /// scroll. Used for vertical wheel events, which drive any scroll view
+    /// regardless of axis.
+    private func wheelScroll(id: String, by delta: Int) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        if scrollViewportHeights[id] != nil {
+            scrollOffsets[id] = clampScroll((scrollOffsets[id] ?? 0) + delta, id: id)
+            return true
+        }
+        if let viewport = listViewports[id], viewport > 0 {
+            let count = listCounts[id] ?? 0
+            let maxOffset = Swift.max(0, count - viewport)
+            listOffsets[id] = Swift.min(Swift.max((listOffsets[id] ?? 0) + delta, 0), maxOffset)
+            return true
+        }
+        return false
+    }
+
+    /// Scrolls a horizontal ``ScrollView`` by `delta` columns, clamped.
+    /// Returns `false` when `id` is not a horizontal scroll view. Used for
+    /// horizontal swipe events from terminals that forward them (codes 66/67).
+    private func wheelScrollHorizontal(id: String, by delta: Int) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard scrollViewportHeights[id] != nil, scrollIsHorizontal[id] == true else { return false }
+        scrollOffsets[id] = clampScroll((scrollOffsets[id] ?? 0) + delta, id: id)
+        return true
+    }
+
+    /// Begins or resets a momentum-scroll animation for `id`.
+    ///
+    /// Call immediately after a successful wheel/swipe scroll. The timer fires
+    /// every ~16 ms (60 fps) starting 80 ms after this call, advancing the
+    /// offset with a velocity that decays by 22 % each frame. A new gesture
+    /// cancels any in-flight momentum by replacing the timer.
+    ///
+    /// Must be called on the main thread (same thread as the timer handler).
+    private func launchMomentum(id: String, velocity: Double) {
+        momentumTimer?.cancel()
+        momentumScrollID = id
+        // Boost the initial velocity so the post-gesture "flick" extends the
+        // effective scroll range without changing the per-event delta.
+        momentumVelocity = velocity * 2.2
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + 0.08,
+                       repeating: .milliseconds(16),
+                       leeway: .milliseconds(2))
+        timer.setEventHandler { [weak self] in
+            guard let self, self.momentumScrollID == id else { return }
+            self.momentumVelocity *= 0.78
+            let step = Int(self.momentumVelocity.rounded())
+            guard step != 0, self.momentumVelocity.magnitude >= 0.3 else {
+                self.momentumTimer?.cancel()
+                self.momentumTimer = nil
+                self.momentumScrollID = nil
+                return
+            }
+            self.lock.lock()
+            if self.scrollViewportHeights[id] != nil {
+                self.scrollOffsets[id] = self.clampScroll((self.scrollOffsets[id] ?? 0) + step, id: id)
+            } else if let viewport = self.listViewports[id], viewport > 0 {
+                let count = self.listCounts[id] ?? 0
+                let maxOff = Swift.max(0, count - viewport)
+                self.listOffsets[id] = Swift.min(Swift.max((self.listOffsets[id] ?? 0) + step, 0), maxOff)
+            }
+            self.lock.unlock()
+            AppRuntime.shared?.scheduleRender()
+        }
+        timer.resume()
+        momentumTimer = timer
+    }
+
+    /// Focuses the clicked control and performs its primary action. Returns
+    /// `false` when `id` is not (or no longer) a registered control.
+    ///
+    /// `column`/`row` are in frame coordinates, the same space as `rect`.
+    private func activate(id: String, rect: Rect, column: Int, row: Int) -> Bool {
+        lock.lock()
+        guard order.contains(id) else { lock.unlock(); return false }
+        setFocus(to: id)
+        let buttonAction = buttonActions[id]
+        let toggleBinding = boolBindings[id]
+        let pickerBinding = intBindings[id]
+        let pickerCount = optionCounts[id] ?? 0
+        let listBinding = listSelections[id]
+        let listCount = listCounts[id] ?? 0
+        let listViewport = listViewports[id]
+        let listOffset = listOffsets[id] ?? 0
+        lock.unlock()
+
+        // Act outside the lock: actions and binding setters run user code
+        // (and re-renders) that may re-enter the coordinator.
+        if let buttonAction {
+            buttonAction()
+            return true
+        }
+        if let toggleBinding {
+            toggleBinding.wrappedValue.toggle()
+            return true
+        }
+        if let pickerBinding, pickerCount > 0 {
+            // A click steps to the next option, like Space.
+            let current = Swift.min(Swift.max(pickerBinding.wrappedValue, 0), pickerCount - 1)
+            pickerBinding.wrappedValue = (current + 1) % pickerCount
+            return true
+        }
+        if let listBinding, listCount > 0 {
+            // Map the clicked row to a list row — only when every row occupies
+            // exactly one line, which is when the control's height matches the
+            // rows on screen (styles that add chrome rows opt out naturally).
+            let visibleRows = listViewport ?? listCount
+            if rect.size.height == visibleRows {
+                let target = row - rect.minRow + (listViewport != nil ? listOffset : 0)
+                if target >= 0 && target < listCount {
+                    listBinding.wrappedValue = target
+                }
+            }
+            return true
+        }
+        // Text fields, editors, scroll views: the click just moves focus.
+        return true
+    }
+
+    /// Focuses the control owning a clicked sub-region and maps the click to
+    /// a position within it: a slider's track sets the value, a text run sets
+    /// the cursor. Returns `false` when the owner is no longer registered.
+    ///
+    /// `column`/`row` are in frame coordinates, the same space as `rect`.
+    private func activatePart(of id: String, role: String, rect: Rect, column: Int, row: Int) -> Bool {
+        lock.lock()
+        guard order.contains(id) else { lock.unlock(); return false }
+        setFocus(to: id)
+        let isSlider = sliderBindings[id] != nil
+        let textBinding = bindings[id]
+        let hOffset = editorHOffsets[id] ?? 0
+        lock.unlock()
+
+        if role == MouseTargetRegistry.trackRole, isSlider {
+            // The press captures the pointer: until the release, drag reports
+            // keep re-mapping the column onto the track (see handleMouse).
+            lock.lock(); mouseDragSliderID = id; lock.unlock()
+            _ = setSliderValue(id: id, trackRect: rect, column: column)
+            return true
+        }
+
+        if role == MouseTargetRegistry.textRole, let textBinding {
+            // Single-line field: the clicked column, in display cells, maps
+            // to a character index (wide characters span two cells).
+            let index = Self.characterIndex(in: textBinding.wrappedValue, atVisibleColumn: column - rect.minColumn)
+            lock.lock(); cursors[id] = index; lock.unlock()
+            return true
+        }
+
+        if role.hasPrefix("line:"), let textBinding, let line = Int(role.dropFirst("line:".count)) {
+            // Editor line: the region starts at the visible text (after the
+            // gutter), horizontally scrolled by the editor's window offset.
+            // The editor addresses columns in characters, matching its layout.
+            let lines = textBinding.wrappedValue.components(separatedBy: "\n")
+            guard line >= 0, line < lines.count else { return true }
+            let clicked = Swift.max(0, column - rect.minColumn)
+            let target = Swift.min(hOffset + clicked, lines[line].count)
+            var flat = target
+            for l in lines[0..<line] { flat += l.count + 1 }
+            lock.lock(); cursors[id] = flat; lock.unlock()
+            return true
+        }
+
+        // Unknown role: the click at least focused the owner.
+        return true
+    }
+
+    /// Sets a slider's value from a pointer position on its track, snapping
+    /// to the keyboard step and clamping to the range. Shared by the initial
+    /// press and every subsequent drag report while the pointer is captured.
+    ///
+    /// Inverts the thumb placement (`thumbIndex = round(fraction × (w-1))`),
+    /// with the pointer's column clamped to the track — dragging past either
+    /// end pins the value there, like any desktop slider.
+    ///
+    /// - Returns: `false` when `id` no longer has a slider binding.
+    private func setSliderValue(id: String, trackRect: Rect, column: Int) -> Bool {
+        lock.lock()
+        let binding = sliderBindings[id]
+        let range = sliderRanges[id] ?? 0...1
+        let step = sliderSteps[id] ?? 0
+        lock.unlock()
+        guard let binding else { return false }
+
+        let width = trackRect.size.width
+        let span = range.upperBound - range.lowerBound
+        guard width > 1, span > 0 else { return true }
+        let index = Double(Swift.min(Swift.max(column - trackRect.minColumn, 0), width - 1))
+        var target = range.lowerBound + index / Double(width - 1) * span
+        if step > 0 {
+            // Snap to the keyboard step so the pointer lands on a value the
+            // arrows can reach.
+            target = range.lowerBound + (((target - range.lowerBound) / step).rounded() * step)
+        }
+        binding.wrappedValue = Swift.min(Swift.max(target, range.lowerBound), range.upperBound)
+        return true
+    }
+
+    /// The character index a click at `column` display cells into `text`
+    /// addresses. Wide characters occupy two cells; a click past the end
+    /// returns `text.count` (cursor after the last character).
+    static func characterIndex(in text: String, atVisibleColumn column: Int) -> Int {
+        guard column > 0 else { return 0 }
+        var cell = 0
+        for (index, character) in text.enumerated() {
+            let width = TextMetrics.width(of: character)
+            if cell + width > column { return index }
+            cell += width
+        }
+        return text.count
+    }
+
     /// Moves the selection of a focused list: Up/Down step one row (clamped),
     /// Home/End jump to the ends. When the list scrolls, the offset follows so
     /// the selected row stays visible.
@@ -711,6 +1053,7 @@ final class FocusCoordinator: @unchecked Sendable {
 
     /// Clears all focus/cursor state (called when the runtime tears down).
     func reset() {
+        MouseTargetRegistry.shared.reset()
         lock.lock(); defer { lock.unlock() }
         currentPassIDs = nil
         visibleIDs.removeAll()
@@ -728,6 +1071,7 @@ final class FocusCoordinator: @unchecked Sendable {
         scrollOffsets.removeAll()
         scrollViewportHeights.removeAll()
         scrollContentHeights.removeAll()
+        scrollIsHorizontal.removeAll()
         listSelections.removeAll()
         listCounts.removeAll()
         listViewports.removeAll()
@@ -743,5 +1087,10 @@ final class FocusCoordinator: @unchecked Sendable {
         hasAutoFocused = false
         pendingRefocusID = nil
         passDepth = 0
+        mouseDragSliderID = nil
+        momentumTimer?.cancel()
+        momentumTimer = nil
+        momentumScrollID = nil
+        momentumVelocity = 0
     }
 }

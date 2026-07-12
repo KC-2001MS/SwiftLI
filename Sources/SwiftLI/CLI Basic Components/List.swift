@@ -45,8 +45,12 @@ public protocol ListStyle: Sendable {
 /// and bold while focused and dimmed when not. Equivalent to
 /// ``ListStyle/plain`` and the default appearance.
 public struct PlainListStyle: ListStyle {
+    /// Creates a plain list style.
     public init() {}
 
+    /// Returns a view that stacks the rows with a selection marker on the active row.
+    ///
+    /// - Parameter configuration: The rows and the current selection state.
     public func makeBody(configuration: ListStyleConfiguration) -> some View {
         var rowViews: [any View] = []
         for (index, row) in configuration.rows.enumerated() {
@@ -62,7 +66,7 @@ public struct PlainListStyle: ListStyle {
         let markerColor: Color = selected ? (focused ? .cyan : .eight_bit(245)) : .eight_bit(240)
         let marker = Text(content: selectable ? (selected ? "❯ " : "  ") : "").forgroundColor(markerColor)
 
-        let base = HStack(alignment: .top, spacing: 0, children: [marker, row], header: "")
+        let base = HStack(alignment: .top, spacing: 0, children: [marker, row], style: .plain)
         if selected && focused { return base.forgroundColor(.cyan).bold() }
         if selected            { return base.forgroundColor(.eight_bit(245)) }
         return base
@@ -72,8 +76,12 @@ public struct PlainListStyle: ListStyle {
 /// The default list style — resolves to ``PlainListStyle``. Equivalent to
 /// ``ListStyle/automatic``.
 public struct DefaultListStyle: ListStyle {
+    /// Creates a default list style.
     public init() {}
 
+    /// Returns a view by delegating to ``PlainListStyle``.
+    ///
+    /// - Parameter configuration: The rows and the current selection state.
     public func makeBody(configuration: ListStyleConfiguration) -> some View {
         PlainListStyle().makeBody(configuration: configuration)
     }
@@ -131,7 +139,7 @@ struct AnyListStyle: ListStyle, @unchecked Sendable {
 ///
 /// > Note: When the list scrolls, offset tracking assumes one line per row.
 public struct List<Data: RandomAccessCollection, RowContent: View>: View, @unchecked Sendable {
-    private let header: String
+    private let textStyle: TextStyle
     private let id: String
     private let data: Data
     private let selection: Binding<Int?>?
@@ -158,7 +166,7 @@ public struct List<Data: RandomAccessCollection, RowContent: View>: View, @unche
         id: String = "List",
         @ViewBuilder rowContent: @escaping (Data.Element) -> RowContent
     ) {
-        self.header = ""
+        self.textStyle = .plain
         self.id = id
         self.data = data
         self.selection = selection
@@ -167,8 +175,8 @@ public struct List<Data: RandomAccessCollection, RowContent: View>: View, @unche
         self.style = nil
     }
 
-    init(header: String, id: String, data: Data, selection: Binding<Int?>?, height: Int?, rowContent: @escaping (Data.Element) -> RowContent, style: AnyListStyle? = nil) {
-        self.header = header
+    init(textStyle: TextStyle, id: String, data: Data, selection: Binding<Int?>?, height: Int?, rowContent: @escaping (Data.Element) -> RowContent, style: AnyListStyle? = nil) {
+        self.textStyle = textStyle
         self.id = id
         self.data = data
         self.selection = selection
@@ -177,24 +185,26 @@ public struct List<Data: RandomAccessCollection, RowContent: View>: View, @unche
         self.style = style
     }
 
+    /// The content of the list; always ``EmptyView`` because rendering is handled by ``makeNode()``.
     public var body: some View {
         EmptyView()
     }
 
     @_spi(RenderingInternals)
-    public func addHeader(_ newHeader: String) -> Self {
-        List(header: newHeader + header, id: id, data: data, selection: selection, height: height, rowContent: rowContent, style: style)
+    public func applyingStyle(_ style: TextStyle) -> Self {
+        List(textStyle: textStyle.inheriting(style), id: id, data: data, selection: selection, height: height, rowContent: rowContent, style: self.style)
     }
 
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
         let rows = Array(data)
+        let resolvedHeight = height ?? EnvironmentStack.current.maxHeight
 
         var focused = false
         var selectedIndex: Int? = nil
         if let selection {
-            let scrolls = height != nil && rows.count > (height ?? 0)
-            FocusCoordinator.shared.registerList(id: id, selection: selection, count: rows.count, viewportRows: scrolls ? height : nil)
+            let scrolls = rows.count > resolvedHeight
+            FocusCoordinator.shared.registerList(id: id, selection: selection, count: rows.count, viewportRows: scrolls ? resolvedHeight : nil)
             KeyInputRouter.shared.ensureStarted()
             focused = FocusCoordinator.shared.isFocused(id)
             selectedIndex = selection.wrappedValue
@@ -214,20 +224,22 @@ public struct List<Data: RandomAccessCollection, RowContent: View>: View, @unche
         // by composing a controlled ``ScrollView`` (which owns the .scroll IR and
         // the scrollbar); otherwise just render the styled rows.
         let node: RenderNode
-        if let height, rows.count > height, selection != nil {
+        if rows.count > resolvedHeight, selection != nil {
             let offset = FocusCoordinator.shared.listOffset(for: id)
-            node = ScrollView(height: height, offset: offset, focused: focused, showsIndicators: true, content: [styledBody]).makeNode()
+            node = ScrollView(height: resolvedHeight, offset: offset, focused: focused, showsIndicators: true, content: [styledBody]).makeNode()
         } else {
             node = styledBody.makeNode()
         }
-        return header.isEmpty ? node : node.applyingHeader(header)
+        let styled = textStyle.isPlain ? node : node.applyingStyle(textStyle)
+        // Only a selectable list is a control; a static list stays inert.
+        return selection != nil ? styled.asControl(id: id) : styled
     }
 
     /// Sets the style used to compose this list's rows.
     ///
     /// - Parameter newStyle: A value conforming to ``ListStyle``.
     public func listStyle(_ newStyle: some ListStyle) -> Self {
-        List(header: header, id: id, data: data, selection: selection, height: height, rowContent: rowContent, style: AnyListStyle(newStyle))
+        List(textStyle: textStyle, id: id, data: data, selection: selection, height: height, rowContent: rowContent, style: AnyListStyle(newStyle))
     }
 }
 

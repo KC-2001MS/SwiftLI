@@ -114,11 +114,16 @@ enum GaugeFill {
 /// - Filled portion is rendered in green.
 /// - Empty portion is rendered in grey.
 public struct BarGaugeStyle: GaugeStyle {
+    /// Creates a default `BarGaugeStyle`.
     public init() {}
 
     /// Reserves `[`, `]`, a space, and up to `100%` (7 columns) around the bar.
     public var reservedColumns: Int { 7 }
 
+    /// Returns a bracketed bar view composed from the given configuration.
+    ///
+    /// - Parameter configuration: The current gauge state, including fraction and width.
+    /// - Returns: A ``View`` showing a filled-bar indicator with an optional label.
     public func makeBody(configuration: GaugeStyleConfiguration) -> some View {
         let fraction   = Swift.max(0.0, Swift.min(1.0, configuration.fractionCompleted))
         let width      = Swift.max(0, configuration.width)
@@ -164,8 +169,13 @@ public struct BarGaugeStyle: GaugeStyle {
 /// - Filled portion (`━`) is rendered in green.
 /// - Empty portion (`─`) is rendered in grey.
 public struct LinearGaugeStyle: GaugeStyle {
+    /// Creates a default `LinearGaugeStyle`.
     public init() {}
 
+    /// Returns a horizontal-line view composed from the given configuration.
+    ///
+    /// - Parameter configuration: The current gauge state, including fraction and width.
+    /// - Returns: A ``View`` showing a filled-line indicator with an optional label.
     public func makeBody(configuration: GaugeStyleConfiguration) -> some View {
         let fraction = Swift.max(0.0, Swift.min(1.0, configuration.fractionCompleted))
         let width    = Swift.max(0, configuration.width)
@@ -204,8 +214,13 @@ public struct LinearGaugeStyle: GaugeStyle {
 /// The percentage is rendered in green when at 100%, yellow when above 50%,
 /// and the default color otherwise.
 public struct PercentageGaugeStyle: GaugeStyle {
+    /// Creates a default `PercentageGaugeStyle`.
     public init() {}
 
+    /// Returns a percentage-text view composed from the given configuration.
+    ///
+    /// - Parameter configuration: The current gauge state, including the fraction completed.
+    /// - Returns: A ``View`` showing the percentage value, color-coded by completion level.
     public func makeBody(configuration: GaugeStyleConfiguration) -> some View {
         let fraction   = Swift.max(0.0, Swift.min(1.0, configuration.fractionCompleted))
         let percentage = Int(fraction * 100)

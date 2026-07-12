@@ -104,8 +104,8 @@ struct SheetModifier: View, @unchecked Sendable {
     }
 
     @_spi(RenderingInternals)
-    public func addHeader(_ header: String) -> Self {
-        SheetModifier(content: content.addHeader(header), isPresented: isPresented, id: id, onDismiss: onDismiss, sheet: sheet)
+    public func applyingStyle(_ style: TextStyle) -> Self {
+        SheetModifier(content: content.applyingStyle(style), isPresented: isPresented, id: id, onDismiss: onDismiss, sheet: sheet)
     }
 
     @_spi(RenderingInternals)

@@ -14,46 +14,44 @@ import Foundation
 struct DividerTests {
     @Suite(.tags(.normalBehavior))
     struct NormalBehavior {
-        @Test("Is the value of the header variable correct when initialized?", arguments: [(randomStrings, randomInt, randomCharacter)])
-        func headerVariableInitialValueTesting(
-            string: String,
+        @Test("Is the value of the style variable correct when initialized?", arguments: [(randomInt, randomCharacter)])
+        func styleVariableInitialValueTesting(
             int: Int,
             character: Character
         ) async throws {
             let hDivider1 = Divider(int)
-            let hDivider2 = Divider(header: string, character: character, verticalCharacter: "|", count: int)
-            
-            #expect(hDivider1.header.isEmpty)
-            #expect(hDivider2.header == string)
+            let hDivider2 = Divider(style: TextStyle(foreground: .red), character: character, verticalCharacter: "|", count: int)
+
+            #expect(hDivider1.style.isPlain)
+            #expect(hDivider2.style.foreground == .red)
+            #expect(hDivider2.style.background == nil)
         }
-        
-        @Test("Is the value of the character variable correct when initialized?", arguments: [(randomStrings, randomInt, randomCharacter)])
+
+        @Test("Is the value of the character variable correct when initialized?", arguments: [(randomInt, randomCharacter)])
         func characterVariableInitialValueTesting(
-            string: String,
             int: Int,
             character: Character
         ) async throws {
             let hDivider1 = Divider(int)
-            let hDivider2 = Divider(header: string, character: character, verticalCharacter: "|", count: int)
-            
+            let hDivider2 = Divider(style: .plain, character: character, verticalCharacter: "|", count: int)
+
             #expect(hDivider1.character == "-")
             #expect(hDivider2.character == randomCharacter)
         }
-        
-        @Test("Is the value of the count variable correct when initialized?", arguments: [(randomStrings, randomInt, randomCharacter)])
+
+        @Test("Is the value of the count variable correct when initialized?", arguments: [(randomInt, randomCharacter)])
         func countVariableInitialValueTesting(
-            string: String,
             int: Int,
             character: Character
         ) async throws {
             let hDivider1 = Divider(int)
-            let hDivider2 = Divider(header: string, character: character, verticalCharacter: "|", count: int)
-            
+            let hDivider2 = Divider(style: .plain, character: character, verticalCharacter: "|", count: int)
+
             #expect(hDivider1.count == int)
             #expect(hDivider2.count == int)
         }
         
-        @Test("Is the style set by the lineStyle function applied to the header variable?", arguments: LineStyle.allCases)
+        @Test("Is the style set by the lineStyle function applied to the character variable?", arguments: LineStyle.allCases)
         func lineStyleFuncTesting(
             lineStyle: LineStyle
         ) async throws {
@@ -62,70 +60,71 @@ struct DividerTests {
             #expect(lineStyle == .default ? hDivider.character == "-" : hDivider.character == "=")
         }
         
-        @Test("Is the color set by the forgroundColor function applied to the header variable?", arguments: allColors)
+        @Test("Is the color set by the forgroundColor function applied to the style variable?", arguments: allColors)
         func forgroundColorFuncTesting(
             color: Color
         ) async throws {
             let hDivider = Divider(1).forgroundColor(color).forgroundColor(color)
-            
-            #expect(hDivider.header == "\u{001B}[3\(color.ansi)m\u{001B}[3\(color.ansi)m")
+
+            // Duplicate applications collapse: one attribute, applied once.
+            #expect(hDivider.style == TextStyle(foreground: color))
         }
-        
-        @Test("Is the color set by the background function applied to the header variable?", arguments: allColors)
+
+        @Test("Is the color set by the background function applied to the style variable?", arguments: allColors)
         func backgroundFuncTesting(
             color: Color
         ) async throws {
             let hDivider = Divider(1).background(color).background(color)
-            
-            #expect(hDivider.header == "\u{001B}[4\(color.ansi)m\u{001B}[4\(color.ansi)m")
+
+            #expect(hDivider.style == TextStyle(background: color))
         }
-        
-        @Test("Is the thickness set by the bold function applied to the header variable?")
+
+        @Test("Is the thickness set by the bold function applied to the style variable?")
         func boldFuncTesting() async throws {
             let hDivider1 = Divider(1).bold()
             let hDivider2 = Divider(1).bold(true)
             let hDivider3 = Divider(1).bold(false)
-            
-            #expect(hDivider1.header == "\u{001B}[1m")
-            #expect(hDivider2.header == "\u{001B}[1m")
-            #expect(hDivider3.header.isEmpty)
+
+            #expect(hDivider1.style == TextStyle(weight: .bold))
+            #expect(hDivider2.style == TextStyle(weight: .bold))
+            #expect(hDivider3.style.isPlain)
         }
-        
-        @Test("Is the thickness set by the fontWeight function applied to the header variable?", arguments: Weight.allCases)
+
+        @Test("Is the thickness set by the fontWeight function applied to the style variable?", arguments: Weight.allCases)
         func fontWeightFuncTesting(
             weight: Weight
         ) async throws {
             let hDivider = Divider(1).fontWeight(weight)
-            
+
             if weight == .default {
-                #expect(hDivider.header.isEmpty)
+                #expect(hDivider.style.isPlain)
             } else {
-                #expect(hDivider.header == "\u{001B}[\(weight.rawValue)m")
+                #expect(hDivider.style == TextStyle(weight: weight))
             }
         }
-        
-        @Test("Is the style set by the blink function applied to the header variable?", arguments: BlinkStyle.allCases)
+
+        @Test("Is the style set by the blink function applied to the style variable?", arguments: BlinkStyle.allCases)
         func blinkFuncTesting(
             blink: BlinkStyle
         ) async throws {
             let hDivider = Divider(1).blink(blink)
-            
+
             if blink == .none {
-                #expect(hDivider.header.isEmpty)
+                #expect(hDivider.style.isPlain)
             } else {
-                #expect(hDivider.header == "\u{001B}[\(blink.rawValue)m")
+                #expect(hDivider.style == TextStyle(blink: blink))
             }
         }
-        
-        @Test("Is the style set by the hidden function applied to the header variable?")
+
+        @Test("Is the style set by the hidden function applied to the style variable?")
         func hiddenFuncTesting() async throws {
             let hDivider1 = Divider(1).hidden()
             let hDivider2 = Divider(1).hidden(true)
             let hDivider3 = Divider(1).hidden(false)
-            
-            #expect(hDivider1.header == "\u{001B}[8m")
-            #expect(hDivider2.header == "\u{001B}[8m")
-            #expect(hDivider3.header.isEmpty)
+
+            #expect(hDivider1.style == TextStyle(isHidden: true))
+            #expect(hDivider2.style == TextStyle(isHidden: true))
+            #expect(hDivider3.style.isPlain)
         }
 
     }
@@ -135,41 +134,41 @@ struct DividerTests {
 struct SpacerTests {
     @Suite(.tags(.normalBehavior))
     struct NormalBehavior {
-        @Test("Is the value of the header variable correct when initialized?", arguments: [(randomStrings, randomInt)])
-        func headerVariableInitialValueTesting(
-            string: String,
+        @Test("Is the value of the style variable correct when initialized?", arguments: [randomInt])
+        func styleVariableInitialValueTesting(
             int: Int
         ) async throws {
             let spacer1 = Spacer(minLength: int)
             let spacer2 = Spacer()
-            let spacer3 = Spacer(header: string, minLength: int)
+            let spacer3 = Spacer(style: TextStyle(background: .blue), minLength: int)
 
-            #expect(spacer1.header.isEmpty)
-            #expect(spacer2.header.isEmpty)
-            #expect(spacer3.header == string)
+            #expect(spacer1.style.isPlain)
+            #expect(spacer2.style.isPlain)
+            #expect(spacer3.style.background == .blue)
+            #expect(spacer3.style.foreground == nil)
         }
 
-        @Test("Is the value of the minLength variable correct when initialized?", arguments: [(randomStrings, randomInt)])
+        @Test("Is the value of the minLength variable correct when initialized?", arguments: [randomInt])
         func minLengthVariableInitialValueTesting(
-            string: String,
             int: Int
         ) async throws {
             let spacer1 = Spacer(minLength: int)
             let spacer2 = Spacer()
-            let spacer3 = Spacer(header: string, minLength: int)
+            let spacer3 = Spacer(style: .plain, minLength: int)
 
             #expect(spacer1.minLength == int)
             #expect(spacer2.minLength == 1)
             #expect(spacer3.minLength == int)
         }
-        
-        @Test("Is the color set by the background function applied to the header variable?", arguments: allColors)
+
+        @Test("Is the color set by the background function applied to the style variable?", arguments: allColors)
         func backgroundFuncTesting(
             color: Color
         ) async throws {
             let spacer = Spacer().background(color).background(color)
 
-            #expect(spacer.header == "\u{001B}[4\(color.ansi)m\u{001B}[4\(color.ansi)m")
+            // Duplicate applications collapse: one attribute, applied once.
+            #expect(spacer.style == TextStyle(background: color))
         }
 
         @Test("A Spacer inside an HStack expands to the available width")
@@ -222,21 +221,22 @@ struct SpacerTests {
 struct EmoticonTests {
     @Suite(.tags(.normalBehavior))
     struct NormalBehavior {
-        @Test("Is the value of the header variable correct when initialized?", arguments: [randomStrings])
-        func headerVariableInitialValueTesting(
+        @Test("Is the value of the style variable correct when initialized?", arguments: [randomStrings])
+        func styleVariableInitialValueTesting(
             string: String
         ) async throws {
             let emoticon1 = Emoticon()
             let emoticon2 = Emoticon(eye: .default, mouth: .default)
             let emoticon3 = Emoticon(eye: .default, nose: .none, mouth: .default)
-            let emoticon4 = Emoticon(header: string, content: string)
-            
-            #expect(emoticon1.header.isEmpty)
-            #expect(emoticon2.header.isEmpty)
-            #expect(emoticon3.header.isEmpty)
-            #expect(emoticon4.header == randomStrings)
+            let emoticon4 = Emoticon(style: TextStyle(foreground: .green), content: string)
+
+            #expect(emoticon1.style.isPlain)
+            #expect(emoticon2.style.isPlain)
+            #expect(emoticon3.style.isPlain)
+            #expect(emoticon4.style.foreground == .green)
+            #expect(emoticon4.style.background == nil)
         }
-        
+
         @Test("Is the value of the content variable correct when initialized?", arguments:  [(randomStrings, randomInt, randomCharacter)])
         func contentVariableInitialValueTesting(
             string: String,
@@ -246,78 +246,79 @@ struct EmoticonTests {
             let emoticon1 = Emoticon()
             let emoticon2 = Emoticon(eye: .default, mouth: .default)
             let emoticon3 = Emoticon(eye: .default, nose: .none, mouth: .default)
-            let emoticon4 = Emoticon(header: string, content: string)
-            
+            let emoticon4 = Emoticon(style: .plain, content: string)
+
             #expect(emoticon1.content == "\(EyesStyle.default.rawValue)\(NoseStyle.none.rawValue)\(MouthStyle.default.rawValue)")
             #expect(emoticon2.content == "\(EyesStyle.default.rawValue)\(NoseStyle.none.rawValue)\(MouthStyle.default.rawValue)")
             #expect(emoticon3.content == "\(EyesStyle.default.rawValue)\(NoseStyle.none.rawValue)\(MouthStyle.default.rawValue)")
             #expect(emoticon4.content == randomStrings)
         }
-        
-        @Test("Is the color set by the forgroundColor function applied to the header variable?", arguments: allColors)
+
+        @Test("Is the color set by the forgroundColor function applied to the style variable?", arguments: allColors)
         func forgroundColorFuncTesting(
             color: Color
         ) async throws {
             let emoticon = Emoticon().forgroundColor(color).forgroundColor(color)
-            
-            #expect(emoticon.header == "\u{001B}[3\(color.ansi)m\u{001B}[3\(color.ansi)m")
+
+            // Duplicate applications collapse: one attribute, applied once.
+            #expect(emoticon.style == TextStyle(foreground: color))
         }
-        
-        @Test("Is the color set by the background function applied to the header variable?", arguments: allColors)
+
+        @Test("Is the color set by the background function applied to the style variable?", arguments: allColors)
         func backgroundFuncTesting(
             color: Color
         ) async throws {
             let emoticon = Emoticon().background(color).background(color)
-            
-            #expect(emoticon.header == "\u{001B}[4\(color.ansi)m\u{001B}[4\(color.ansi)m")
+
+            #expect(emoticon.style == TextStyle(background: color))
         }
-        
-        @Test("Is the thickness set by the bold function applied to the header variable?")
+
+        @Test("Is the thickness set by the bold function applied to the style variable?")
         func boldFuncTesting() async throws {
             let emoticon1 = Emoticon().bold()
             let emoticon2 = Emoticon().bold(true)
             let emoticon3 = Emoticon().bold(false)
-            
-            #expect(emoticon1.header == "\u{001B}[1m")
-            #expect(emoticon2.header == "\u{001B}[1m")
-            #expect(emoticon3.header.isEmpty)
+
+            #expect(emoticon1.style == TextStyle(weight: .bold))
+            #expect(emoticon2.style == TextStyle(weight: .bold))
+            #expect(emoticon3.style.isPlain)
         }
-        
-        @Test("Is the thickness set by the fontWeight function applied to the header variable?", arguments: Weight.allCases)
+
+        @Test("Is the thickness set by the fontWeight function applied to the style variable?", arguments: Weight.allCases)
         func fontWeightFuncTesting(
             weight: Weight
         ) async throws {
             let emoticon = Emoticon().fontWeight(weight)
-            
+
             if weight == .default {
-                #expect(emoticon.header.isEmpty)
+                #expect(emoticon.style.isPlain)
             } else {
-                #expect(emoticon.header == "\u{001B}[\(weight.rawValue)m")
+                #expect(emoticon.style == TextStyle(weight: weight))
             }
         }
-        
-        @Test("Is the style set by the blink function applied to the header variable?", arguments: BlinkStyle.allCases)
+
+        @Test("Is the style set by the blink function applied to the style variable?", arguments: BlinkStyle.allCases)
         func blinkFuncTesting(
             blink: BlinkStyle
         ) async throws {
             let emoticon = Emoticon().blink(blink)
-            
+
             if blink == .none {
-                #expect(emoticon.header.isEmpty)
+                #expect(emoticon.style.isPlain)
             } else {
-                #expect(emoticon.header == "\u{001B}[\(blink.rawValue)m")
+                #expect(emoticon.style == TextStyle(blink: blink))
             }
         }
-        
-        @Test("Is the style set by the hidden function applied to the header variable?")
+
+        @Test("Is the style set by the hidden function applied to the style variable?")
         func hiddenFuncTesting() async throws {
             let emoticon1 = Emoticon().hidden()
             let emoticon2 = Emoticon().hidden(true)
             let emoticon3 = Emoticon().hidden(false)
-            
-            #expect(emoticon1.header == "\u{001B}[8m")
-            #expect(emoticon2.header == "\u{001B}[8m")
-            #expect(emoticon3.header.isEmpty)
+
+            #expect(emoticon1.style == TextStyle(isHidden: true))
+            #expect(emoticon2.style == TextStyle(isHidden: true))
+            #expect(emoticon3.style.isPlain)
         }
 
     }

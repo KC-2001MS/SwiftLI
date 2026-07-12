@@ -32,7 +32,8 @@ struct TextEditorCommand: FullScreenCommand {
     var body: some Scene {
         NavigationStack {
             let lineCount = notes.isEmpty ? 0 : notes.components(separatedBy: "\n").count
-            TextEditor("Type your notes here...", text: $notes, height: 8)
+            TextEditor("Type your notes here...", text: $notes)
+                .frame(height: 8)
                 .navigationTitle("TextEditor")
                 .navigationSubtitle("Return: newline   Tab: leave   Arrows: move   Esc: leave   Ctrl-C: quit")
 

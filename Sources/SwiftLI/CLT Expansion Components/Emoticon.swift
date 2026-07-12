@@ -33,13 +33,13 @@
 /// | `nose`   | ``NoseStyle``  | `.none`, `.hyphen`, `.o` |
 /// | `mouth`  | ``MouthStyle`` | `.smile`, `.frown`, `.open` |
 public struct Emoticon: View, Sendable, Equatable {
-    let header: String
-    
+    let style: TextStyle
+
     let content: String
-    
+
     /// Default Emoticon View
     public init() {
-        self.header = ""
+        self.style = .plain
         self.content = "\(EyesStyle.default.rawValue)\(NoseStyle.none.rawValue)\(MouthStyle.default.rawValue)"
     }
     /// Emoticon View initializer consisting of eyes, nose and mouth
@@ -52,7 +52,7 @@ public struct Emoticon: View, Sendable, Equatable {
         nose: NoseStyle,
         mouth: MouthStyle
     ) {
-        self.header = ""
+        self.style = .plain
         self.content = "\(eye.rawValue)\(nose.rawValue)\(mouth.rawValue)"
     }
     /// Emoticon View initializer consisting of eyes and mouth
@@ -63,46 +63,59 @@ public struct Emoticon: View, Sendable, Equatable {
         eye: EyesStyle,
         mouth: MouthStyle
     ) {
-        self.header = ""
+        self.style = .plain
         self.content = "\(eye.rawValue)\(mouth.rawValue)"
     }
-    
+
     init(
-        header: String,
+        style: TextStyle,
         content: String
     ) {
-        self.header = header
+        self.style = style
         self.content = content
     }
     /// What the view displays
     public var body: some View {
-        Text(header: header, content: content)
+        Text(style: style, content: content)
     }
 
     @_spi(RenderingInternals)
-    public func addHeader(_ header: String) -> Self {
-        .init(header: header + self.header, content: content)
+    public func applyingStyle(_ style: TextStyle) -> Self {
+        .init(style: self.style.inheriting(style), content: content)
     }
 }
 /// Specify the Emoticon eye text
 public enum EyesStyle: String, CaseIterable {
+    /// Standard colon eyes `:`
     case `default` = ":"
+    /// Wide-open eyes `=`
     case open = "="
+    /// Very wide-open eyes `8`
     case wideOpen = "8"
+    /// Teary eyes `:'`
     case teary = ":'"
+    /// Crossed-out eyes `X`
     case x = "X"
 }
 /// Specify the Emoticon nose text
 public enum NoseStyle: String, CaseIterable {
+    /// No nose character
     case none = ""
+    /// Standard hyphen nose `‑`
     case standard = "‑"
+    /// Caret nose `^`
     case high = "^"
 }
 /// Specify the Emoticon mouth text
 public enum MouthStyle: String, CaseIterable {
+    /// Standard smile mouth `)`
     case `default` = ")"
+    /// Open/grinning mouth `D`
     case open = "D"
+    /// Mouth turned up `>`
     case turnedUp = ">"
+    /// Mouth turned down `<`
     case turnedDown = "<"
+    /// Flat/holding mouth `(`
     case hold = "("
 }

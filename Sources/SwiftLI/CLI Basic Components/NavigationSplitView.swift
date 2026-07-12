@@ -61,6 +61,8 @@ public struct NavigationSplitView: View {
         self.detail = AnyView(detail())
     }
 
+    /// The body of the view; returns an ``EmptyView`` because rendering is
+    /// handled by ``makeNode()``.
     public var body: some View {
         EmptyView()
     }

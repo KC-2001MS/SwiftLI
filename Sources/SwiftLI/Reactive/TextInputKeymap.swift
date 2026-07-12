@@ -40,6 +40,10 @@ extension TextInputKeymap {
         case .backTab:              return .focusPrevious
         case .interrupt:            return .cancel
         case .escape:               return .ignore
+        // Pointer events and terminal reports are routed by the runtime
+        // before any keymap runs.
+        case .mouse:                return .ignore
+        case .cursorPosition:       return .ignore
         case .enter, .up, .down:    return nil   // control-specific
         }
     }

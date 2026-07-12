@@ -50,6 +50,16 @@ public protocol Command: AsyncParsableCommand {
 
 extension Command {
 
+    /// The scene's root view with the session chrome the scene declares —
+    /// currently the ``Scene/commands(content:)`` menu bar — composed above
+    /// it. Re-evaluated every render pass, like `body` itself.
+    func _composedSceneRoot() -> AnyView {
+        let configuration = body._sceneConfiguration()
+        let root = body._sceneRoot()
+        guard !configuration.menus.isEmpty else { return root }
+        return AnyView(MenuBarHost(menus: configuration.menus, content: root))
+    }
+
     /// Draws the first frame, registers for `@State`-driven redraws, and starts
     /// following terminal resizes. `fullScreen` selects the renderer.
     ///
@@ -67,9 +77,12 @@ extension Command {
         // keeps ownership of the renderer.
         guard store.beginSession(fullScreen: fullScreen) else { return }
         store.resetExit()
+        // A fresh session starts with every menu-bar menu closed.
+        MenuBarCoordinator.shared.reset()
         // Start with clean lifecycle state so this session's `onAppear`/`task`
         // modifiers fire even if an earlier render already saw their call sites.
         SessionLifecycle.shared.reset()
+        PreferenceObserverRegistry.shared.reset()
         SessionPrintCapture.shared.start { line in
             BodyRenderingStore.shared.appendCapturedLog(line)
         }
@@ -82,40 +95,49 @@ extension Command {
         if fullScreen {
             let renderer = store.fullScreen
             renderer.beginAlternateScreen()
-            RenderObservation.shared.track { renderer.renderFullScreen([self.body._sceneRoot()]) }
+            RenderObservation.shared.track { renderer.renderFullScreen([self._composedSceneRoot()]) }
             StateObserverRegistry.shared.register {
-                RenderObservation.shared.track { renderer.renderFullScreen([self.body._sceneRoot()]) }
+                RenderObservation.shared.track { renderer.renderFullScreen([self._composedSceneRoot()]) }
             }
         } else {
             let renderer = store.inline
-            RenderObservation.shared.track { renderer.render(self.body._sceneRoot()) }
+            RenderObservation.shared.track { renderer.render(self._composedSceneRoot()) }
             StateObserverRegistry.shared.register {
                 // A fresh snapshot of `body` is read each time. Because `self`
                 // is a struct captured by value and `body` reads the
                 // reference-type StateStorage directly, it always reflects the
                 // latest value.
-                RenderObservation.shared.track { renderer.render(self.body._sceneRoot()) }
+                RenderObservation.shared.track { renderer.render(self._composedSceneRoot()) }
             }
         }
 
         // Redraw on terminal resize so width-relative views (a full-width
-        // ``Divider``, an auto-sized ``ProgressView``) follow the new size. The
-        // handler captures nothing, so it converts to a C function pointer; it
-        // hops to the main queue before touching stdout.
+        // ``Divider``, an auto-sized ``ProgressView``) follow the new size.
+        #if os(Windows)
+        // SIGWINCH is not available on Windows; see WindowsResizePoller for details.
+        let poller = WindowsResizePoller {
+            StateObserverRegistry.shared.notifyChange()
+        }
+        store.resizePoller = poller
+        poller.start()
+        #else
+        // The handler captures nothing so it converts to a C function pointer;
+        // it hops to the main queue before touching stdout.
         signal(SIGWINCH) { _ in
             DispatchQueue.main.async {
                 StateObserverRegistry.shared.notifyChange()
             }
         }
+        #endif
     }
 
     /// Redraws `body` once, using whichever renderer the session started with.
     func _updateBody() {
         let store = BodyRenderingStore.shared
         if store.fullScreenActive {
-            RenderObservation.shared.track { store.fullScreen.renderFullScreen([body._sceneRoot()]) }
+            RenderObservation.shared.track { store.fullScreen.renderFullScreen([_composedSceneRoot()]) }
         } else {
-            RenderObservation.shared.track { store.inline.render(body._sceneRoot()) }
+            RenderObservation.shared.track { store.inline.render(_composedSceneRoot()) }
         }
     }
 
@@ -124,7 +146,12 @@ extension Command {
         // A nested command's stop leaves the enclosing session running; only
         // the owner that opened the session tears the renderer down.
         guard BodyRenderingStore.shared.endSession() else { return }
+        #if os(Windows)
+        BodyRenderingStore.shared.resizePoller?.stop()
+        BodyRenderingStore.shared.resizePoller = nil
+        #else
         signal(SIGWINCH, SIG_DFL)
+        #endif
         KeyInputRouter.shared.stop()
         StateObserverRegistry.shared.unregister()
         // Disarm observation-tracking handlers from this session so a late
@@ -132,6 +159,7 @@ extension Command {
         RenderObservation.shared.invalidate()
         // Cancel `task` modifiers and clear once-per-session lifecycle state.
         SessionLifecycle.shared.reset()
+        PreferenceObserverRegistry.shared.reset()
         // Stop capturing before the renderer winds down, so even the very
         // last prints reach the log buffer. Later prints go straight to the
         // terminal.
@@ -198,7 +226,7 @@ extension Command {
         if let override = body._sceneConfiguration().readingPause {
             return override
         }
-        let rows = NodeLayout.measure(body._sceneRoot().makeNode()).height
+        let rows = NodeLayout.measure(_composedSceneRoot().makeNode()).height
         return Swift.min(10.0, Swift.max(2.0, 1.0 + 0.2 * Double(rows)))
     }
 
@@ -505,6 +533,10 @@ final class BodyRenderingStore: @unchecked Sendable {
     // `print()` output captured during a full-screen session, replayed onto
     // the normal screen once the alternate screen is left.
     private var _capturedLog: [String] = []
+
+    #if os(Windows)
+    var resizePoller: WindowsResizePoller?
+    #endif
 
     var fullScreenActive: Bool {
         get { lock.lock(); defer { lock.unlock() }; return _fullScreenActive }

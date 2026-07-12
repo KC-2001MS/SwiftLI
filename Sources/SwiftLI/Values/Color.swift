@@ -217,4 +217,15 @@ public struct Color: Equatable, Sendable, CustomStringConvertible {
             (EnvironmentStack.current.colorScheme == .dark ? dark : light).ansi
         }
     }
+
+    /// Flattens any `.dynamic` layer to a concrete color for the given scheme.
+    /// Non-dynamic colors are returned unchanged.
+    internal func resolved(scheme: ColorScheme) -> Color {
+        switch storage {
+        case .dynamic(let light, let dark):
+            scheme == .dark ? dark : light
+        default:
+            self
+        }
+    }
 }

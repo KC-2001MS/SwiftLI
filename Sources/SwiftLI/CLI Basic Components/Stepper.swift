@@ -27,7 +27,7 @@
 /// Stepper("Zoom", onIncrement: { zoom *= 2 }, onDecrement: { zoom /= 2 })
 /// ```
 public struct Stepper: View {
-    let header: String
+    let style: TextStyle
     let id: String
     let label: AnyView?
     /// Reads the current value's display text lazily, so a `Binding`-backed
@@ -49,7 +49,7 @@ public struct Stepper: View {
         onDecrement: @escaping () -> Void
     ) {
         let resolved = String(localized: title.localizationValue)
-        self.header = ""
+        self.style = .plain
         self.id = id ?? (resolved.isEmpty ? "Stepper" : resolved)
         self.label = resolved.isEmpty ? nil : AnyView(Text(content: resolved))
         self.valueText = { nil }
@@ -72,7 +72,7 @@ public struct Stepper: View {
         id: String? = nil
     ) {
         let resolved = String(localized: title.localizationValue)
-        self.header = ""
+        self.style = .plain
         self.id = id ?? (resolved.isEmpty ? "Stepper" : resolved)
         self.label = resolved.isEmpty ? nil : AnyView(Text(content: resolved))
         self.valueText = { value.wrappedValue.description }
@@ -85,8 +85,8 @@ public struct Stepper: View {
         self.onDecrement = { value.wrappedValue = clamped(value.wrappedValue.advanced(by: -step)) }
     }
 
-    init(header: String, id: String, label: AnyView?, valueText: @escaping () -> String?, onIncrement: @escaping () -> Void, onDecrement: @escaping () -> Void) {
-        self.header = header
+    init(style: TextStyle, id: String, label: AnyView?, valueText: @escaping () -> String?, onIncrement: @escaping () -> Void, onDecrement: @escaping () -> Void) {
+        self.style = style
         self.id = id
         self.label = label
         self.valueText = valueText
@@ -94,13 +94,14 @@ public struct Stepper: View {
         self.onDecrement = onDecrement
     }
 
+    /// The content of the stepper view; rendering is handled by ``makeNode()``.
     public var body: some View {
         EmptyView()
     }
 
     @_spi(RenderingInternals)
-    public func addHeader(_ newHeader: String) -> Self {
-        Stepper(header: newHeader + header, id: id, label: label, valueText: valueText, onIncrement: onIncrement, onDecrement: onDecrement)
+    public func applyingStyle(_ style: TextStyle) -> Self {
+        Stepper(style: self.style.inheriting(style), id: id, label: label, valueText: valueText, onIncrement: onIncrement, onDecrement: onDecrement)
     }
 
     /// Lowers to `label [-] value [+]` — the two brackets are plain-styled
@@ -120,7 +121,7 @@ public struct Stepper: View {
             Button(id: "\(id).increment", action: onIncrement) { Text(verbatim: "[+]") }
                 .buttonStyle(PlainButtonStyle())
         )
-        let node = HStack(alignment: .top, spacing: 1, children: cells, header: "").makeNode()
-        return header.isEmpty ? node : node.applyingHeader(header)
+        let node = HStack(alignment: .top, spacing: 1, children: cells, style: .plain).makeNode()
+        return style.isPlain ? node : node.applyingStyle(style)
     }
 }

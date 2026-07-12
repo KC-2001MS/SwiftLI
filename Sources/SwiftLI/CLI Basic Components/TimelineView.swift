@@ -54,12 +54,18 @@ public struct TimelineViewContext: Sendable {
     public typealias Cadence = TimelineCadence
 }
 
+/// A view that updates its content on a schedule, mirroring SwiftUI's `TimelineView`.
+///
+/// `TimelineView` rebuilds its content every time its ``TimelineSchedule`` fires,
+/// passing the current date through a ``Context``. Use the ``init(_:content:)``
+/// initializer with any ``TimelineSchedule`` — such as `.periodic(from:by:)` or
+/// `.animation` — and return terminal views from the content closure.
 public struct TimelineView<Schedule: TimelineSchedule, Content: View>: View {
 
     /// The information handed to the content closure on each update.
     public typealias Context = TimelineViewContext
 
-    let header: String
+    let style: TextStyle
     let schedule: Schedule
     let content: (Context) -> Content
 
@@ -72,28 +78,29 @@ public struct TimelineView<Schedule: TimelineSchedule, Content: View>: View {
         _ schedule: Schedule,
         @ViewBuilder content: @escaping (Context) -> Content
     ) {
-        self.header = ""
+        self.style = .plain
         self.schedule = schedule
         self.content = content
     }
 
     init(
-        header: String,
+        style: TextStyle,
         schedule: Schedule,
         content: @escaping (Context) -> Content
     ) {
-        self.header = header
+        self.style = style
         self.schedule = schedule
         self.content = content
     }
 
+    /// The view's content, rendered for the current date at the time of layout.
     public var body: some View {
         EmptyView()
     }
 
     @_spi(RenderingInternals)
-    public func addHeader(_ newHeader: String) -> Self {
-        TimelineView(header: newHeader + header, schedule: schedule, content: content)
+    public func applyingStyle(_ style: TextStyle) -> Self {
+        TimelineView(style: self.style.inheriting(style), schedule: schedule, content: content)
     }
 
     /// Lowers the content for the current date, and arms the next update.
@@ -102,7 +109,7 @@ public struct TimelineView<Schedule: TimelineSchedule, Content: View>: View {
     /// 1. Reads the current date and builds the content ``Context``.
     /// 2. Asks the coordinator to schedule a redraw at the schedule's next
     ///    date (coalesced by ``TimelineSchedule/timelineKey``).
-    /// 3. Returns the lowered content, cascading any accumulated style header.
+    /// 3. Returns the lowered content, cascading any accumulated style.
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
         let now = Date()
@@ -111,7 +118,7 @@ public struct TimelineView<Schedule: TimelineSchedule, Content: View>: View {
         }
         let context = Context(date: now, cadence: schedule.cadence)
         let node = content(context).makeNode()
-        return header.isEmpty ? node : node.applyingHeader(header)
+        return style.isPlain ? node : node.applyingStyle(style)
     }
 }
 

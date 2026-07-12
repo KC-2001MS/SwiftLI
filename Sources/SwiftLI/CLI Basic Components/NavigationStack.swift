@@ -50,6 +50,7 @@ public struct NavigationStack: View {
         self.root = AnyView(root())
     }
 
+    /// The content of the navigation stack, delegated to the rendering engine via ``makeNode()``.
     public var body: some View {
         EmptyView()
     }

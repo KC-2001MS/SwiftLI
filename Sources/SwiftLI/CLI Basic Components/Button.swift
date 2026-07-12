@@ -46,6 +46,9 @@ public struct ButtonStyleConfiguration {
 /// ``BorderedButtonStyle``, and ``PlainButtonStyle``.
 public protocol ButtonStyle: Sendable {
     associatedtype Body: View
+    /// Produces the view that represents a button in this style.
+    /// - Parameter configuration: The label, role, and focus state of the button.
+    /// - Returns: A view that visually represents the button.
     @ViewBuilder func makeBody(configuration: ButtonStyleConfiguration) -> Body
 }
 
@@ -54,8 +57,12 @@ public protocol ButtonStyle: Sendable {
 /// A one-line bracketed button: `[ Label ]`. When focused, a `> ` marker
 /// appears and the label turns bold cyan.
 public struct DefaultButtonStyle: ButtonStyle {
+    /// Creates a default bracketed button style.
     public init() {}
 
+    /// Produces the bracketed `[ Label ]` button view.
+    /// - Parameter configuration: The label, role, and focus state of the button.
+    /// - Returns: An `HStack` wrapping the label with bracket decorations.
     public func makeBody(configuration: ButtonStyleConfiguration) -> some View {
         let destructive = configuration.role == .destructive
         let bracket: Color = configuration.isFocused ? .cyan : .eight_bit(240)
@@ -74,8 +81,12 @@ public struct DefaultButtonStyle: ButtonStyle {
 /// A button wrapped in a rounded border. The border (and label) light up cyan
 /// while the button is focused, so it clearly reads as the active control.
 public struct BorderedButtonStyle: ButtonStyle {
+    /// Creates a bordered button style.
     public init() {}
 
+    /// Produces the rounded-border button view.
+    /// - Parameter configuration: The label, role, and focus state of the button.
+    /// - Returns: The label wrapped in a rounded border, highlighted when focused.
     public func makeBody(configuration: ButtonStyleConfiguration) -> some View {
         let destructive = configuration.role == .destructive
         configuration.label
@@ -89,8 +100,12 @@ public struct BorderedButtonStyle: ButtonStyle {
 /// A chromeless button: just the label, bold cyan while focused and dimmed
 /// otherwise.
 public struct PlainButtonStyle: ButtonStyle {
+    /// Creates a plain, chromeless button style.
     public init() {}
 
+    /// Produces the plain button view with no decoration.
+    /// - Parameter configuration: The label, role, and focus state of the button.
+    /// - Returns: The bare label, bold cyan when focused and dimmed otherwise.
     public func makeBody(configuration: ButtonStyleConfiguration) -> some View {
         let destructive = configuration.role == .destructive
         configuration.label
@@ -158,7 +173,7 @@ struct AnyButtonStyle: ButtonStyle, @unchecked Sendable {
 /// .buttonStyle(.bordered)
 /// ```
 public struct Button: View {
-    let header: String
+    let textStyle: TextStyle
     let id: String
     let label: AnyView
     let role: ButtonRole?
@@ -181,7 +196,7 @@ public struct Button: View {
         action: @escaping () -> Void
     ) {
         let resolved = String(localized: title.localizationValue)
-        self.header = ""
+        self.textStyle = .plain
         self.id = id ?? (resolved.isEmpty ? "Button" : resolved)
         self.label = AnyView(Text(content: resolved))
         self.role = role
@@ -203,7 +218,7 @@ public struct Button: View {
         action: @escaping () -> Void,
         @ViewBuilder label: () -> Label
     ) {
-        self.header = ""
+        self.textStyle = .plain
         self.id = id
         self.label = AnyView(label())
         self.role = role
@@ -211,8 +226,8 @@ public struct Button: View {
         self.style = nil
     }
 
-    init(header: String, id: String, label: AnyView, role: ButtonRole?, action: @escaping () -> Void, style: AnyButtonStyle?) {
-        self.header = header
+    init(textStyle: TextStyle, id: String, label: AnyView, role: ButtonRole?, action: @escaping () -> Void, style: AnyButtonStyle?) {
+        self.textStyle = textStyle
         self.id = id
         self.label = label
         self.role = role
@@ -220,13 +235,14 @@ public struct Button: View {
         self.style = style
     }
 
+    /// The button's view body; rendering is performed via ``makeNode()`` rather than this property.
     public var body: some View {
         EmptyView()
     }
 
     @_spi(RenderingInternals)
-    public func addHeader(_ newHeader: String) -> Self {
-        Button(header: newHeader + header, id: id, label: label, role: role, action: action, style: style)
+    public func applyingStyle(_ style: TextStyle) -> Self {
+        Button(textStyle: textStyle.inheriting(style), id: id, label: label, role: role, action: action, style: self.style)
     }
 
     @_spi(RenderingInternals)
@@ -242,12 +258,12 @@ public struct Button: View {
         // Nearest wins: instance style, then subtree environment, then default.
         let resolvedStyle = style ?? EnvironmentStack.current.buttonStyle ?? AnyButtonStyle(DefaultButtonStyle())
         let node = resolvedStyle.makeBody(configuration: configuration).makeNode()
-        return header.isEmpty ? node : node.applyingHeader(header)
+        return (textStyle.isPlain ? node : node.applyingStyle(textStyle)).asControl(id: id)
     }
 
     /// Sets the style used to render this button.
     /// - Parameter newStyle: A value conforming to ``ButtonStyle``.
     public func buttonStyle(_ newStyle: some ButtonStyle) -> Self {
-        Button(header: header, id: id, label: label, role: role, action: action, style: AnyButtonStyle(newStyle))
+        Button(textStyle: textStyle, id: id, label: label, role: role, action: action, style: AnyButtonStyle(newStyle))
     }
 }

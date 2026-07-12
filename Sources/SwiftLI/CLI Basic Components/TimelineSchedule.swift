@@ -42,6 +42,7 @@ public protocol TimelineSchedule {
 }
 
 public extension TimelineSchedule {
+    /// The default cadence for schedules that do not override it: ``TimelineCadence/seconds``.
     var cadence: TimelineCadence { .seconds }
 }
 
@@ -61,6 +62,9 @@ public struct PeriodicTimelineSchedule: TimelineSchedule, Sendable {
         self.interval = interval
     }
 
+    /// Returns the next update date strictly after `date`, aligned to the periodic cadence.
+    /// - Parameter date: The reference date to advance from.
+    /// - Returns: The next scheduled date, or `nil` if `interval` is not greater than zero.
     public func nextDate(after date: Date) -> Date? {
         guard interval > 0 else { return nil }
         // Smallest integer n such that startDate + n*interval is strictly after `date`.
@@ -68,12 +72,14 @@ public struct PeriodicTimelineSchedule: TimelineSchedule, Sendable {
         return startDate.addingTimeInterval(steps * interval)
     }
 
+    /// The cadence of this schedule: ``TimelineCadence/live`` for sub-second intervals, ``TimelineCadence/seconds`` otherwise.
     public var cadence: TimelineCadence { interval < 1 ? .live : .seconds }
 
     // Intentionally keyed on the interval only (not startDate): an inline
     // `.periodic(from: .now, by: 1)` recomputes `.now` every render, and keying
     // on it would arm a new timer each pass. The interval is what defines the
     // cadence, so equal-interval timelines safely share one timer.
+    /// A stable key derived from the interval that allows equal-interval timelines to share a single timer.
     public var timelineKey: String { "periodic:\(interval)" }
 }
 
@@ -81,15 +87,21 @@ public struct PeriodicTimelineSchedule: TimelineSchedule, Sendable {
 
 /// A schedule that updates once per minute, aligned to the top of the minute.
 public struct EveryMinuteTimelineSchedule: TimelineSchedule, Sendable {
+    /// Creates an every-minute schedule.
     public init() {}
 
+    /// Returns the next clock-aligned minute boundary strictly after `date`.
+    /// - Parameter date: The reference date to advance from.
+    /// - Returns: The start of the next minute after `date`.
     public func nextDate(after date: Date) -> Date? {
         let t = date.timeIntervalSinceReferenceDate
         let next = (t / 60).rounded(.down) * 60 + 60
         return Date(timeIntervalSinceReferenceDate: next)
     }
 
+    /// The cadence of this schedule: ``TimelineCadence/minutes``.
     public var cadence: TimelineCadence { .minutes }
+    /// A stable key that identifies this schedule so all every-minute timelines share one timer.
     public var timelineKey: String { "everyMinute" }
 }
 
@@ -111,11 +123,16 @@ public struct AnimationTimelineSchedule: TimelineSchedule, Sendable {
         self.paused = paused
     }
 
+    /// Returns the next update date `minimumInterval` seconds after `date`, or `nil` when paused.
+    /// - Parameter date: The reference date to advance from.
+    /// - Returns: The next scheduled date, or `nil` if the schedule is paused.
     public func nextDate(after date: Date) -> Date? {
         paused ? nil : date.addingTimeInterval(minimumInterval)
     }
 
+    /// The cadence of this schedule: ``TimelineCadence/live``.
     public var cadence: TimelineCadence { .live }
+    /// A stable key derived from `minimumInterval` that allows equal-rate animation timelines to share one timer.
     public var timelineKey: String { "animation:\(minimumInterval)" }
 }
 

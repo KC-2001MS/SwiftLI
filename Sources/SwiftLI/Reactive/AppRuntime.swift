@@ -15,7 +15,7 @@ import Foundation
 /// - Coalesces rapid state changes into a single render pass (up to ~60 fps).
 /// - Runs a `RunLoop` to keep the process alive while the app is active.
 /// - Handles `SIGINT` (Ctrl+C) for clean shutdown.
-/// - Handles `SIGWINCH` (terminal resize) by scheduling a re-render.
+/// - Handles terminal resize (SIGWINCH on POSIX, polled on Windows) by scheduling a re-render.
 ///
 /// You do not create or interact with `AppRuntime` directly. It is created and
 /// managed by ``CLIApp``'s `static func main()`.
@@ -46,6 +46,10 @@ public final class AppRuntime: @unchecked Sendable {
     /// Uptime timestamp of the most recent render.
     private var lastRenderTime: TimeInterval = 0
 
+    #if os(Windows)
+    private var resizePoller: WindowsResizePoller?
+    #endif
+
     // MARK: - Init
 
     init(app: any CLIApp) {
@@ -71,6 +75,7 @@ public final class AppRuntime: @unchecked Sendable {
         // Start with clean lifecycle state so `onAppear`/`task` modifiers in
         // the app's body fire for this run.
         SessionLifecycle.shared.reset()
+        PreferenceObserverRegistry.shared.reset()
         performRender()
 
         let runLoop = RunLoop.current
@@ -80,10 +85,15 @@ public final class AppRuntime: @unchecked Sendable {
         }
 
         KeyInputRouter.shared.stop()
+        #if os(Windows)
+        resizePoller?.stop()
+        resizePoller = nil
+        #endif
         renderer.teardown()
         RenderObservation.shared.invalidate()
         // Cancel `task` modifiers and clear once-per-session lifecycle state.
         SessionLifecycle.shared.reset()
+        PreferenceObserverRegistry.shared.reset()
         AppRuntime.shared = nil
     }
 
@@ -148,15 +158,25 @@ public final class AppRuntime: @unchecked Sendable {
         }
     }
 
-    /// Installs UNIX signal handlers for clean shutdown and resize handling.
+    /// Installs signal handlers and (on Windows) a resize poller for shutdown
+    /// and terminal-resize handling.
     private func setupSignalHandlers() {
         // Ctrl+C: stop the run loop gracefully
         signal(SIGINT) { _ in
             AppRuntime.shared?.stop()
         }
-        // Terminal resize: re-render at new dimensions
+        // Terminal resize: re-render at new dimensions.
+        #if os(Windows)
+        // SIGWINCH is not available on Windows; see WindowsResizePoller for details.
+        let poller = WindowsResizePoller {
+            AppRuntime.shared?.scheduleRender()
+        }
+        resizePoller = poller
+        poller.start()
+        #else
         signal(SIGWINCH) { _ in
             AppRuntime.shared?.scheduleRender()
         }
+        #endif
     }
 }

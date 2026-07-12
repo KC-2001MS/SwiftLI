@@ -35,6 +35,7 @@ public struct Form: View {
         self.content = content()._flattenedChildren()
     }
 
+    /// The rendered content of the form, laid out as a leading-aligned vertical stack.
     public var body: some View {
         VStack(alignment: .leading, spacing: 1, children: content)
     }

@@ -8,12 +8,12 @@
 
 /// A modifier that draws a box of Unicode box-drawing characters around a view.
 struct BorderModifier: ViewModifier {
-    let style: BorderStyle
-    let header: String
-    let fill: String
+    let box: BorderStyle
+    let style: TextStyle
+    let fill: TextStyle
 
     func node(for content: RenderNode) -> RenderNode {
-        .border(header: header, fill: fill, style: style, child: content)
+        .border(style: style.resolving(), fill: fill.resolving(), box: box, child: content)
     }
 
     /// The box occupies one column on each side of the content.
@@ -54,8 +54,8 @@ public extension View {
     ///     > round silhouette, use a rounded border with no `fill` (an outline).
     /// - Returns: A view wrapped in the requested border.
     func border(_ style: BorderStyle = .rounded, color: Color? = nil, fill: Color? = nil) -> some View {
-        let header = color.map { "\u{001B}[3\($0.ansi)m" } ?? ""
-        let fillHeader = fill.map { "\u{001B}[4\($0.ansi)m" } ?? ""
-        return modifier(BorderModifier(style: style, header: header, fill: fillHeader))
+        let borderStyle = color.map { TextStyle(foreground: $0) } ?? .plain
+        let fillStyle = fill.map { TextStyle(background: $0) } ?? .plain
+        return modifier(BorderModifier(box: style, style: borderStyle, fill: fillStyle))
     }
 }

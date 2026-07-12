@@ -45,6 +45,13 @@ public enum KeyEvent: Equatable, Sendable {
     case escape
     /// Ctrl-C — request application shutdown.
     case interrupt
+    /// A pointing-device event (click, drag, scroll wheel), decoded from the
+    /// same input stream as keystrokes. See ``MouseEvent``.
+    case mouse(MouseEvent)
+    /// A cursor-position report (`ESC [ row ; col R`, converted to 0-based) —
+    /// the terminal's answer to a `CSI 6n` query, not user input. The runtime
+    /// uses it to locate an inline frame on screen for mouse routing.
+    case cursorPosition(row: Int, column: Int)
 }
 
 /// Applies an editing command to a text buffer with a cursor, as a pure

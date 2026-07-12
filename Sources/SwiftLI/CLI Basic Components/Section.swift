@@ -79,6 +79,8 @@ public struct Section: View {
         self.content = content()._flattenedChildren()
     }
 
+    /// The rendered output of the section: an optional bold header, indented
+    /// content, and an optional dimmed footer.
     public var body: some View {
         if let header { header.bold() }
         VStack(alignment: .leading, spacing: 0, children: content)

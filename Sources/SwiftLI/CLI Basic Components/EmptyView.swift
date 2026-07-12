@@ -13,6 +13,7 @@ public struct EmptyView: View, Sendable, Equatable {
     /// Creates an empty view.
     public init() {}
 
+    /// The content of the empty view, which renders nothing.
     public var body: some View {
         EmptyView()
     }

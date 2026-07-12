@@ -23,14 +23,15 @@ public struct TupleView<each Content: View>: View {
         self.value = value
     }
 
+    /// The body of this view; always empty because `TupleView` is rendered directly by its parent container.
     public var body: some View {
         EmptyView()
     }
 
-    /// Cascades a style header onto every child.
+    /// Cascades a style onto every child.
     @_spi(RenderingInternals)
-    public func addHeader(_ header: String) -> Self {
-        TupleView((repeat (each value).addHeader(header)))
+    public func applyingStyle(_ style: TextStyle) -> Self {
+        TupleView((repeat (each value).applyingStyle(style)))
     }
 
     /// Lowers the children into a transparent ``RenderNode/group`` node.

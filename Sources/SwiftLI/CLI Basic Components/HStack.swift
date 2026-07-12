@@ -27,7 +27,7 @@ public struct HStack: View, @unchecked Sendable {
     private let children: [any View]
     private let spacing: Int
     private let alignment: VerticalAlignment
-    private let header: String
+    private let style: TextStyle
 
     /// Creates an HStack with the given children and optional spacing.
     /// - Parameters:
@@ -42,19 +42,19 @@ public struct HStack: View, @unchecked Sendable {
         self.alignment = alignment
         self.spacing = spacing
         self.children = content()._flattenedChildren()
-        self.header = ""
+        self.style = .plain
     }
 
     init(
         alignment: VerticalAlignment,
         spacing: Int,
         children: [any View],
-        header: String
+        style: TextStyle
     ) {
         self.alignment = alignment
         self.spacing = spacing
         self.children = children
-        self.header = header
+        self.style = style
     }
 
     public var body: some View {
@@ -62,8 +62,8 @@ public struct HStack: View, @unchecked Sendable {
     }
 
     @_spi(RenderingInternals)
-    public func addHeader(_ newHeader: String) -> HStack {
-        HStack(alignment: alignment, spacing: spacing, children: children, header: newHeader + header)
+    public func applyingStyle(_ style: TextStyle) -> HStack {
+        HStack(alignment: alignment, spacing: spacing, children: children, style: self.style.inheriting(style))
     }
 
     /// Lowers this stack into an ``RenderNode/hstack`` node.
@@ -79,6 +79,6 @@ public struct HStack: View, @unchecked Sendable {
             spacing: spacing,
             children: children.map { $0.makeNode() }
         )
-        return header.isEmpty ? node : node.applyingHeader(header)
+        return style.isPlain ? node : node.applyingStyle(style)
     }
 }

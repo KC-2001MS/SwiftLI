@@ -33,6 +33,9 @@ public struct PickerStyleConfiguration {
 /// and ``ListPickerStyle``.
 public protocol PickerStyle: Sendable {
     associatedtype Body: View
+    /// Builds the terminal representation for a picker with the given configuration.
+    /// - Parameter configuration: The style configuration containing label, options, selection, and focus state.
+    /// - Returns: A view that renders the picker.
     @ViewBuilder func makeBody(configuration: PickerStyleConfiguration) -> Body
 }
 
@@ -40,8 +43,12 @@ public protocol PickerStyle: Sendable {
 
 /// A one-line picker showing the current option between arrows: `label ‹ Opt ›`.
 public struct InlinePickerStyle: PickerStyle {
+    /// Creates an inline picker style.
     public init() {}
 
+    /// Builds the inline arrow-flanked representation of the picker.
+    /// - Parameter configuration: The style configuration containing label, options, selection, and focus state.
+    /// - Returns: A horizontal view with optional label and the selected option between arrow characters.
     public func makeBody(configuration: PickerStyleConfiguration) -> some View {
         let arrowColor: Color = configuration.isFocused ? .cyan : .eight_bit(240)
         return HStack(spacing: 0) {
@@ -60,8 +67,12 @@ public struct InlinePickerStyle: PickerStyle {
 /// A horizontal segmented control: the selected option is bracketed and
 /// coloured, the rest dimmed. `label [Opt1] Opt2 Opt3`.
 public struct SegmentedPickerStyle: PickerStyle {
+    /// Creates a segmented picker style.
     public init() {}
 
+    /// Builds the segmented bracket representation of the picker.
+    /// - Parameter configuration: The style configuration containing label, options, selection, and focus state.
+    /// - Returns: A horizontal view where the selected option is highlighted in green brackets and unselected options are dimmed.
     public func makeBody(configuration: PickerStyleConfiguration) -> some View {
         var cells: [any View] = []
         if configuration.isFocused { cells.append(Text(content: "> ").forgroundColor(.cyan)) }
@@ -84,8 +95,12 @@ public struct SegmentedPickerStyle: PickerStyle {
 /// selected row is bright cyan and bold and the header carries a `>`; when
 /// unfocused the whole list dims so it clearly reads as inactive.
 public struct ListPickerStyle: PickerStyle {
+    /// Creates a list picker style.
     public init() {}
 
+    /// Builds the vertical list representation of the picker.
+    /// - Parameter configuration: The style configuration containing label, options, selection, and focus state.
+    /// - Returns: A vertical stack where each option appears as a labelled row with a `❯` marker on the selected item.
     public func makeBody(configuration: PickerStyleConfiguration) -> some View {
         let focused = configuration.isFocused
         var rows: [any View] = []
@@ -152,7 +167,7 @@ struct AnyPickerStyle: PickerStyle, @unchecked Sendable {
 /// }
 /// ```
 public struct Picker: View {
-    let header: String
+    let textStyle: TextStyle
     let id: String
     let label: AnyView?
     let options: [String]
@@ -177,7 +192,7 @@ public struct Picker: View {
         id: String? = nil
     ) {
         let resolved = String(localized: label.localizationValue)
-        self.header = ""
+        self.textStyle = .plain
         self.id = id ?? (resolved.isEmpty ? "Picker" : resolved)
         self.label = resolved.isEmpty ? nil : AnyView(Text(content: resolved))
         self.options = options
@@ -198,7 +213,7 @@ public struct Picker: View {
         id: String = "Picker",
         @ViewBuilder label: () -> Label
     ) {
-        self.header = ""
+        self.textStyle = .plain
         self.id = id
         self.label = AnyView(label())
         self.options = options
@@ -206,8 +221,8 @@ public struct Picker: View {
         self.style = nil
     }
 
-    init(header: String, id: String, label: AnyView?, options: [String], selection: Binding<Int>, style: AnyPickerStyle?) {
-        self.header = header
+    init(textStyle: TextStyle, id: String, label: AnyView?, options: [String], selection: Binding<Int>, style: AnyPickerStyle?) {
+        self.textStyle = textStyle
         self.id = id
         self.label = label
         self.options = options
@@ -215,13 +230,14 @@ public struct Picker: View {
         self.style = style
     }
 
+    /// The rendered content of this picker, delegated to the resolved ``PickerStyle``.
     public var body: some View {
         EmptyView()
     }
 
     @_spi(RenderingInternals)
-    public func addHeader(_ newHeader: String) -> Self {
-        Picker(header: newHeader + header, id: id, label: label, options: options, selection: selection, style: style)
+    public func applyingStyle(_ style: TextStyle) -> Self {
+        Picker(textStyle: textStyle.inheriting(style), id: id, label: label, options: options, selection: selection, style: self.style)
     }
 
     @_spi(RenderingInternals)
@@ -239,12 +255,12 @@ public struct Picker: View {
         // Nearest wins: instance style, then subtree environment, then default.
         let resolvedStyle = style ?? EnvironmentStack.current.pickerStyle ?? AnyPickerStyle(InlinePickerStyle())
         let node = resolvedStyle.makeBody(configuration: configuration).makeNode()
-        return header.isEmpty ? node : node.applyingHeader(header)
+        return (textStyle.isPlain ? node : node.applyingStyle(textStyle)).asControl(id: id)
     }
 
     /// Sets the style used to render this picker.
     /// - Parameter newStyle: A value conforming to ``PickerStyle``.
     public func pickerStyle(_ newStyle: some PickerStyle) -> Self {
-        Picker(header: header, id: id, label: label, options: options, selection: selection, style: AnyPickerStyle(newStyle))
+        Picker(textStyle: textStyle, id: id, label: label, options: options, selection: selection, style: AnyPickerStyle(newStyle))
     }
 }

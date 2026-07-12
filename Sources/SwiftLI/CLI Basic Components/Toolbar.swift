@@ -184,8 +184,8 @@ struct NavigationBarConfigWriter: View {
     }
 
     @_spi(RenderingInternals)
-    public func addHeader(_ header: String) -> Self {
-        NavigationBarConfigWriter(content: content.addHeader(header), update: update)
+    public func applyingStyle(_ style: TextStyle) -> Self {
+        NavigationBarConfigWriter(content: content.applyingStyle(style), update: update)
     }
 
     @_spi(RenderingInternals)

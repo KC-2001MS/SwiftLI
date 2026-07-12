@@ -21,6 +21,9 @@ public struct SliderStyleConfiguration {
     public let width: Int
     /// Whether the slider currently has keyboard focus.
     public let isFocused: Bool
+    /// The owning slider's identity, so built-in styles can mark the track as
+    /// a pointer sub-region (a click on it jumps to the clicked value).
+    var _controlID: String? = nil
 
     /// The value's position in the range as a `0.0 … 1.0` fraction.
     public var fraction: Double {
@@ -67,11 +70,15 @@ public extension SliderStyle {
 /// empty side is dim grey. A `>` marker appears while focused, matching the
 /// other controls. Equivalent to ``SliderStyle/automatic``.
 public struct DefaultSliderStyle: SliderStyle {
+    /// Creates a default slider style.
     public init() {}
 
     /// Reserves the two columns of the `> ` focus marker.
     public var reservedColumns: Int { 2 }
 
+    /// Returns a view that renders the filled track, thumb, and optional focus marker.
+    ///
+    /// - Parameter configuration: The slider's label, value, range, track width, and focus state.
     public func makeBody(configuration: SliderStyleConfiguration) -> some View {
         let width = Swift.max(1, configuration.width)
         let fraction = Swift.max(0.0, Swift.min(1.0, configuration.fraction))
@@ -81,19 +88,28 @@ public struct DefaultSliderStyle: SliderStyle {
         let empty = width - 1 - thumbIndex
         let fillColor: Color = configuration.isFocused ? .cyan : .green
 
+        // The track is a pointer sub-region: a click on it jumps the value
+        // to the clicked column.
+        let track = HitRegion(
+            controlID: configuration._controlID,
+            role: MouseTargetRegistry.trackRole,
+            content: HStack(spacing: 0) {
+                if filled > 0 {
+                    Text(repeating: "━", count: filled).forgroundColor(fillColor)
+                }
+                Text(content: "●").forgroundColor(fillColor).bold(configuration.isFocused)
+                if empty > 0 {
+                    Text(repeating: "─", count: empty).forgroundColor(.eight_bit(240))
+                }
+            }
+        )
         return HStack(spacing: 0) {
             if configuration.isFocused { Text(content: "> ").forgroundColor(.cyan) }
             if let label = configuration.label {
                 label
                 Text(content: " ")
             }
-            if filled > 0 {
-                Text(repeating: "━", count: filled).forgroundColor(fillColor)
-            }
-            Text(content: "●").forgroundColor(fillColor).bold(configuration.isFocused)
-            if empty > 0 {
-                Text(repeating: "─", count: empty).forgroundColor(.eight_bit(240))
-            }
+            track
         }
     }
 }
@@ -149,7 +165,7 @@ struct AnySliderStyle: SliderStyle, @unchecked Sendable {
 /// > Give each slider a distinct label, or pass an explicit `id`, when
 /// > several share the same label.
 public struct Slider: View, @unchecked Sendable {
-    let header: String
+    let textStyle: TextStyle
     let id: String
     let label: AnyView?
     let value: Binding<Double>
@@ -184,7 +200,7 @@ public struct Slider: View, @unchecked Sendable {
         id: String? = nil
     ) {
         let resolved = String(localized: label.localizationValue)
-        self.header = ""
+        self.textStyle = .plain
         self.id = id ?? (resolved.isEmpty ? "Slider" : resolved)
         self.label = resolved.isEmpty ? nil : AnyView(Text(content: resolved))
         self.value = value
@@ -213,7 +229,7 @@ public struct Slider: View, @unchecked Sendable {
         id: String = "Slider",
         @ViewBuilder label: () -> Label
     ) {
-        self.header = ""
+        self.textStyle = .plain
         self.id = id
         self.label = AnyView(label())
         self.value = value
@@ -223,8 +239,8 @@ public struct Slider: View, @unchecked Sendable {
         self.style = nil
     }
 
-    init(header: String, id: String, label: AnyView?, value: Binding<Double>, range: ClosedRange<Double>, step: Double?, width: Int?, style: AnySliderStyle?) {
-        self.header = header
+    init(textStyle: TextStyle, id: String, label: AnyView?, value: Binding<Double>, range: ClosedRange<Double>, step: Double?, width: Int?, style: AnySliderStyle?) {
+        self.textStyle = textStyle
         self.id = id
         self.label = label
         self.value = value
@@ -234,13 +250,15 @@ public struct Slider: View, @unchecked Sendable {
         self.style = style
     }
 
+    /// The rendered content of this slider; always empty because the slider
+    /// is drawn by ``makeNode()`` during the rendering pass.
     public var body: some View {
         EmptyView()
     }
 
     @_spi(RenderingInternals)
-    public func addHeader(_ newHeader: String) -> Self {
-        Slider(header: newHeader + header, id: id, label: label, value: value, range: range, step: step, width: width, style: style)
+    public func applyingStyle(_ style: TextStyle) -> Self {
+        Slider(textStyle: textStyle.inheriting(style), id: id, label: label, value: value, range: range, step: step, width: width, style: self.style)
     }
 
     /// The per-keypress step: the explicit one, else 1/20th of the range.
@@ -265,19 +283,21 @@ public struct Slider: View, @unchecked Sendable {
         let resolvedWidth = width ?? Swift.max(1, available - resolvedStyle.reservedColumns - labelReserve)
 
         let clamped = Swift.min(Swift.max(value.wrappedValue, range.lowerBound), range.upperBound)
-        let node = resolvedStyle.makeBody(configuration: SliderStyleConfiguration(
+        var configuration = SliderStyleConfiguration(
             label: label,
             value: clamped,
             range: range,
             width: resolvedWidth,
             isFocused: FocusCoordinator.shared.isFocused(id)
-        )).makeNode()
-        return header.isEmpty ? node : node.applyingHeader(header)
+        )
+        configuration._controlID = id
+        let node = resolvedStyle.makeBody(configuration: configuration).makeNode()
+        return (textStyle.isPlain ? node : node.applyingStyle(textStyle)).asControl(id: id)
     }
 
     /// Sets the style used to render this slider.
     /// - Parameter newStyle: A value conforming to ``SliderStyle``.
     public func sliderStyle(_ newStyle: some SliderStyle) -> Self {
-        Slider(header: header, id: id, label: label, value: value, range: range, step: step, width: width, style: AnySliderStyle(newStyle))
+        Slider(textStyle: textStyle, id: id, label: label, value: value, range: range, step: step, width: width, style: AnySliderStyle(newStyle))
     }
 }

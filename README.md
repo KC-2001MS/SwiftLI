@@ -119,6 +119,28 @@ struct ConfirmCommand: InlineCommand {
 }
 ```
 
+### Mouse support
+Interactive sessions also speak the terminal's mouse protocol (SGR, with the
+legacy X10 encoding as a fallback) — no code changes required:
+
+- **Click** focuses the control under the pointer and performs its primary
+  action: a `Button` fires, a `Toggle` flips, a `Picker` advances, a `List`
+  selects the clicked row, a `Slider` jumps to the clicked value, and a click
+  inside a `TextField`/`TextEditor` places the cursor at that position.
+- **Drag** on a `Slider`'s track keeps the thumb following the pointer until
+  the button is released, like a desktop slider.
+- **Scroll wheel** scrolls the `ScrollView`, scrolling `List`, or `Table`
+  under the pointer without moving focus.
+- A click outside every control closes an open menu-bar menu (declared with
+  the `.commands` scene modifier), like on a desktop.
+
+This works in both full-screen and inline sessions; the inline renderer keeps
+track of where its frame sits on screen automatically. Mouse reporting is
+switched on only while a session is running and is always switched back off —
+including on <kbd>Ctrl-C</kbd>, `exit()`, or a fatal signal. Note that while
+reporting is on, the terminal's native text selection is unavailable, as in
+any terminal app that takes the mouse (`vim`, `htop`, …).
+
 ### Full-screen commands
 Conform to `FullScreenCommand` instead and the same `body` is drawn on the
 alternate screen like `vim` or `htop`, restored on exit. Its natural lifetime

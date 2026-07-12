@@ -60,6 +60,10 @@ public struct FocusState<Value: Hashable & Sendable>: Sendable {
         self.box = Box(wrappedValue)
     }
 
+    /// The currently focused control identifier, or `false`/`nil` when nothing is focused.
+    ///
+    /// Writing this value programmatically moves focus to the matching control and
+    /// schedules a terminal redraw.
     public var wrappedValue: Value {
         get { box.value }
         nonmutating set {
@@ -81,6 +85,7 @@ public struct FocusState<Value: Hashable & Sendable>: Sendable {
     /// A two-way reference to a ``FocusState``'s value.
     public struct Binding: Sendable {
         let box: Box
+        /// The current focus value; writing moves focus and triggers a redraw.
         public var wrappedValue: Value {
             get { box.value }
             nonmutating set {
@@ -100,6 +105,10 @@ public struct FocusState<Value: Hashable & Sendable>: Sendable {
 // `Decodable`). Focus is transient UI state, so it always starts unfocused
 // regardless of the decoder — mirroring how `@State` participates in decoding.
 extension FocusState: Decodable where Value: ExpressibleByNilLiteral {
+    /// Creates an unfocused focus state, ignoring the decoder's contents.
+    ///
+    /// Focus is transient UI state and is never persisted, so decoding always
+    /// produces an unfocused instance regardless of the encoded data.
     public init(from decoder: any Decoder) throws {
         self.init()
     }
@@ -143,13 +152,14 @@ public struct FocusModifier: View {
     let onUnfocus: @Sendable () -> Void
     let isRequested: @Sendable () -> Bool
 
+    /// The view body; returns an empty view because rendering is handled by ``makeNode()``.
     public var body: some View {
         EmptyView()
     }
 
     @_spi(RenderingInternals)
-    public func addHeader(_ header: String) -> FocusModifier {
-        FocusModifier(content: content.addHeader(header), onFocus: onFocus, onUnfocus: onUnfocus, isRequested: isRequested)
+    public func applyingStyle(_ style: TextStyle) -> FocusModifier {
+        FocusModifier(content: content.applyingStyle(style), onFocus: onFocus, onUnfocus: onUnfocus, isRequested: isRequested)
     }
 
     @_spi(RenderingInternals)

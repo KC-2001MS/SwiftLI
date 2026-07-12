@@ -33,15 +33,19 @@ struct ListCommand: FullScreenCommand {
 
     var body: some Scene {
         NavigationStack {
-            List(items, selection: $selection, height: 10) { item in
+            // List-specific modifier: listStyle decorates the rows (.plain is
+            // the default ❯-marker style).
+            List(items, selection: $selection) { item in
                 Text(item)
             }
+                .listStyle(.plain)
+                .frame(height: 10)
                 .navigationTitle("List")
                 .navigationSubtitle("↑/↓: select   Home/End: jump   Ctrl-C: quit")
 
             Divider()
                 .padding(.top, 1)
-            Text("Selected: \(selection.map { items[$0] } ?? "none")")
+            Text("Selected: \(selection.map { items[$0] } ?? "none")   (rows styled by .listStyle(.plain))")
                 .forgroundColor(.yellow)
         }
     }

@@ -62,6 +62,10 @@ public struct SceneConfiguration {
     /// itself, in seconds — `nil` uses the content-proportional default.
     var readingPause: Double? = nil
 
+    /// The menu-bar menus declared with ``Scene/commands(content:)``, in
+    /// bar order.
+    var menus: [ResolvedCommandMenu] = []
+
     /// The default configuration: every setting deferred to the session.
     public init() {}
 }

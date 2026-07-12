@@ -53,6 +53,7 @@ public struct ViewThatFits: View {
         }
     }
 
+    /// The body of the view; the actual rendering is performed by ``makeNode()``.
     public var body: some View {
         EmptyView()
     }

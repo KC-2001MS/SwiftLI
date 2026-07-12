@@ -6,6 +6,13 @@
 //
 
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#elseif os(Windows)
+import WinSDK
+#endif
 
 /// The size of the controlling terminal, measured in character cells.
 ///
@@ -29,15 +36,21 @@ import Foundation
 /// 3. ``TerminalSize/default`` (80 × 24), used when output is piped to a file
 ///    or another program and there is no attached terminal.
 ///
-/// > Note: In a reactive ``CLIApp``, the runtime re-renders on `SIGWINCH`
-/// > (terminal resize), so reading `TerminalSize.current` inside `body` always
-/// > reflects the latest dimensions.
+/// > Note: In a reactive ``CLIApp``, the runtime re-renders on terminal resize
+/// > (SIGWINCH on POSIX; polled via `GetConsoleScreenBufferInfo` on Windows),
+/// > so reading `TerminalSize.current` inside `body` always reflects the latest
+/// > dimensions.
 public struct TerminalSize: Equatable, Sendable {
     /// Number of character columns (the count of characters that fit on one row).
     public let columns: Int
     /// Number of character rows (lines) that fit on screen.
     public let rows: Int
 
+    /// Creates a terminal size with the given dimensions.
+    ///
+    /// - Parameters:
+    ///   - columns: The number of character columns (width).
+    ///   - rows: The number of character rows (height).
     public init(columns: Int, rows: Int) {
         self.columns = columns
         self.rows = rows
@@ -52,15 +65,33 @@ public struct TerminalSize: Equatable, Sendable {
     /// Falls back to environment variables and then ``default`` when there is no
     /// attached terminal (e.g. when output is redirected).
     public static var current: TerminalSize {
+        #if os(Windows)
+        if let size = consoleSize() { return size }
+        #else
         for fd in [STDOUT_FILENO, STDERR_FILENO, STDIN_FILENO] {
             if let size = ioctlSize(fd) { return size }
         }
+        #endif
         if let size = environmentSize() { return size }
         return .default
     }
 
     // MARK: - Sources
 
+    #if os(Windows)
+    /// Queries the Windows console for the visible window dimensions.
+    /// Returns `nil` when stdout is not a console (e.g. redirected to a file).
+    private static func consoleSize() -> TerminalSize? {
+        var csbi = CONSOLE_SCREEN_BUFFER_INFO()
+        guard GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi) else {
+            return nil
+        }
+        let w = Int(csbi.srWindow.Right - csbi.srWindow.Left) + 1
+        let h = Int(csbi.srWindow.Bottom - csbi.srWindow.Top) + 1
+        guard w > 0, h > 0 else { return nil }
+        return TerminalSize(columns: w, rows: h)
+    }
+    #else
     /// Queries the kernel for the window size of `fd` via `ioctl(TIOCGWINSZ)`.
     /// Returns `nil` when `fd` is not a terminal or reports a zero width.
     private static func ioctlSize(_ fd: Int32) -> TerminalSize? {
@@ -69,6 +100,7 @@ public struct TerminalSize: Equatable, Sendable {
         guard ws.ws_col > 0 else { return nil }
         return TerminalSize(columns: Int(ws.ws_col), rows: Int(ws.ws_row))
     }
+    #endif
 
     /// Reads the size from the `COLUMNS` / `LINES` environment variables.
     /// Returns `nil` when `COLUMNS` is missing or non-positive.

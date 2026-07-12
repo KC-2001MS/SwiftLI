@@ -5,19 +5,6 @@
 //  Created by Keisuke Chinone on 2026/07/06.
 //
 
-/// The intermediate representation (IR) of a view tree.
-///
-/// Every ``View`` lowers itself into a `RenderNode` tree via `makeNode()`.
-/// The tree is a pure value: it can be measured, laid out, compared with the
-/// tree of a previous render, and finally drawn — all without touching
-/// stdout. This decoupling is what allows SwiftLI to understand *which part*
-/// of the output changed and rewrite only that part.
-///
-/// The rendering pipeline is:
-///
-/// ```
-/// View ──makeNode()──▶ RenderNode ──NodeLayout──▶ Frame ──FrameDiff──▶ stdout
-/// ```
 /// The colour palette of a scrollbar.
 ///
 /// The bar is drawn as one continuous solid strip — full blocks for the thumb
@@ -26,34 +13,52 @@
 /// horizontally) with the thumb colour in the foreground and the track colour
 /// in the background, so a single cell shows both sides of the boundary.
 public struct ScrollBar: Equatable, Sendable {
-    /// SGR prefix colouring the thumb (used as the foreground).
-    public let thumbForeground: String
-    /// SGR prefix colouring the track (used as the foreground of track cells).
-    public let trackForeground: String
-    /// The track colour as a background, painted behind the thumb's half-block
-    /// end caps.
-    public let trackBackground: String
+    /// The colour of the thumb (the draggable indicator).
+    public let thumb: Color
+    /// The colour of the track the thumb travels along.
+    public let track: Color
 
-    public init(thumbForeground: String, trackForeground: String, trackBackground: String) {
-        self.thumbForeground = thumbForeground
-        self.trackForeground = trackForeground
-        self.trackBackground = trackBackground
+    /// Creates a scrollbar palette with the given thumb and track colours.
+    ///
+    /// - Parameters:
+    ///   - thumb: The colour used to draw the draggable thumb indicator.
+    ///   - track: The colour used to draw the track the thumb travels along.
+    public init(thumb: Color, track: Color) {
+        self.thumb = thumb
+        self.track = track
     }
 }
 
+/// The intermediate representation (IR) of a view tree.
+///
+/// Every ``View`` lowers itself into a `RenderNode` tree via `makeNode()`.
+/// The tree is a pure value: it can be measured, laid out, compared with the
+/// tree of a previous render, and finally drawn — all without touching
+/// stdout. This decoupling is what allows SwiftLI to understand *which part*
+/// of the output changed and rewrite only that part.
+///
+/// Styling in the IR is carried as structured ``TextStyle`` values, never as
+/// raw escape sequences; the rendering engine lowers them to ANSI output at
+/// draw time.
+///
+/// The rendering pipeline is:
+///
+/// ```
+/// View ──makeNode()──▶ RenderNode ──NodeLayout──▶ Frame ──FrameDiff──▶ stdout
+/// ```
 public indirect enum RenderNode: Equatable, Sendable {
     /// Renders nothing and occupies no space.
     case empty
 
-    /// Styled text runs. Each element of `contents` is emitted with `header`
-    /// prepended and an ANSI reset appended, joined on the same logical line
+    /// Styled text runs. Each element of `contents` is emitted with `style`
+    /// applied and closed with a reset, joined on the same logical line
     /// (unless a content string itself contains newlines).
-    case text(header: String, contents: [String])
+    case text(style: TextStyle, contents: [String])
 
     /// Flexible blank space. Inside an ``HStack`` it expands to absorb the
     /// row's leftover width, never shrinking below `minLength` columns.
     /// Everywhere else it occupies `minLength` blank rows.
-    case spacer(header: String, minLength: Int)
+    case spacer(style: TextStyle, minLength: Int)
 
     /// A separator: a vertical line inside an ``HStack``, a horizontal line
     /// everywhere else.
@@ -62,7 +67,7 @@ public indirect enum RenderNode: Equatable, Sendable {
     /// width, recomputed at layout time. Otherwise the length is resolved by
     /// the enclosing stack, falling back to `count` when there is no stack to
     /// span.
-    case divider(header: String, character: Character, verticalCharacter: Character, count: Int, fillsWidth: Bool)
+    case divider(style: TextStyle, character: Character, verticalCharacter: Character, count: Int, fillsWidth: Bool)
 
     /// A transparent container. Children are flattened into the enclosing
     /// stack; at the top level they stack vertically with no spacing.
@@ -102,20 +107,20 @@ public indirect enum RenderNode: Equatable, Sendable {
     /// A box of Unicode box-drawing characters around a child.
     ///
     /// The border occupies one extra column on each side and one extra row
-    /// above and below the child. `header` styles the border glyphs (e.g. a
-    /// foreground colour); an empty header uses the terminal default. `fill`
-    /// styles the interior — when non-empty the whole inside of the box is
+    /// above and below the child. `style` styles the border glyphs (e.g. a
+    /// foreground colour); a plain style uses the terminal default. `fill`
+    /// styles the interior — when specified the whole inside of the box is
     /// painted with it (typically a background colour) and the child inherits
-    /// it so its text sits on the fill; an empty `fill` leaves the interior
+    /// it so its text sits on the fill; a plain `fill` leaves the interior
     /// transparent.
-    case border(header: String, fill: String, style: BorderStyle, child: RenderNode)
+    case border(style: TextStyle, fill: TextStyle, box: BorderStyle, child: RenderNode)
 
     /// A drop shadow drawn along a child's right and bottom edges.
     ///
     /// The shadow adds one column and one row to the footprint, offset a single
-    /// cell down and to the right. `header` styles the shadow cells (typically a
+    /// cell down and to the right. `style` styles the shadow cells (typically a
     /// background colour).
-    case shadow(header: String, child: RenderNode)
+    case shadow(style: TextStyle, child: RenderNode)
 
     /// A fixed-width viewport showing a horizontally scrolled window of a wider
     /// child.
@@ -139,45 +144,67 @@ public indirect enum RenderNode: Equatable, Sendable {
     /// (e.g. a screen-clear sequence). Occupies no cells.
     case raw(String)
 
-    /// Returns a copy of the tree with `header` prepended to every styled leaf.
+    /// Marks the subtree as the on-screen footprint of the interactive control
+    /// `id` (the identity it registered with ``FocusCoordinator``).
+    ///
+    /// Layout-transparent: it measures and draws exactly as its child. At draw
+    /// time the child's rectangle is recorded in ``MouseTargetRegistry`` so
+    /// pointer events (clicks, the scroll wheel) can be routed to the control
+    /// under the pointer.
+    case control(id: String, child: RenderNode)
+
+    /// Returns a copy of the tree with every styled leaf resolved against
+    /// `style`.
     ///
     /// This is how container styles (modifiers applied to ``Group``,
     /// ``HStack``, or ``VStack``) cascade down to the text, spacer, and
-    /// divider leaves.
-    public func applyingHeader(_ header: String) -> RenderNode {
-        guard !header.isEmpty else { return self }
+    /// divider leaves: a leaf's own attributes win, unspecified ones inherit
+    /// the container's.
+    public func applyingStyle(_ style: TextStyle) -> RenderNode {
+        guard !style.isPlain else { return self }
         switch self {
         case .empty, .raw:
             return self
-        case .text(let h, let contents):
-            return .text(header: header + h, contents: contents)
-        case .spacer(let h, let minLength):
-            return .spacer(header: header + h, minLength: minLength)
-        case .divider(let h, let character, let verticalCharacter, let count, let fillsWidth):
-            return .divider(header: header + h, character: character, verticalCharacter: verticalCharacter, count: count, fillsWidth: fillsWidth)
+        case .text(let s, let contents):
+            return .text(style: s.inheriting(style).resolving(), contents: contents)
+        case .spacer(let s, let minLength):
+            return .spacer(style: s.inheriting(style).resolving(), minLength: minLength)
+        case .divider(let s, let character, let verticalCharacter, let count, let fillsWidth):
+            return .divider(style: s.inheriting(style).resolving(), character: character, verticalCharacter: verticalCharacter, count: count, fillsWidth: fillsWidth)
         case .group(let children):
-            return .group(children: children.map { $0.applyingHeader(header) })
+            return .group(children: children.map { $0.applyingStyle(style) })
         case .hstack(let alignment, let spacing, let children):
-            return .hstack(alignment: alignment, spacing: spacing, children: children.map { $0.applyingHeader(header) })
+            return .hstack(alignment: alignment, spacing: spacing, children: children.map { $0.applyingStyle(style) })
         case .vstack(let alignment, let spacing, let children):
-            return .vstack(alignment: alignment, spacing: spacing, children: children.map { $0.applyingHeader(header) })
+            return .vstack(alignment: alignment, spacing: spacing, children: children.map { $0.applyingStyle(style) })
         case .padding(let insets, let child):
-            return .padding(insets: insets, child: child.applyingHeader(header))
+            return .padding(insets: insets, child: child.applyingStyle(style))
         case .frame(let width, let height, let fillWidth, let fillHeight, let alignment, let child):
-            return .frame(width: width, height: height, fillWidth: fillWidth, fillHeight: fillHeight, alignment: alignment, child: child.applyingHeader(header))
+            return .frame(width: width, height: height, fillWidth: fillWidth, fillHeight: fillHeight, alignment: alignment, child: child.applyingStyle(style))
         case .lineLimit(let limit, let child):
-            return .lineLimit(limit, child: child.applyingHeader(header))
+            return .lineLimit(limit, child: child.applyingStyle(style))
         case .scroll(let offset, let height, let bar, let width, let child):
-            return .scroll(offset: offset, height: height, bar: bar, width: width, child: child.applyingHeader(header))
+            return .scroll(offset: offset, height: height, bar: bar, width: width, child: child.applyingStyle(style))
         case .hscroll(let offset, let extent, let bar, let child):
-            return .hscroll(offset: offset, extent: extent, bar: bar, child: child.applyingHeader(header))
-        case .border(let h, let fill, let style, let child):
-            return .border(header: header + h, fill: fill, style: style, child: child.applyingHeader(header))
-        case .shadow(let h, let child):
+            return .hscroll(offset: offset, extent: extent, bar: bar, child: child.applyingStyle(style))
+        case .border(let s, let fill, let box, let child):
+            return .border(style: s.inheriting(style), fill: fill, box: box, child: child.applyingStyle(style))
+        case .shadow(let s, let child):
             // The shadow cell keeps its own style; only the content inherits.
-            return .shadow(header: h, child: child.applyingHeader(header))
+            return .shadow(style: s, child: child.applyingStyle(style))
         case .viewThatFits(let cw, let ch, let candidates):
-            return .viewThatFits(checkWidth: cw, checkHeight: ch, candidates: candidates.map { $0.applyingHeader(header) })
+            return .viewThatFits(checkWidth: cw, checkHeight: ch, candidates: candidates.map { $0.applyingStyle(style) })
+        case .control(let id, let child):
+            return .control(id: id, child: child.applyingStyle(style))
         }
+    }
+
+    /// Wraps the node as the clickable footprint of control `id` — unless
+    /// control registration is currently suppressed (the inert layers beneath
+    /// the active navigation layer must not receive pointer events, exactly
+    /// as they receive no keys).
+    func asControl(id: String) -> RenderNode {
+        guard !FocusCoordinator.shared.isRegistrationSuppressed else { return self }
+        return .control(id: id, child: self)
     }
 }

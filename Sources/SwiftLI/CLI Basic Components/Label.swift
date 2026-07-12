@@ -36,7 +36,7 @@
 /// Built-in styles: ``DefaultLabelStyle/automatic``, ``IconOnlyLabelStyle/iconOnly``,
 /// ``TitleOnlyLabelStyle/titleOnly``, ``TitleAndIconLabelStyle/titleAndIcon``.
 public struct Label: View {
-    let header: String
+    let textStyle: TextStyle
 
     let image: String
 
@@ -47,12 +47,12 @@ public struct Label: View {
 
     /// Initializer used internally for modifier chaining.
     init(
-        header: String,
+        textStyle: TextStyle,
         title: String,
         image: String,
         style: AnyLabelStyle? = nil
     ) {
-        self.header = "\(header)"
+        self.textStyle = textStyle
         self.title = title
         self.image = image
         self.style = style
@@ -76,7 +76,7 @@ public struct Label: View {
         } else {
             image = ""
         }
-        self.header = ""
+        self.textStyle = .plain
         self.image = image
         self.title = String(localized: title.localizationValue)
         self.style = nil
@@ -91,7 +91,7 @@ public struct Label: View {
         image: String,
         title: LocalizedStringKey
     ) {
-        self.header = ""
+        self.textStyle = .plain
         self.image = image
         self.title = String(localized: title.localizationValue)
         self.style = nil
@@ -103,6 +103,7 @@ public struct Label: View {
         style ?? EnvironmentStack.current.labelStyle ?? AnyLabelStyle(DefaultLabelStyle())
     }
 
+    /// The rendered output of the label, produced by the resolved label style.
     public var body: some View {
         resolvedStyle.makeBody(configuration: LabelStyleConfiguration(
             icon: AnyView(Text(content: image)),
@@ -111,19 +112,19 @@ public struct Label: View {
     }
 
     @_spi(RenderingInternals)
-    public func addHeader(_ header: String) -> Self {
-        .init(header: header + self.header, title: self.title, image: self.image, style: self.style)
+    public func applyingStyle(_ style: TextStyle) -> Self {
+        .init(textStyle: textStyle.inheriting(style), title: self.title, image: self.image, style: self.style)
     }
 
     /// Lowers the label by building its style body, then cascading the label's
-    /// own style header onto the resulting node.
+    /// own text style onto the resulting node.
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
         let node = resolvedStyle.makeBody(configuration: LabelStyleConfiguration(
             icon: AnyView(Text(content: image)),
             title: AnyView(Text(content: title))
         )).makeNode()
-        return header.isEmpty ? node : node.applyingHeader(header)
+        return textStyle.isPlain ? node : node.applyingStyle(textStyle)
     }
 
     /// Changes the style used to lay out the icon and title.
@@ -131,6 +132,6 @@ public struct Label: View {
     /// - Parameter newStyle: The new ``LabelStyle`` to apply.
     /// - Returns: A copy of the label using `newStyle`.
     public func labelStyle(_ newStyle: some LabelStyle) -> Self {
-        return .init(header: self.header, title: self.title, image: self.image, style: AnyLabelStyle(newStyle))
+        return .init(textStyle: self.textStyle, title: self.title, image: self.image, style: AnyLabelStyle(newStyle))
     }
 }

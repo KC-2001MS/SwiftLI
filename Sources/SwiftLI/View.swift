@@ -11,7 +11,7 @@ import Foundation
 /// A single-line or multi-line text view that renders styled content to the terminal.
 ///
 /// `Text` is the fundamental building block of SwiftLI layouts. It displays a
-/// plain string or a repeated character with optional ANSI styling applied via
+/// plain string or a repeated character with optional styling applied via
 /// modifier methods such as ``forgroundColor(_:)``, ``bold()``, or ``italic()``.
 ///
 /// ## Creating a text view
@@ -41,7 +41,7 @@ import Foundation
 /// Text(verbatim: "Hello!")       // always renders "Hello!" as-is
 /// ```
 public struct Text: View, Sendable, Equatable {
-    let header: String
+    let style: TextStyle
 
     let contents: Array<String>
 
@@ -61,7 +61,7 @@ public struct Text: View, Sendable, Equatable {
         bundle: Bundle? = nil,
         comment: StaticString? = nil
     ) {
-        self.header = ""
+        self.style = .plain
         self.contents = [String(localized: key.localizationValue, table: tableName, bundle: bundle, comment: comment)]
     }
 
@@ -69,7 +69,7 @@ public struct Text: View, Sendable, Equatable {
     ///
     /// - Parameter content: The string to display verbatim.
     public init(verbatim content: String) {
-        self.header = ""
+        self.style = .plain
         self.contents = [content]
     }
 
@@ -77,7 +77,7 @@ public struct Text: View, Sendable, Equatable {
     ///
     /// - Parameter content: A string-like value to display.
     public init<S>(_ content: S) where S : StringProtocol {
-        self.header = ""
+        self.style = .plain
         self.contents = [String(content)]
     }
 
@@ -96,32 +96,32 @@ public struct Text: View, Sendable, Equatable {
         repeating: Character,
         count: Int
     ) {
-        self.header = ""
+        self.style = .plain
         self.contents = [String(repeating: repeating, count: count)]
     }
 
     init(
-        header: String,
+        style: TextStyle,
         repeating: Character,
         count: Int
     ) {
-        self.header = header
+        self.style = style
         self.contents = [String(repeating: repeating, count: count)]
     }
 
     init(
-        header: String,
+        style: TextStyle,
         contents: Array<String>
     ) {
-        self.header = "\(header)"
+        self.style = style
         self.contents = contents
     }
 
     init(
-        header: String = "",
+        style: TextStyle = .plain,
         content: String
     ) {
-        self.header = "\(header)"
+        self.style = style
         self.contents = [content]
     }
 
@@ -132,8 +132,8 @@ public struct Text: View, Sendable, Equatable {
     }
 
     @_spi(RenderingInternals)
-    public func addHeader(_ header: String) -> Self {
-        return Text(header: header + self.header, contents: contents)
+    public func applyingStyle(_ style: TextStyle) -> Self {
+        return Text(style: self.style.inheriting(style), contents: contents)
     }
 
     /// Lowers this text view into its intermediate representation.
@@ -143,7 +143,7 @@ public struct Text: View, Sendable, Equatable {
     /// against previous frames.
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
-        .text(header: header, contents: contents)
+        .text(style: style.resolving(), contents: contents)
     }
 
     /// Concatenates two text views into a single run.
@@ -158,9 +158,11 @@ public struct Text: View, Sendable, Equatable {
     ///   ```
     @available(*, deprecated, message: "Compose adjacent Text views inside an HStack (which defaults to spacing: 0) instead.")
     static func +(left: Self, right: Self) -> Self {
-        let leftContents = left.contents.map({ left.header + $0 })
-        let rightContents = right.contents.map({ right.header + $0 })
-        return Text(header: "", contents: leftContents + rightContents)
+        // Each side's style is baked into its runs (lowered through the same
+        // single point as the renderer) so the merged view keeps both styles.
+        let leftContents = left.contents.map({ left.style.ansiPrefix + $0 })
+        let rightContents = right.contents.map({ right.style.ansiPrefix + $0 })
+        return Text(style: .plain, contents: leftContents + rightContents)
     }
 }
 
@@ -190,9 +192,11 @@ public struct Text: View, Sendable, Equatable {
 ///
 /// ## Styling
 ///
-/// Apply ANSI styles through the modifier methods declared in the `View`
+/// Apply styles through the modifier methods declared in the `View`
 /// extension: ``forgroundColor(_:)``, ``bold()``, ``italic()``, ``underline()``,
-/// ``blink(_:)``, ``hidden()``, and ``strikethrough()``.
+/// ``blink(_:)``, ``hidden()``, and ``strikethrough()``. Styles are carried
+/// through the intermediate representation as structured ``TextStyle`` values;
+/// the rendering engine lowers them to escape sequences only at draw time.
 ///
 /// ## Views are scenes
 ///
@@ -226,8 +230,10 @@ public protocol View: Scene {
 
     // MARK: - SPI: rendering infrastructure (not part of the public API)
 
+    /// Resolves the view against an enclosing style: the view's own style
+    /// attributes win, unspecified ones inherit from `style`.
     @_spi(RenderingInternals)
-    func addHeader(_ header: String) -> Self
+    func applyingStyle(_ style: TextStyle) -> Self
 
     /// Lowers this view into the intermediate representation (``RenderNode``).
     ///
@@ -264,7 +270,7 @@ public extension View {
     // client module that imports SwiftLI without the SPI can only satisfy the
     // SPI requirements through visible defaults — hiding these would make it
     // impossible to conform to ``View`` outside this module.
-    func addHeader(_ header: String) -> Self {
+    func applyingStyle(_ style: TextStyle) -> Self {
         return self
     }
 
@@ -309,7 +315,7 @@ public extension View {
     /// Text("Error").forgroundColor(.red).render()
     /// ```
     func forgroundColor(_ color: Color) -> Self {
-        addHeader("\u{001B}[3\(color.ansi)m")
+        applyingStyle(TextStyle(foreground: color))
     }
 
     /// Fills the background of the view's cells with the given color.
@@ -318,7 +324,7 @@ public extension View {
     /// Text("Highlight").background(.yellow).render()
     /// ```
     func background(_ color: Color) -> Self {
-        addHeader("\u{001B}[4\(color.ansi)m")
+        applyingStyle(TextStyle(background: color))
     }
 
     /// Renders the view with bold weight.
@@ -327,7 +333,7 @@ public extension View {
     /// Text("Important").bold().render()
     /// ```
     func bold() -> Self {
-        addHeader("\u{001B}[1m")
+        applyingStyle(TextStyle(weight: .bold))
     }
 
     /// Renders the view with bold weight when `isActive` is `true`.
@@ -335,7 +341,7 @@ public extension View {
     /// - Parameter isActive: When `true`, bold is applied; otherwise the view
     ///   is rendered with its default weight.
     func bold(_ isActive: Bool) -> Self {
-        isActive ? addHeader("\u{001B}[1m") : self
+        isActive ? bold() : self
     }
 
     /// Sets the font weight of the view.
@@ -343,40 +349,40 @@ public extension View {
     /// - Parameter weight: The desired ``Weight``. Passing `.default` leaves the
     ///   weight unchanged.
     func fontWeight(_ weight: Weight) -> Self {
-        weight == .default ? self : addHeader("\u{001B}[\(weight.rawValue)m")
+        weight == .default ? self : applyingStyle(TextStyle(weight: weight))
     }
 
     /// Renders the view in italics.
     ///
     /// > Note: Support depends on the terminal emulator.
     func italic() -> Self {
-        addHeader("\u{001B}[3m")
+        applyingStyle(TextStyle(isItalic: true))
     }
 
     /// Renders the view in italics when `isActive` is `true`.
     ///
     /// - Parameter isActive: When `true`, italic is applied.
     func italic(_ isActive: Bool) -> Self {
-        isActive ? addHeader("\u{001B}[3m") : self
+        isActive ? italic() : self
     }
 
     /// Underlines every character in the view.
     func underline() -> Self {
-        addHeader("\u{001B}[4m")
+        applyingStyle(TextStyle(isUnderlined: true))
     }
 
     /// Underlines every character in the view when `isActive` is `true`.
     ///
     /// - Parameter isActive: When `true`, underline is applied.
     func underline(_ isActive: Bool) -> Self {
-        isActive ? addHeader("\u{001B}[4m") : self
+        isActive ? underline() : self
     }
 
     /// Applies a blinking effect using the given ``BlinkStyle``.
     ///
     /// - Parameter style: The blink style. Pass `.none` to disable blinking.
     func blink(_ style: BlinkStyle) -> Self {
-        style == .none ? self : addHeader("\u{001B}[\(style.rawValue)m")
+        style == .none ? self : applyingStyle(TextStyle(blink: style))
     }
 
     /// Hides the view's characters while preserving its layout space.
@@ -390,7 +396,7 @@ public extension View {
     /// > Note: The view still occupies the same terminal columns and rows when
     /// > hidden; only the printed characters are blanked.
     func hidden() -> Self {
-        addHeader("\u{001B}[8m")
+        applyingStyle(TextStyle(isHidden: true))
     }
 
     /// Hides the view's characters when `isActive` is `true`, blanking the
@@ -398,18 +404,18 @@ public extension View {
     ///
     /// - Parameter isActive: When `true`, the view's characters are hidden.
     func hidden(_ isActive: Bool) -> Self {
-        isActive ? addHeader("\u{001B}[8m") : self
+        isActive ? hidden() : self
     }
 
     /// Draws a horizontal strikethrough line through the view's characters.
     func strikethrough() -> Self {
-        addHeader("\u{001B}[9m")
+        applyingStyle(TextStyle(isStrikethrough: true))
     }
 
     /// Draws a horizontal strikethrough line when `isActive` is `true`.
     ///
     /// - Parameter isActive: When `true`, strikethrough is applied.
     func strikethrough(_ isActive: Bool) -> Self {
-        isActive ? addHeader("\u{001B}[9m") : self
+        isActive ? strikethrough() : self
     }
 }

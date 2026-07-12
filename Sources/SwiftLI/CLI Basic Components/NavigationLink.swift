@@ -35,7 +35,7 @@
 /// > Give each link a distinct label, or pass an explicit `id`, when several
 /// > share the same label.
 public struct NavigationLink: View {
-    let header: String
+    let style: TextStyle
     let id: String
     let label: AnyView
     let destination: () -> AnyView
@@ -53,7 +53,7 @@ public struct NavigationLink: View {
         @ViewBuilder destination: @escaping () -> Destination
     ) {
         let resolved = String(localized: title.localizationValue)
-        self.header = ""
+        self.style = .plain
         self.id = id ?? (resolved.isEmpty ? "NavigationLink" : resolved)
         self.label = AnyView(Text(content: resolved))
         self.destination = { AnyView(destination()) }
@@ -73,26 +73,29 @@ public struct NavigationLink: View {
         @ViewBuilder destination: @escaping () -> Destination,
         @ViewBuilder label: () -> Label
     ) {
-        self.header = ""
+        self.style = .plain
         self.id = id
         self.label = AnyView(label())
         self.destination = { AnyView(destination()) }
     }
 
-    init(header: String, id: String, label: AnyView, destination: @escaping () -> AnyView) {
-        self.header = header
+    init(style: TextStyle, id: String, label: AnyView, destination: @escaping () -> AnyView) {
+        self.style = style
         self.id = id
         self.label = label
         self.destination = destination
     }
 
+    /// The content of this view; returns an empty placeholder because
+    /// `NavigationLink` is rendered directly by the navigation container via
+    /// ``makeNode()``.
     public var body: some View {
         EmptyView()
     }
 
     @_spi(RenderingInternals)
-    public func addHeader(_ newHeader: String) -> Self {
-        NavigationLink(header: newHeader + header, id: id, label: label, destination: destination)
+    public func applyingStyle(_ style: TextStyle) -> Self {
+        NavigationLink(style: self.style.inheriting(style), id: id, label: label, destination: destination)
     }
 
     @_spi(RenderingInternals)
@@ -110,7 +113,7 @@ public struct NavigationLink: View {
         let focused = FocusCoordinator.shared.isFocused(id)
         // Focus is shown by filling the row with a background color — like a
         // selected sidebar row — rather than a marker character. The label's
-        // own header comes later in the sequence, so an explicit color set on
+        // own style attributes take precedence, so an explicit color set on
         // it still wins over the cascaded selection colors.
         let row = HStack(spacing: 0) {
             Text(content: "  ")
@@ -119,6 +122,6 @@ public struct NavigationLink: View {
         }
         let styled: any View = focused ? row.background(.cyan).forgroundColor(.black) : row
         let node = styled.makeNode()
-        return header.isEmpty ? node : node.applyingHeader(header)
+        return (style.isPlain ? node : node.applyingStyle(style)).asControl(id: id)
     }
 }

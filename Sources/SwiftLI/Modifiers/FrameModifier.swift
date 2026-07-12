@@ -37,10 +37,13 @@ struct FrameModifier: ViewModifier {
         return .frame(width: width, height: height, fillWidth: fillWidth, fillHeight: fillHeight, alignment: alignment, child: child)
     }
 
-    /// A definite width pins the content's available columns to it.
+    /// A definite width or height pins the content's available extent to it.
     func adjustEnvironment(_ values: inout EnvironmentValues) {
         if let width {
             values.maxWidth = Swift.min(values.maxWidth, width)
+        }
+        if let height {
+            values.maxHeight = Swift.min(values.maxHeight, height)
         }
     }
 }

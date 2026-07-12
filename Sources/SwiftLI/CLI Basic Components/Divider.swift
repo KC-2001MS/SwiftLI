@@ -40,7 +40,7 @@
 ///
 /// Use ``lineStyle(_:)`` to change the line characters (`-`/`|` or `=`/`‖`).
 public struct Divider: View, Sendable, Equatable {
-    let header: String
+    let style: TextStyle
 
     /// The character used for the horizontal line (default: `-`).
     public let character: Character
@@ -65,7 +65,7 @@ public struct Divider: View, Sendable, Equatable {
     /// else it is a horizontal line spanning every column of the terminal,
     /// recomputed as the window resizes.
     public init() {
-        self.header = ""
+        self.style = .plain
         self.character = "-"
         self.verticalCharacter = "|"
         self.count = 1
@@ -77,7 +77,7 @@ public struct Divider: View, Sendable, Equatable {
     /// - Parameter count: The number of columns for a horizontal divider. Inside
     ///   a ``VStack`` the divider instead spans the stack width.
     public init(_ count: Int) {
-        self.header = ""
+        self.style = .plain
         self.character = "-"
         self.verticalCharacter = "|"
         self.count = count
@@ -91,15 +91,15 @@ public struct Divider: View, Sendable, Equatable {
     ///   - verticalCharacter: The character drawn for a vertical divider inside ``HStack``.
     ///   - count: The number of columns for a fixed-width horizontal divider.
     public init(character: Character, verticalCharacter: Character = "|", count: Int = 1) {
-        self.header = ""
+        self.style = .plain
         self.character = character
         self.verticalCharacter = verticalCharacter
         self.count = count
         self.fillsWidth = false
     }
 
-    init(header: String, character: Character, verticalCharacter: Character, count: Int, fillsWidth: Bool = false) {
-        self.header = header
+    init(style: TextStyle, character: Character, verticalCharacter: Character, count: Int, fillsWidth: Bool = false) {
+        self.style = style
         self.character = character
         self.verticalCharacter = verticalCharacter
         self.count = count
@@ -113,8 +113,8 @@ public struct Divider: View, Sendable, Equatable {
     }
 
     @_spi(RenderingInternals)
-    public func addHeader(_ newHeader: String) -> Self {
-        Divider(header: newHeader + self.header, character: self.character, verticalCharacter: self.verticalCharacter, count: self.count, fillsWidth: self.fillsWidth)
+    public func applyingStyle(_ style: TextStyle) -> Self {
+        Divider(style: self.style.inheriting(style), character: self.character, verticalCharacter: self.verticalCharacter, count: self.count, fillsWidth: self.fillsWidth)
     }
 
     /// Lowers this divider into a direction-adaptive ``RenderNode/divider`` node.
@@ -124,7 +124,7 @@ public struct Divider: View, Sendable, Equatable {
     /// a ``VStack`` — or, when `fillsWidth` is set, to the full terminal width.
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
-        .divider(header: header, character: character, verticalCharacter: verticalCharacter, count: count, fillsWidth: fillsWidth)
+        .divider(style: style.resolving(), character: character, verticalCharacter: verticalCharacter, count: count, fillsWidth: fillsWidth)
     }
 
     // MARK: - Modifiers
@@ -138,9 +138,9 @@ public struct Divider: View, Sendable, Equatable {
     public func lineStyle(_ style: LineStyle) -> Divider {
         switch style {
         case .default:
-            return .init(header: self.header, character: "-", verticalCharacter: "|", count: self.count, fillsWidth: self.fillsWidth)
+            return .init(style: self.style, character: "-", verticalCharacter: "|", count: self.count, fillsWidth: self.fillsWidth)
         case .double_line:
-            return .init(header: self.header, character: "=", verticalCharacter: "‖", count: self.count, fillsWidth: self.fillsWidth)
+            return .init(style: self.style, character: "=", verticalCharacter: "‖", count: self.count, fillsWidth: self.fillsWidth)
         }
     }
 }

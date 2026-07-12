@@ -23,6 +23,10 @@ public struct Point: Equatable, Sendable {
     /// Vertical position (0 = topmost row).
     public var row: Int
 
+    /// Creates a point at the given column and row.
+    /// - Parameters:
+    ///   - column: Horizontal position (0 = leftmost column).
+    ///   - row: Vertical position (0 = topmost row).
     public init(column: Int, row: Int) {
         self.column = column
         self.row = row
@@ -42,6 +46,10 @@ public struct Size: Equatable, Sendable {
     /// Height in character rows.
     public var height: Int
 
+    /// Creates a size with the given width and height.
+    /// - Parameters:
+    ///   - width: Number of character columns.
+    ///   - height: Number of character rows.
     public init(width: Int, height: Int) {
         self.width = width
         self.height = height
@@ -60,6 +68,10 @@ public struct Rect: Equatable, Sendable {
     /// The dimensions of the rectangle.
     public var size: Size
 
+    /// Creates a rectangle with the given origin and size.
+    /// - Parameters:
+    ///   - origin: The top-left corner of the rectangle.
+    ///   - size: The dimensions of the rectangle.
     public init(origin: Point, size: Size) {
         self.origin = origin
         self.size = size

@@ -19,6 +19,11 @@ public struct Frame: Equatable, Sendable {
     /// The rendered rows, top to bottom, with trailing blanks trimmed.
     public var lines: [String]
 
+    /// Creates a new frame with optional preamble escape sequences and rendered lines.
+    ///
+    /// - Parameters:
+    ///   - preamble: Raw escape output to emit before the grid content. Defaults to an empty string.
+    ///   - lines: The rendered rows of the frame, top to bottom, with trailing blanks trimmed.
     public init(preamble: String = "", lines: [String]) {
         self.preamble = preamble
         self.lines = lines

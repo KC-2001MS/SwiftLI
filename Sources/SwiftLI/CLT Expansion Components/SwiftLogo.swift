@@ -22,6 +22,7 @@ public struct SwiftLogo: View, Sendable, Equatable {
     /// Creates the Swift logo view.
     public init() {}
     
+    /// The content and layout of the Swift logo view.
     public var body: some View {
         VStack {
             HStack {

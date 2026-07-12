@@ -193,8 +193,8 @@ struct NavigationTitleWriter: View {
     }
 
     @_spi(RenderingInternals)
-    public func addHeader(_ header: String) -> Self {
-        NavigationTitleWriter(content: content.addHeader(header), text: text, isSubtitle: isSubtitle)
+    public func applyingStyle(_ style: TextStyle) -> Self {
+        NavigationTitleWriter(content: content.applyingStyle(style), text: text, isSubtitle: isSubtitle)
     }
 
     @_spi(RenderingInternals)
@@ -298,7 +298,7 @@ enum NavigationChrome {
         let needsFullRow = config.background != nil || !center.isEmpty || !right.isEmpty
         if !needsFullRow {
             if !left.isEmpty {
-                rows.append(HStack(alignment: .top, spacing: 0, children: left, header: ""))
+                rows.append(HStack(alignment: .top, spacing: 0, children: left, style: .plain))
             }
         } else {
             var parts: [any View] = left
@@ -308,7 +308,7 @@ enum NavigationChrome {
             }
             parts.append(Spacer(minLength: 1))
             parts.append(contentsOf: right)
-            let row = HStack(alignment: .top, spacing: 0, children: parts, header: "")
+            let row = HStack(alignment: .top, spacing: 0, children: parts, style: .plain)
             if let background = config.background {
                 rows.append(row.background(background))
             } else {

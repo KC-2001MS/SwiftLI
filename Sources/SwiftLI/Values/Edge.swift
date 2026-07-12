@@ -15,15 +15,23 @@
 ///     .padding(.all, 2)       // 2 spaces on every side
 /// ```
 public enum Edge: Int, CaseIterable, Sendable {
+    /// The top edge.
     case top
+    /// The bottom edge.
     case bottom
+    /// The leading (left) edge.
     case leading
+    /// The trailing (right) edge.
     case trailing
 
     /// A set of edges, modeled after SwiftUI's `Edge.Set`.
     public struct Set: OptionSet, Sendable {
+        /// The raw bitmask value representing the selected edges.
         public let rawValue: Int
 
+        /// Creates an edge set from a raw bitmask value.
+        ///
+        /// - Parameter rawValue: The raw integer bitmask representing the edges.
         public init(rawValue: Int) {
             self.rawValue = rawValue
         }

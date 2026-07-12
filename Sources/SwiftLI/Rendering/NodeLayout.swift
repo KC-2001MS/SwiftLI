@@ -21,7 +21,9 @@ public enum NodeLayout {
     /// whether they occupy columns (inside an ``HStack``) or rows (everywhere
     /// else).
     public enum Axis: Sendable {
+        /// Children are arranged left to right along the column axis.
         case horizontal
+        /// Children are arranged top to bottom along the row axis.
         case vertical
     }
 
@@ -47,8 +49,8 @@ public enum NodeLayout {
         switch node {
         case .empty, .raw:
             return .zero
-        case .text(let header, let contents):
-            let s = styledText(header: header, contents: contents, proposedWidth: proposedWidth, lineLimit: lineLimit)
+        case .text(let style, let contents):
+            let s = styledText(style: style, contents: contents, proposedWidth: proposedWidth, lineLimit: lineLimit)
             return TextMetrics.size(of: s.isEmpty ? " " : s)
         case .spacer(_, let minLength):
             // The minimum footprint; a row with flexible spacers expands them
@@ -104,6 +106,8 @@ public enum NodeLayout {
         case .viewThatFits(let cw, let ch, let candidates):
             let chosen = fittingCandidate(candidates, checkWidth: cw, checkHeight: ch, proposedWidth: proposedWidth, lineLimit: lineLimit)
             return measure(chosen, axis: axis, proposedWidth: proposedWidth, lineLimit: lineLimit)
+        case .control(_, let child):
+            return measure(child, axis: axis, proposedWidth: proposedWidth, lineLimit: lineLimit)
         }
     }
 
@@ -116,32 +120,32 @@ public enum NodeLayout {
         switch node {
         case .empty, .raw:
             return
-        case .text(let header, let contents):
-            let s = styledText(header: header, contents: contents, proposedWidth: proposedWidth, lineLimit: lineLimit)
+        case .text(let style, let contents):
+            let s = styledText(style: style, contents: contents, proposedWidth: proposedWidth, lineLimit: lineLimit)
             if s.isEmpty { return }
             canvas.expand(toFit: Rect(origin: origin, size: TextMetrics.size(of: s)))
             // `hidden()` replaces the glyphs with spaces while preserving the
             // exact column width, so the layout never shifts — only the
             // visible characters disappear.
-            canvas.write(isHidden(header) ? blankedGlyphs(of: s) : s, at: origin)
-        case .spacer(let header, let minLength):
+            canvas.write(style.isHidden ? blankedGlyphs(of: s) : s, at: origin)
+        case .spacer(let style, let minLength):
             // A spacer inside a row is drawn (expanded) by `drawRow`; this
             // path only handles a spacer outside any stack, at its minimum.
             if axis == .horizontal {
                 canvas.expand(toFit: Rect(origin: origin, size: Size(width: minLength, height: 1)))
-                canvas.write(header + String(repeating: " ", count: minLength), at: origin)
+                canvas.write(style.ansiPrefix + String(repeating: " ", count: minLength), at: origin)
             } else {
                 // Vertical spacer: occupies blank rows only.
                 canvas.expand(toFit: Rect(origin: origin, size: Size(width: 0, height: minLength)))
             }
-        case .divider(let header, let character, let verticalCharacter, let count, let fillsWidth):
+        case .divider(let style, let character, let verticalCharacter, let count, let fillsWidth):
             // A divider outside of a stack falls back to its own count/height,
             // or the proposed/terminal width when it is width-filling.
             if axis == .horizontal {
-                drawVerticalDivider(header: header, character: verticalCharacter, height: 1, into: canvas, at: origin)
+                drawVerticalDivider(style: style, character: verticalCharacter, height: 1, into: canvas, at: origin)
             } else {
                 let width = fillsWidth ? (proposedWidth ?? TerminalSize.current.columns) : count
-                drawHorizontalDivider(header: header, character: character, width: width, into: canvas, at: origin)
+                drawHorizontalDivider(style: style, character: character, width: width, into: canvas, at: origin)
             }
         case .group(let children):
             drawColumn(flatten(children), alignment: .leading, spacing: 0, into: canvas, at: origin, proposedWidth: proposedWidth, lineLimit: lineLimit)
@@ -165,13 +169,19 @@ public enum NodeLayout {
             drawScroll(offset: offset, height: height, bar: bar, width: width, child: child, into: canvas, at: origin, proposedWidth: proposedWidth, lineLimit: lineLimit)
         case .hscroll(let offset, let extent, let bar, let child):
             drawHScroll(offset: offset, extent: extent, bar: bar, child: child, into: canvas, at: origin, lineLimit: lineLimit)
-        case .border(let header, let fill, let style, let child):
-            drawBorder(header: header, fill: fill, style: style, child: child, into: canvas, at: origin, proposedWidth: proposedWidth, lineLimit: lineLimit)
-        case .shadow(let header, let child):
-            drawShadow(header: header, child: child, into: canvas, at: origin, proposedWidth: proposedWidth, lineLimit: lineLimit)
+        case .border(let style, let fill, let box, let child):
+            drawBorder(style: style, fill: fill, box: box, child: child, into: canvas, at: origin, proposedWidth: proposedWidth, lineLimit: lineLimit)
+        case .shadow(let style, let child):
+            drawShadow(style: style, child: child, into: canvas, at: origin, proposedWidth: proposedWidth, lineLimit: lineLimit)
         case .viewThatFits(let cw, let ch, let candidates):
             let chosen = fittingCandidate(candidates, checkWidth: cw, checkHeight: ch, proposedWidth: proposedWidth, lineLimit: lineLimit)
             draw(chosen, into: canvas, at: origin, axis: axis, proposedWidth: proposedWidth, lineLimit: lineLimit)
+        case .control(let id, let child):
+            // Record where the control lands so pointer events can find it,
+            // then draw the child unchanged.
+            let size = measure(child, axis: axis, proposedWidth: proposedWidth, lineLimit: lineLimit)
+            MouseTargetRegistry.shared.record(id: id, rect: Rect(origin: origin, size: size))
+            draw(child, into: canvas, at: origin, axis: axis, proposedWidth: proposedWidth, lineLimit: lineLimit)
         }
     }
 
@@ -199,8 +209,18 @@ public enum NodeLayout {
         guard height > 0 else { return }
 
         // Lay the child out in full, then take a `height`-row vertical window.
+        // The child draws at the origin of its own canvas, so control regions
+        // recorded inside are mapped: shifted up by the (pre-computed) scroll
+        // offset, placed at this viewport's origin, and clipped to its rows.
+        let measuredHeight = measure(child, axis: .vertical, proposedWidth: proposedWidth, lineLimit: lineLimit).height
+        let hitOffset = Swift.min(Swift.max(offset, 0), Swift.max(0, measuredHeight - height))
         let childCanvas = TerminalCanvas(width: 0, height: 0)
-        draw(child, into: childCanvas, at: .zero, axis: .vertical, proposedWidth: proposedWidth, lineLimit: lineLimit)
+        MouseTargetRegistry.shared.withTransform(
+            translation: Point(column: origin.column, row: origin.row - hitOffset),
+            clip: Rect(origin: origin, size: Size(width: Int.max / 4, height: height))
+        ) {
+            draw(child, into: childCanvas, at: .zero, axis: .vertical, proposedWidth: proposedWidth, lineLimit: lineLimit)
+        }
         let lines = childCanvas.lines()
         let contentHeight = lines.count
         let maxOffset = Swift.max(0, contentHeight - height)
@@ -246,11 +266,14 @@ public enum NodeLayout {
     /// with the thumb colour over the track colour.
     private static func barCell(first: Bool, second: Bool, bar: ScrollBar, firstOnly: String, secondOnly: String) -> String {
         let reset = "\u{001B}[0m"
+        let thumbCell = TextStyle(foreground: bar.thumb).ansiPrefix
+        let thumbOnTrack = TextStyle(foreground: bar.thumb, background: bar.track).ansiPrefix
+        let trackCell = TextStyle(foreground: bar.track).ansiPrefix
         switch (first, second) {
-        case (true, true):   return bar.thumbForeground + "█" + reset
-        case (true, false):  return bar.thumbForeground + bar.trackBackground + firstOnly + reset
-        case (false, true):  return bar.thumbForeground + bar.trackBackground + secondOnly + reset
-        case (false, false): return bar.trackForeground + "█" + reset
+        case (true, true):   return thumbCell + "█" + reset
+        case (true, false):  return thumbOnTrack + firstOnly + reset
+        case (false, true):  return thumbOnTrack + secondOnly + reset
+        case (false, false): return trackCell + "█" + reset
         }
     }
 
@@ -258,9 +281,17 @@ public enum NodeLayout {
         guard extent > 0 else { return }
 
         // Lay the child out at its natural width, then take an `extent`-column
-        // horizontal window of every row.
+        // horizontal window of every row. Control regions recorded inside are
+        // mapped like the vertical viewport's, along the other axis.
+        let measuredWidth = measure(child, axis: .vertical, proposedWidth: nil, lineLimit: lineLimit).width
+        let hitOffset = Swift.min(Swift.max(offset, 0), Swift.max(0, measuredWidth - extent))
         let childCanvas = TerminalCanvas(width: 0, height: 0)
-        draw(child, into: childCanvas, at: .zero, axis: .vertical, proposedWidth: nil, lineLimit: lineLimit)
+        MouseTargetRegistry.shared.withTransform(
+            translation: Point(column: origin.column - hitOffset, row: origin.row),
+            clip: Rect(origin: origin, size: Size(width: extent, height: Int.max / 4))
+        ) {
+            draw(child, into: childCanvas, at: .zero, axis: .vertical, proposedWidth: nil, lineLimit: lineLimit)
+        }
         let lines = childCanvas.lines()
         let contentHeight = lines.count
         let contentWidth = lines.map { TextMetrics.visibleWidth(TextMetrics.stripANSI($0)) }.max() ?? 0
@@ -302,8 +333,8 @@ public enum NodeLayout {
 
     /// Draws a box of box-drawing glyphs around `child`, placing the child one
     /// cell in from the top-left corner.
-    private static func drawBorder(header: String, fill: String, style: BorderStyle, child: RenderNode, into canvas: TerminalCanvas, at origin: Point, proposedWidth: Int?, lineLimit: Int?) {
-        let g = style.glyphs
+    private static func drawBorder(style: TextStyle, fill: TextStyle, box: BorderStyle, child: RenderNode, into canvas: TerminalCanvas, at origin: Point, proposedWidth: Int?, lineLimit: Int?) {
+        let g = box.glyphs
         let inner = proposedWidth.map { Swift.max(0, $0 - 2) }
         let childSize = measure(child, axis: .vertical, proposedWidth: inner, lineLimit: lineLimit)
         let w = childSize.width
@@ -318,7 +349,8 @@ public enum NodeLayout {
         // drawn *on* the fill as decoration, and the silhouette stays square. A
         // single cell has only one background, so a rounded *filled* corner is
         // not representable; a truly round silhouette needs an unfilled outline.
-        let edge = header + fill
+        // The fill's attributes win over the border style's where both specify.
+        let edge = fill.inheriting(style).ansiPrefix
 
         let top = edge + String(g.topLeft) + String(repeating: g.horizontal, count: w) + String(g.topRight) + reset
         canvas.write(top, at: origin)
@@ -334,8 +366,8 @@ public enum NodeLayout {
 
         // Paint the interior when a fill is requested, so the whole inside of
         // the box is coloured — not just the cells the child writes.
-        if !fill.isEmpty && w > 0 && h > 0 {
-            let fillRow = fill + String(repeating: " ", count: w) + reset
+        if !fill.isPlain && w > 0 && h > 0 {
+            let fillRow = fill.ansiPrefix + String(repeating: " ", count: w) + reset
             for r in 0..<h {
                 canvas.write(fillRow, at: Point(column: origin.column + 1, row: origin.row + 1 + r))
             }
@@ -343,13 +375,13 @@ public enum NodeLayout {
 
         // The child sits inside the box, inset by one cell. When filled, the
         // child inherits the fill so its text sits on the fill background too.
-        let content = fill.isEmpty ? child : child.applyingHeader(fill)
+        let content = fill.isPlain ? child : child.applyingStyle(fill)
         draw(content, into: canvas, at: Point(column: origin.column + 1, row: origin.row + 1), axis: .vertical, proposedWidth: inner, lineLimit: lineLimit)
     }
 
     /// Draws a one-cell drop shadow along `child`'s right and bottom edges,
     /// offset a single cell down and to the right, then draws the child on top.
-    private static func drawShadow(header: String, child: RenderNode, into canvas: TerminalCanvas, at origin: Point, proposedWidth: Int?, lineLimit: Int?) {
+    private static func drawShadow(style: TextStyle, child: RenderNode, into canvas: TerminalCanvas, at origin: Point, proposedWidth: Int?, lineLimit: Int?) {
         let inner = proposedWidth.map { Swift.max(0, $0 - 1) }
         let childSize = measure(child, axis: .vertical, proposedWidth: inner, lineLimit: lineLimit)
         let w = childSize.width
@@ -363,7 +395,7 @@ public enum NodeLayout {
         canvas.expand(toFit: Rect(origin: origin, size: Size(width: w + 1, height: h + 1)))
 
         // A single shadow cell: a styled space so trailing shadow is not trimmed.
-        let cell = header + " " + "\u{001B}[0m"
+        let cell = style.ansiPrefix + " " + "\u{001B}[0m"
         // Bottom band, one row below the child.
         for c in 1...w {
             canvas.write(cell, at: Point(column: origin.column + c, row: origin.row + h))
@@ -441,9 +473,15 @@ public enum NodeLayout {
         proposedWidth: Int? = nil,
         lineLimit: Int? = nil
     ) {
+        // Measure each child once; the sizes are reused for stack-width,
+        // spacer height allocation, and drawing to avoid redundant traversals.
+        let childSizes = children.map {
+            measure($0, axis: .vertical, proposedWidth: proposedWidth, lineLimit: lineLimit)
+        }
+
         // Dividers span the stack, so they don't participate in the width.
-        let stackWidth = children.map { child -> Int in
-            isDivider(child) ? 0 : measure(child, axis: .vertical, proposedWidth: proposedWidth, lineLimit: lineLimit).width
+        let stackWidth = zip(children, childSizes).map { child, size in
+            isDivider(child) ? 0 : size.width
         }.max() ?? 0
 
         // Flexible spacers share the column's leftover rows up to the
@@ -456,12 +494,8 @@ public enum NodeLayout {
         var spacerHeights: [Int] = []
         if !spacerMins.isEmpty {
             var natural = 0
-            for (i, child) in children.enumerated() {
-                if case .spacer(_, let minLength) = child {
-                    natural += minLength
-                } else {
-                    natural += measure(child, axis: .vertical, proposedWidth: proposedWidth, lineLimit: lineLimit).height
-                }
+            for i in children.indices {
+                natural += childSizes[i].height
                 if i < children.count - 1 { natural += spacing }
             }
             var extra = Swift.max(0, EnvironmentStack.current.maxHeight - natural)
@@ -475,11 +509,11 @@ public enum NodeLayout {
         var y = origin.row
         var spacerIndex = 0
         for (i, child) in children.enumerated() {
-            let size = measure(child, axis: .vertical, proposedWidth: proposedWidth, lineLimit: lineLimit)
+            let size = childSizes[i]
             var advance = size.height
-            if case .divider(let header, let character, _, let count, let fillsWidth) = child {
+            if case .divider(let style, let character, _, let count, let fillsWidth) = child {
                 let width = fillsWidth ? (proposedWidth ?? TerminalSize.current.columns) : (stackWidth > 0 ? stackWidth : count)
-                drawHorizontalDivider(header: header, character: character, width: width, into: canvas, at: Point(column: origin.column, row: y))
+                drawHorizontalDivider(style: style, character: character, width: width, into: canvas, at: Point(column: origin.column, row: y))
             } else if case .spacer = child {
                 let height = spacerHeights[spacerIndex]
                 spacerIndex += 1
@@ -509,9 +543,13 @@ public enum NodeLayout {
         proposedWidth: Int? = nil,
         lineLimit: Int? = nil
     ) {
+        // Measure each child once; the sizes are reused for stack-height,
+        // spacer width allocation, and drawing to avoid redundant traversals.
+        let childSizes = children.map { measure($0, axis: .horizontal, lineLimit: lineLimit) }
+
         // Dividers stretch to the stack height, so they don't participate in it.
-        let stackHeight = children.map { child -> Int in
-            isDivider(child) ? 0 : measure(child, axis: .horizontal, lineLimit: lineLimit).height
+        let stackHeight = zip(children, childSizes).map { child, size in
+            isDivider(child) ? 0 : size.height
         }.max() ?? 0
 
         // Flexible spacers share the row's leftover space up to the proposed
@@ -525,8 +563,8 @@ public enum NodeLayout {
         var spacerWidths: [Int] = []
         if !spacerMins.isEmpty {
             var natural = 0
-            for (i, child) in children.enumerated() {
-                natural += measure(child, axis: .horizontal, lineLimit: lineLimit).width
+            for i in children.indices {
+                natural += childSizes[i].width
                 if i < children.count - 1 { natural += spacing }
             }
             let target = proposedWidth ?? EnvironmentStack.current.maxWidth
@@ -541,16 +579,16 @@ public enum NodeLayout {
         var x = origin.column
         var spacerIndex = 0
         for (i, child) in children.enumerated() {
-            let size = measure(child, axis: .horizontal, lineLimit: lineLimit)
+            let size = childSizes[i]
             var advance = size.width
-            if case .divider(let header, _, let verticalCharacter, _, _) = child {
-                drawVerticalDivider(header: header, character: verticalCharacter, height: Swift.max(stackHeight, 1), into: canvas, at: Point(column: x, row: origin.row))
-            } else if case .spacer(let header, _) = child {
+            if case .divider(let style, _, let verticalCharacter, _, _) = child {
+                drawVerticalDivider(style: style, character: verticalCharacter, height: Swift.max(stackHeight, 1), into: canvas, at: Point(column: x, row: origin.row))
+            } else if case .spacer(let style, _) = child {
                 let width = spacerWidths[spacerIndex]
                 spacerIndex += 1
                 let childOrigin = Point(column: x, row: origin.row)
                 canvas.expand(toFit: Rect(origin: childOrigin, size: Size(width: width, height: 1)))
-                canvas.write(header + String(repeating: " ", count: width), at: childOrigin)
+                canvas.write(style.ansiPrefix + String(repeating: " ", count: width), at: childOrigin)
                 advance = width
             } else {
                 let rowOffset: Int
@@ -594,8 +632,35 @@ public enum NodeLayout {
         guard r.width > 0, r.height > 0 else { return }
 
         // Render the child in isolation, then place/clip it into the frame box.
+        // Control regions recorded inside are shifted by the block placement
+        // that `composeFrameBlock` applies and clipped to the box. Horizontal
+        // placement is per-line there; the block-level offset (from the child's
+        // overall width) matches it exactly for leading alignment and for
+        // uniform-width content, which covers the practical cases.
+        let childSize = measure(child, axis: .vertical, proposedWidth: r.childProposedWidth, lineLimit: lineLimit)
+        let topPad: Int
+        switch alignment.vertical {
+        case .top:    topPad = 0
+        case .center: topPad = (r.height - childSize.height) / 2
+        case .bottom: topPad = r.height - childSize.height
+        }
+        let leftPad: Int
+        if childSize.width >= r.width {
+            leftPad = 0
+        } else {
+            switch alignment.horizontal {
+            case .leading:  leftPad = 0
+            case .center:   leftPad = (r.width - childSize.width) / 2
+            case .trailing: leftPad = r.width - childSize.width
+            }
+        }
         let childCanvas = TerminalCanvas(width: 0, height: 0)
-        draw(child, into: childCanvas, at: .zero, axis: .vertical, proposedWidth: r.childProposedWidth, lineLimit: lineLimit)
+        MouseTargetRegistry.shared.withTransform(
+            translation: Point(column: origin.column + leftPad, row: origin.row + topPad),
+            clip: Rect(origin: origin, size: Size(width: r.width, height: r.height))
+        ) {
+            draw(child, into: childCanvas, at: .zero, axis: .vertical, proposedWidth: r.childProposedWidth, lineLimit: lineLimit)
+        }
         let block = composeFrameBlock(childCanvas.lines(), width: r.width, height: r.height, alignment: alignment)
 
         canvas.expand(toFit: Rect(origin: origin, size: Size(width: r.width, height: r.height)))
@@ -651,17 +716,6 @@ public enum NodeLayout {
         return false
     }
 
-    /// The ANSI conceal sequence emitted by ``View/hidden()``. Rather than rely
-    /// on the terminal's spotty support for conceal, SwiftLI treats this code
-    /// as a marker: any leaf whose style header carries it is drawn as blank
-    /// spaces of the same width.
-    static let hiddenCode = "\u{001B}[8m"
-
-    /// Returns `true` when a style header requests hiding.
-    static func isHidden(_ header: String) -> Bool {
-        header.contains(hiddenCode)
-    }
-
     /// Replaces every visible glyph in a (possibly styled) string with spaces,
     /// preserving each character's column width and any line breaks.
     ///
@@ -681,17 +735,20 @@ public enum NodeLayout {
     }
 
     /// Composes the final styled string for a text node: every content run
-    /// gets the header prefix and an ANSI reset suffix.
+    /// gets the style's escape prefix and an ANSI reset suffix. This — together
+    /// with the divider/spacer/border/shadow helpers below — is where the
+    /// engine lowers the IR's structured ``TextStyle`` to concrete output.
     ///
     /// When `proposedWidth` is given, each logical line that exceeds it is word
     /// wrapped onto extra visual lines; `lineLimit` then caps the number of
     /// visual lines, marking the last kept line with an ellipsis when content is
     /// dropped. With neither constraint this returns the historical, unwrapped
     /// composition unchanged.
-    static func styledText(header: String, contents: [String], proposedWidth: Int? = nil, lineLimit: Int? = nil) -> String {
+    static func styledText(style: TextStyle, contents: [String], proposedWidth: Int? = nil, lineLimit: Int? = nil) -> String {
+        let prefix = style.ansiPrefix
         // Fast path preserves exact legacy output when nothing constrains us.
         if proposedWidth == nil && lineLimit == nil {
-            return contents.map { header + $0 + "\u{001B}[0m" }.joined()
+            return contents.map { prefix + $0 + "\u{001B}[0m" }.joined()
         }
 
         let logical = contents.joined().components(separatedBy: "\n")
@@ -711,7 +768,7 @@ public enum NodeLayout {
             visual = trimmed
         }
 
-        return visual.map { header + $0 + "\u{001B}[0m" }.joined(separator: "\n")
+        return visual.map { prefix + $0 + "\u{001B}[0m" }.joined(separator: "\n")
     }
 
     /// Word-wraps a single (newline-free) line so no visual line exceeds
@@ -757,20 +814,20 @@ public enum NodeLayout {
         return TextMetrics.truncate(line, toColumns: columns - 1) + "…"
     }
 
-    private static func drawHorizontalDivider(header: String, character: Character, width: Int, into canvas: TerminalCanvas, at origin: Point) {
+    private static func drawHorizontalDivider(style: TextStyle, character: Character, width: Int, into canvas: TerminalCanvas, at origin: Point) {
         guard width > 0 else { return }
         canvas.expand(toFit: Rect(origin: origin, size: Size(width: width, height: 1)))
         // A hidden divider keeps its column span but shows only blank spaces.
-        let cell = isHidden(header)
+        let cell = style.isHidden
             ? String(repeating: " ", count: width)
-            : header + String(repeating: character, count: width) + "\u{001B}[0m"
+            : style.ansiPrefix + String(repeating: character, count: width) + "\u{001B}[0m"
         canvas.write(cell, at: origin)
     }
 
-    private static func drawVerticalDivider(header: String, character: Character, height: Int, into canvas: TerminalCanvas, at origin: Point) {
+    private static func drawVerticalDivider(style: TextStyle, character: Character, height: Int, into canvas: TerminalCanvas, at origin: Point) {
         guard height > 0 else { return }
         canvas.expand(toFit: Rect(origin: origin, size: Size(width: 1, height: height)))
-        let cell = isHidden(header) ? " " : header + String(character) + "\u{001B}[0m"
+        let cell = style.isHidden ? " " : style.ansiPrefix + String(character) + "\u{001B}[0m"
         for row in 0..<height {
             canvas.write(cell, at: Point(column: origin.column, row: origin.row + row))
         }
@@ -803,6 +860,8 @@ public enum NodeLayout {
             return collectRaw(child)
         case .viewThatFits(_, _, let candidates):
             return candidates.map(collectRaw).joined()
+        case .control(_, let child):
+            return collectRaw(child)
         case .empty, .text, .spacer, .divider:
             return ""
         }

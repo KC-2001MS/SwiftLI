@@ -40,7 +40,7 @@
 /// .render()
 /// ```
 public struct Group: View {
-    let header: String
+    let style: TextStyle
 
     /// The child views stored in this group.
     let contents: [any View]
@@ -49,26 +49,26 @@ public struct Group: View {
     ///
     /// - Parameter contents: A ``ViewBuilder`` closure that produces the child views.
     public init<Content: View>(@ViewBuilder contents: () -> Content) {
-        self.header = ""
+        self.style = .plain
         self.contents = contents()._flattenedChildren()
     }
 
     init(contents: [any View]) {
-        self.header = ""
+        self.style = .plain
         self.contents = contents
     }
 
-    init(header: String, contents: [any View]) {
-        self.header = header
+    init(style: TextStyle, contents: [any View]) {
+        self.style = style
         self.contents = contents
     }
 
-    /// Returns children with the accumulated header applied.
+    /// Returns children with the accumulated style applied.
     ///
     /// Used internally by `measure()`, `_drawChildren()`, and the flatten
     /// logic in ``HStack``/``VStack`` — avoids going through the opaque `body`.
     var _resolvedChildren: [any View] {
-        header.isEmpty ? contents : contents.map { $0.addHeader(header) }
+        style.isPlain ? contents : contents.map { $0.applyingStyle(style) }
     }
 
     /// `Group` is transparent: it lowers directly via ``makeNode()``.
@@ -77,8 +77,8 @@ public struct Group: View {
     }
 
     @_spi(RenderingInternals)
-    public func addHeader(_ header: String) -> Self {
-        return Group(header: header + self.header, contents: self.contents)
+    public func applyingStyle(_ style: TextStyle) -> Self {
+        return Group(style: self.style.inheriting(style), contents: self.contents)
     }
 
     @_spi(RenderingInternals)
@@ -87,13 +87,13 @@ public struct Group: View {
     }
 
     /// Lowers this group into a transparent ``RenderNode/group`` node,
-    /// cascading any accumulated style header onto every child.
+    /// cascading any accumulated style onto every child.
     ///
     /// The layout engine flattens group nodes into the enclosing stack, so a
     /// `Group` never introduces spacing or alignment of its own.
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
         let node = RenderNode.group(children: contents.map { $0.makeNode() })
-        return header.isEmpty ? node : node.applyingHeader(header)
+        return style.isPlain ? node : node.applyingStyle(style)
     }
 }
