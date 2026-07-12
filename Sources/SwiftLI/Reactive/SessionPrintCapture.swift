@@ -9,7 +9,7 @@ import Foundation
 #if canImport(Darwin)
 import Darwin
 #elseif canImport(Glibc)
-import Glibc
+@preconcurrency import Glibc
 #elseif os(Windows)
 import WinSDK
 // Windows CRT POSIX-style file-descriptor aliases.
