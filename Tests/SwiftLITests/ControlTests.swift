@@ -9,6 +9,9 @@
 import Testing
 @_spi(RenderingInternals) @testable import SwiftLI
 import Foundation
+#if os(Windows)
+import WinSDK
+#endif
 
 // MARK: - Focus coordinator routing (shared singleton → serialized)
 
@@ -868,13 +871,22 @@ struct SessionPrintCaptureTests {
     @Test("An inline body taller than the terminal is clamped to the visible rows")
     func inlineBodyClampedToScreen() throws {
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("swiftli-inline-clamp-\(getpid()).txt")
+            .appendingPathComponent("swiftli-inline-clamp-\(ProcessInfo.processInfo.processIdentifier).txt")
         FileManager.default.createFile(atPath: url.path, contents: nil)
         defer { try? FileManager.default.removeItem(at: url) }
+
+        #if os(Windows)
+        // FileHandle.fileDescriptor is unavailable on Windows; open the file
+        // directly via the CRT to get a POSIX-style fd that TerminalOutput.fd accepts.
+        let writeFD = url.path.withCString { _open($0, _O_WRONLY | _O_TRUNC | _O_BINARY) }
+        precondition(writeFD != -1, "_open failed on temp file")
+        #else
         let file = try FileHandle(forWritingTo: url)
+        let writeFD = file.fileDescriptor
+        #endif
 
         let originalFD = TerminalOutput.fd
-        TerminalOutput.fd = file.fileDescriptor
+        TerminalOutput.fd = writeFD
         defer { TerminalOutput.fd = originalFD }
 
         let rows = TerminalSize.current.rows
@@ -884,7 +896,11 @@ struct SessionPrintCaptureTests {
         renderer.finalize()
 
         TerminalOutput.fd = originalFD
+        #if os(Windows)
+        _close(writeFD)
+        #else
         try file.close()
+        #endif
         let output = try String(contentsOf: url, encoding: .utf8)
 
         // The first render emits one "\n" per body line; the body must fit
