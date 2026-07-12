@@ -10,11 +10,7 @@ import Foundation
 import Darwin
 #elseif canImport(Glibc)
 @preconcurrency import Glibc
-// Swift 6: SwiftGlibc.stdout is a global mutable var that the compiler cannot
-// prove is concurrency-safe.  Capture the FILE* once at module-init time
-// (single-threaded) and assert its safety with nonisolated(unsafe).  All
-// call-sites are already inside an NSLock-protected section.
-private nonisolated(unsafe) let _glibcStdout: UnsafeMutablePointer<FILE> = Glibc.stdout
+@preconcurrency import SwiftGlibc
 #elseif os(Windows)
 import WinSDK
 // Windows CRT POSIX-style file-descriptor aliases.
@@ -126,11 +122,7 @@ final class SessionPrintCapture: @unchecked Sendable {
         #endif
         // stdout now feeds a pipe (not a TTY), which would switch stdio to
         // full buffering — force line buffering so prints arrive promptly.
-        #if canImport(Glibc)
-        setvbuf(_glibcStdout, nil, _IOLBF, 0)
-        #else
         setvbuf(stdout, nil, _IOLBF, 0)
-        #endif
 
         savedStdout = saved
         readEnd = fds[0]
@@ -190,11 +182,7 @@ final class SessionPrintCapture: @unchecked Sendable {
         #else
         dup2(saved, STDOUT_FILENO)
         #endif
-        #if canImport(Glibc)
-        setvbuf(_glibcStdout, nil, _IOLBF, 0)
-        #else
         setvbuf(stdout, nil, _IOLBF, 0)
-        #endif
         TerminalOutput.fd = STDOUT_FILENO
         #if os(Windows)
         _close(saved)
