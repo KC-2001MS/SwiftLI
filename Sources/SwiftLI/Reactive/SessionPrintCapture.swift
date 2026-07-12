@@ -122,7 +122,9 @@ final class SessionPrintCapture: @unchecked Sendable {
         #endif
         // stdout now feeds a pipe (not a TTY), which would switch stdio to
         // full buffering — force line buffering so prints arrive promptly.
+        #if !os(Windows)
         setvbuf(stdout, nil, _IOLBF, 0)
+        #endif
 
         savedStdout = saved
         readEnd = fds[0]
@@ -182,7 +184,9 @@ final class SessionPrintCapture: @unchecked Sendable {
         #else
         dup2(saved, STDOUT_FILENO)
         #endif
+        #if !os(Windows)
         setvbuf(stdout, nil, _IOLBF, 0)
+        #endif
         TerminalOutput.fd = STDOUT_FILENO
         #if os(Windows)
         _close(saved)
