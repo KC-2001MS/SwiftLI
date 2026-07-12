@@ -876,10 +876,13 @@ struct SessionPrintCaptureTests {
         defer { try? FileManager.default.removeItem(at: url) }
 
         #if os(Windows)
-        // FileHandle.fileDescriptor is unavailable on Windows; open the file
-        // directly via the CRT to get a POSIX-style fd that TerminalOutput.fd accepts.
-        let writeFD = url.path.withCString { _open($0, _O_WRONLY | _O_TRUNC | _O_BINARY) }
-        precondition(writeFD != -1, "_open failed on temp file")
+        // FileHandle.fileDescriptor is unavailable on Windows; _open is also
+        // unavailable (variadic), so use _sopen_s which is fixed-argument.
+        var writeFD: Int32 = -1
+        url.path.withCString { path in
+            _ = _sopen_s(&writeFD, path, _O_WRONLY | _O_TRUNC | _O_BINARY, 0x40 /* _SH_DENYNO */, _S_IWRITE)
+        }
+        precondition(writeFD != -1, "_sopen_s failed on temp file")
         #else
         let file = try FileHandle(forWritingTo: url)
         let writeFD = file.fileDescriptor
