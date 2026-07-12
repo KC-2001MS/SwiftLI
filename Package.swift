@@ -3,6 +3,14 @@
 
 import PackageDescription
 
+// swift-docc-plugin の Package.swift は Linux/Windows でコンパイル不可のため macOS のみ含める。
+var _dependencies: [Package.Dependency] = [
+    .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.8.0"),
+]
+#if os(macOS)
+_dependencies.append(.package(url: "https://github.com/apple/swift-docc-plugin.git", from: "1.5.0"))
+#endif
+
 let package = Package(
     name: "SwiftLI",
     platforms: [
@@ -17,10 +25,7 @@ let package = Package(
         ),
         .executable(name: "sclt", targets: ["sclt"])
     ],
-    dependencies: [
-        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.8.0"),
-        .package(url: "https://github.com/apple/swift-docc-plugin.git", from: "1.5.0"),
-    ],
+    dependencies: _dependencies,
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
         // Targets can depend on other targets in this package and products from dependencies.
