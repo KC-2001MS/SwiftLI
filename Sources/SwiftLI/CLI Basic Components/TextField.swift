@@ -168,7 +168,7 @@ public struct TextField: View {
         id: String? = nil,
         onSubmit: (() -> Void)? = nil
     ) {
-        let resolved = String(localized: placeholder.localizationValue)
+        let resolved = placeholder.resolve()
         self.textStyle = .plain
         self.id = id ?? resolved
         self.placeholder = resolved

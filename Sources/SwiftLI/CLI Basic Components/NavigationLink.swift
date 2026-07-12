@@ -52,7 +52,7 @@ public struct NavigationLink: View {
         id: String? = nil,
         @ViewBuilder destination: @escaping () -> Destination
     ) {
-        let resolved = String(localized: title.localizationValue)
+        let resolved = title.resolve()
         self.style = .plain
         self.id = id ?? (resolved.isEmpty ? "NavigationLink" : resolved)
         self.label = AnyView(Text(content: resolved))

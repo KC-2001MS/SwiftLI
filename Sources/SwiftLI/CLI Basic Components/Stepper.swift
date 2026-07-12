@@ -48,7 +48,7 @@ public struct Stepper: View {
         onIncrement: @escaping () -> Void,
         onDecrement: @escaping () -> Void
     ) {
-        let resolved = String(localized: title.localizationValue)
+        let resolved = title.resolve()
         self.style = .plain
         self.id = id ?? (resolved.isEmpty ? "Stepper" : resolved)
         self.label = resolved.isEmpty ? nil : AnyView(Text(content: resolved))
@@ -71,7 +71,7 @@ public struct Stepper: View {
         step: V.Stride = 1,
         id: String? = nil
     ) {
-        let resolved = String(localized: title.localizationValue)
+        let resolved = title.resolve()
         self.style = .plain
         self.id = id ?? (resolved.isEmpty ? "Stepper" : resolved)
         self.label = resolved.isEmpty ? nil : AnyView(Text(content: resolved))

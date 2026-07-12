@@ -195,7 +195,7 @@ public struct Button: View {
         id: String? = nil,
         action: @escaping () -> Void
     ) {
-        let resolved = String(localized: title.localizationValue)
+        let resolved = title.resolve()
         self.textStyle = .plain
         self.id = id ?? (resolved.isEmpty ? "Button" : resolved)
         self.label = AnyView(Text(content: resolved))

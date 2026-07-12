@@ -357,7 +357,7 @@ public struct Gauge: View, @unchecked Sendable {
         filledCharacter: Character = "\u{2588}",
         emptyCharacter: Character = "\u{2591}"
     ) {
-        let resolved = String(localized: label.localizationValue)
+        let resolved = label.resolve()
         self.label = resolved.isEmpty ? nil : AnyView(Text(content: resolved))
         self.min = min
         self.max = max
@@ -404,7 +404,7 @@ public struct Gauge: View, @unchecked Sendable {
         filledCharacter: Character = "\u{2588}",
         emptyCharacter: Character = "\u{2591}"
     ) {
-        let resolved = String(localized: label.localizationValue)
+        let resolved = label.resolve()
         self.label = resolved.isEmpty ? nil : AnyView(Text(content: resolved))
         self.min = min
         self.max = max

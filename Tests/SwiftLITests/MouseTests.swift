@@ -63,7 +63,7 @@ struct MouseDecodingTests {
     func x10Press() {
         var decoder = KeyDecoder()
         // ESC [ M, then button+32, column+33, row+33 — a left press at (4, 2).
-        let events = decoder.feed([0x1B, 0x5B, 0x4D, 32, 33 + 4, 33 + 2])
+        let events = decoder.feed([0x1B, 0x5B, 0x4D, 32, UInt8(33 + 4), UInt8(33 + 2)])
         #expect(events == [.mouse(MouseEvent(kind: .press(.left), column: 4, row: 2))])
     }
 

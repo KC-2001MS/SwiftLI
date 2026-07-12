@@ -169,7 +169,7 @@ public extension View {
     /// }
     /// ```
     func navigationTitle(_ title: LocalizedStringKey) -> some View {
-        NavigationTitleWriter(content: AnyView(self), text: String(localized: title.localizationValue), isSubtitle: false)
+        NavigationTitleWriter(content: AnyView(self), text: title.resolve(), isSubtitle: false)
     }
 
     /// Sets the subtitle shown dimmed beneath the enclosing navigation
@@ -177,7 +177,7 @@ public extension View {
     ///
     /// Outside a navigation container the modifier has no effect.
     func navigationSubtitle(_ subtitle: LocalizedStringKey) -> some View {
-        NavigationTitleWriter(content: AnyView(self), text: String(localized: subtitle.localizationValue), isSubtitle: true)
+        NavigationTitleWriter(content: AnyView(self), text: subtitle.resolve(), isSubtitle: true)
     }
 }
 

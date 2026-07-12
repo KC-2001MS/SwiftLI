@@ -47,7 +47,7 @@ public struct Link: View, Sendable {
     ///   - destination: The URL opened when the link is activated.
     public init(_ label: LocalizedStringKey, destination: String) {
         self.style = .plain
-        self.label = String(localized: label.localizationValue)
+        self.label = label.resolve()
         self.destination = destination
     }
 

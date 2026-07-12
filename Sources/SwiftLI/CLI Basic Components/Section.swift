@@ -42,7 +42,7 @@ public struct Section: View {
     ///   - title: The heading shown above the content; omit for no header.
     ///   - content: A ``ViewBuilder`` producing the section's content.
     public init<Content: View>(_ title: LocalizedStringKey = "", @ViewBuilder content: () -> Content) {
-        let resolved = String(localized: title.localizationValue)
+        let resolved = title.resolve()
         self.header = resolved.isEmpty ? nil : AnyView(Text(content: resolved))
         self.footer = nil
         self.content = content()._flattenedChildren()

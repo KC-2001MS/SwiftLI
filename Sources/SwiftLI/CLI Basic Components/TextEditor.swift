@@ -70,7 +70,7 @@ public struct TextEditor: View {
     ///     this, the editor scrolls to keep the cursor line in view (drawing a
     ///     scrollbar). `nil` grows to fit all lines.
     public init(_ placeholder: LocalizedStringKey = "", text: Binding<String>, id: String? = nil, tabBehavior: TabBehavior = .focus, height: Int? = nil) {
-        let resolved = String(localized: placeholder.localizationValue)
+        let resolved = placeholder.resolve()
         self.style = .plain
         self.id = id ?? (resolved.isEmpty ? "TextEditor" : resolved)
         self.placeholder = resolved

@@ -102,7 +102,7 @@ public struct GroupBox: View {
     ///   - title: An optional localized title shown at the top of the box.
     ///   - content: A ``ViewBuilder`` producing the grouped content.
     public init<Content: View>(_ title: LocalizedStringKey? = nil, @ViewBuilder content: () -> Content) {
-        self.title = title.map { String(localized: $0.localizationValue) }
+        self.title = title.map { $0.resolve() }
         self.content = content()._flattenedChildren()
         self.style = nil
     }

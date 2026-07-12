@@ -78,7 +78,7 @@ public struct Label: View {
         }
         self.textStyle = .plain
         self.image = image
-        self.title = String(localized: title.localizationValue)
+        self.title = title.resolve()
         self.style = nil
     }
 
@@ -93,7 +93,7 @@ public struct Label: View {
     ) {
         self.textStyle = .plain
         self.image = image
-        self.title = String(localized: title.localizationValue)
+        self.title = title.resolve()
         self.style = nil
     }
 

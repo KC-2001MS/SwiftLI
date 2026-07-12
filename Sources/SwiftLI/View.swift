@@ -62,7 +62,7 @@ public struct Text: View, Sendable, Equatable {
         comment: StaticString? = nil
     ) {
         self.style = .plain
-        self.contents = [String(localized: key.localizationValue, table: tableName, bundle: bundle, comment: comment)]
+        self.contents = [key.resolve(table: tableName, bundle: bundle, comment: comment)]
     }
 
     /// Creates a text view that displays a string exactly as given, without localization.

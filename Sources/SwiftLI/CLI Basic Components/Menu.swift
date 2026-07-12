@@ -98,7 +98,7 @@ public struct Menu: View {
         _ title: LocalizedStringKey = "",
         @ViewBuilder content: () -> Content
     ) {
-        let resolved = String(localized: title.localizationValue)
+        let resolved = title.resolve()
         self.title = resolved.isEmpty ? nil : AnyView(Text(content: resolved))
         self.content = content()._flattenedChildren()
         self.style = nil

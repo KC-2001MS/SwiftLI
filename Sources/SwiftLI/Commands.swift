@@ -54,7 +54,7 @@ public struct CommandMenu: Commands, PrimitiveCommands {
 
     /// Creates a menu with `title` in the bar listing `content` when open.
     public init<Content: View>(_ title: LocalizedStringKey, @ViewBuilder content: () -> Content) {
-        self.title = String(localized: title.localizationValue)
+        self.title = title.resolve()
         self.items = content()._flattenedChildren()
     }
 

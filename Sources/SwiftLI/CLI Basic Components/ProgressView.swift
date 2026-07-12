@@ -159,7 +159,7 @@ public struct ProgressView: View, Sendable {
     ///   - phase: The animation phase selecting the spinner frame. Advance it
     ///     over time to animate; defaults to `0` (a static first frame).
     public init(_ label: LocalizedStringKey = "", phase: Int = 0) {
-        self.label = String(localized: label.localizationValue)
+        self.label = label.resolve()
         self.phase = phase
         self.style = nil
     }

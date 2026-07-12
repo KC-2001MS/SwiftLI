@@ -48,8 +48,8 @@ public struct ContentUnavailableView: View {
     ) {
         self.style = .plain
         self.image = image
-        self.title = String(localized: title.localizationValue)
-        self.description = description.map { String(localized: $0.localizationValue) }
+        self.title = title.resolve()
+        self.description = description.map { $0.resolve() }
     }
 
     /// The rendered content of the empty-state view: an optional icon, a bold title, and an optional dimmed description.

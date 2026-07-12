@@ -199,7 +199,7 @@ public struct Slider: View, @unchecked Sendable {
         width: Int? = nil,
         id: String? = nil
     ) {
-        let resolved = String(localized: label.localizationValue)
+        let resolved = label.resolve()
         self.textStyle = .plain
         self.id = id ?? (resolved.isEmpty ? "Slider" : resolved)
         self.label = resolved.isEmpty ? nil : AnyView(Text(content: resolved))
