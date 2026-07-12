@@ -56,8 +56,8 @@ final class WindowsResizePoller: @unchecked Sendable {
         guard GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi) else {
             return (0, 0)
         }
-        return (csbi.srWindow.Right - csbi.srWindow.Left + 1,
-                csbi.srWindow.Bottom - csbi.srWindow.Top + 1)
+        return (Int32(csbi.srWindow.Right) - Int32(csbi.srWindow.Left) + 1,
+                Int32(csbi.srWindow.Bottom) - Int32(csbi.srWindow.Top) + 1)
     }
 
     private func loop() {

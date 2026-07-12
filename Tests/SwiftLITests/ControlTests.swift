@@ -1346,7 +1346,7 @@ struct SessionPrintCaptureTests {
 /// clearly behind a name.
 private enum SessionPrintCaptureTestsSupport {
     static func flushStdout() {
-        fflush(stdout)
+        fflush(nil)
     }
 }
 

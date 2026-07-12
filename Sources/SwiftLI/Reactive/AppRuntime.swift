@@ -81,7 +81,7 @@ public final class AppRuntime: @unchecked Sendable {
         let runLoop = RunLoop.current
         while isRunning {
             // 100ms timeout keeps the loop responsive to signal-driven stops
-            runLoop.run(mode: .default, before: Date(timeIntervalSinceNow: 0.1))
+            _ = runLoop.run(mode: .default, before: Date(timeIntervalSinceNow: 0.1))
         }
 
         KeyInputRouter.shared.stop()
