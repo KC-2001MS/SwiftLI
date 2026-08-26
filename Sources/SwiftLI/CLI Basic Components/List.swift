@@ -121,17 +121,18 @@ struct AnyListStyle: ListStyle, @unchecked Sendable {
 /// it renders one row per element. Pass a `selection` binding to make it
 /// focusable — the arrow keys then move a highlighted selection
 /// (<kbd>Home</kbd>/<kbd>End</kbd> jump to the ends, <kbd>Return</kbd> submits),
-/// and <kbd>Tab</kbd> moves focus on to the next control. Give a `height` and,
-/// when there are more rows than fit, the list scrolls to keep the selected row
-/// in view, drawing a scrollbar to the right.
+/// and <kbd>Tab</kbd> moves focus on to the next control. Constrain the height
+/// with `.frame(height:)` and, when there are more rows than fit, the list
+/// scrolls to keep the selected row in view, drawing a scrollbar to the right.
 ///
 /// ```swift
 /// @State var selected: Int? = 0
 ///
 /// var body: some View {
-///     List(fruits, selection: $selected, height: 8) { fruit in
+///     List(fruits, selection: $selected) { fruit in
 ///         Text(fruit)
 ///     }
+///     .frame(height: 8)
 /// }
 /// ```
 ///
@@ -143,7 +144,6 @@ public struct List<Data: RandomAccessCollection, RowContent: View>: View, @unche
     private let id: String
     private let data: Data
     private let selection: Binding<Int?>?
-    private let height: Int?
     private let rowContent: (Data.Element) -> RowContent
     /// The explicitly applied style, or `nil` to resolve from the environment.
     private let style: AnyListStyle?
@@ -156,13 +156,11 @@ public struct List<Data: RandomAccessCollection, RowContent: View>: View, @unche
     /// - Parameters:
     ///   - data: The rows' backing collection.
     ///   - selection: A bound selected-row index; pass `nil` for a static list.
-    ///   - height: The visible-row count; when exceeded the list scrolls.
     ///   - id: A stable identity for focus/scroll state.
     ///   - rowContent: Builds the view for one element.
     public init(
         _ data: Data,
         selection: Binding<Int?>? = nil,
-        height: Int? = nil,
         id: String = "List",
         @ViewBuilder rowContent: @escaping (Data.Element) -> RowContent
     ) {
@@ -170,17 +168,15 @@ public struct List<Data: RandomAccessCollection, RowContent: View>: View, @unche
         self.id = id
         self.data = data
         self.selection = selection
-        self.height = height
         self.rowContent = rowContent
         self.style = nil
     }
 
-    init(textStyle: TextStyle, id: String, data: Data, selection: Binding<Int?>?, height: Int?, rowContent: @escaping (Data.Element) -> RowContent, style: AnyListStyle? = nil) {
+    init(textStyle: TextStyle, id: String, data: Data, selection: Binding<Int?>?, rowContent: @escaping (Data.Element) -> RowContent, style: AnyListStyle? = nil) {
         self.textStyle = textStyle
         self.id = id
         self.data = data
         self.selection = selection
-        self.height = height
         self.rowContent = rowContent
         self.style = style
     }
@@ -192,13 +188,14 @@ public struct List<Data: RandomAccessCollection, RowContent: View>: View, @unche
 
     @_spi(RenderingInternals)
     public func applyingStyle(_ style: TextStyle) -> Self {
-        List(textStyle: textStyle.inheriting(style), id: id, data: data, selection: selection, height: height, rowContent: rowContent, style: self.style)
+        List(textStyle: textStyle.inheriting(style), id: id, data: data, selection: selection, rowContent: rowContent, style: self.style)
     }
 
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
         let rows = Array(data)
-        let resolvedHeight = height ?? EnvironmentStack.current.maxHeight
+        // `.frame(height:)` pins `maxHeight`, bounding the visible rows.
+        let resolvedHeight = EnvironmentStack.current.maxHeight
 
         var focused = false
         var selectedIndex: Int? = nil
@@ -239,7 +236,7 @@ public struct List<Data: RandomAccessCollection, RowContent: View>: View, @unche
     ///
     /// - Parameter newStyle: A value conforming to ``ListStyle``.
     public func listStyle(_ newStyle: some ListStyle) -> Self {
-        List(textStyle: textStyle, id: id, data: data, selection: selection, height: height, rowContent: rowContent, style: AnyListStyle(newStyle))
+        List(textStyle: textStyle, id: id, data: data, selection: selection, rowContent: rowContent, style: AnyListStyle(newStyle))
     }
 }
 
@@ -266,16 +263,14 @@ public extension List where Data == [AnyView], RowContent == AnyView {
     /// - Parameters:
     ///   - selection: A bound selected-row index; pass `nil` (the default)
     ///     when the rows handle interaction themselves.
-    ///   - height: The visible-row count; when exceeded the list scrolls.
     ///   - id: A stable identity for focus/scroll state.
     ///   - content: A ``ViewBuilder`` whose top-level views become the rows.
     init(
         selection: Binding<Int?>? = nil,
-        height: Int? = nil,
         id: String = "List",
         @ViewBuilder content: () -> some View
     ) {
         let rows = content()._flattenedChildren().map { AnyView(erasing: $0) }
-        self.init(rows, selection: selection, height: height, id: id) { $0 }
+        self.init(rows, selection: selection, id: id) { $0 }
     }
 }

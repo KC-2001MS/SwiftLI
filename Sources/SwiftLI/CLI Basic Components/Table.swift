@@ -153,18 +153,20 @@ struct AnyTableStyle: TableStyle, @unchecked Sendable {
 ///
 /// ## Scrolling and selection
 ///
-/// Pass a `height` and, when there are more rows than fit, the **header and
-/// rule stay pinned** while the body scrolls (a scrollbar is drawn to the
-/// right). Add a `selection` binding to make the table focusable: the arrow
-/// keys move a highlighted row and the body scrolls to follow, Home/End jump to
-/// the ends, and Tab moves focus on. With a `height` but no `selection` the
-/// table scrolls freely with the arrows, like a ``ScrollView``.
+/// Constrain the height with `.frame(height:)` and, when there are more rows
+/// than fit, the **header and rule stay pinned** while the body scrolls (a
+/// scrollbar is drawn to the right). Add a `selection` binding to make the
+/// table focusable: the arrow keys move a highlighted row and the body scrolls
+/// to follow, Home/End jump to the ends, and Tab moves focus on. With a
+/// constrained height but no `selection` the table scrolls freely with the
+/// arrows, like a ``ScrollView``.
 ///
 /// ```swift
-/// Table(people, selection: $selected, height: 10) {
+/// Table(people, selection: $selected) {
 ///     TableColumn("Name") { $0.name }
 ///     TableColumn("Email") { $0.email }
 /// }
+/// .frame(height: 10)
 /// ```
 public struct Table<Data: RandomAccessCollection>: View, @unchecked Sendable {
     /// Columns are separated by this many blank columns.
@@ -175,7 +177,6 @@ public struct Table<Data: RandomAccessCollection>: View, @unchecked Sendable {
     private let data: Data
     private let columns: [TableColumn<Data.Element>]
     private let selection: Binding<Int?>?
-    private let height: Int?
     /// The explicitly applied style, or `nil` to resolve from the environment.
     private let style: AnyTableStyle?
 
@@ -187,13 +188,11 @@ public struct Table<Data: RandomAccessCollection>: View, @unchecked Sendable {
     /// - Parameters:
     ///   - data: The rows' backing collection.
     ///   - selection: A bound selected-row index; pass `nil` for no selection.
-    ///   - height: The visible body-row count; when exceeded the body scrolls.
     ///   - id: A stable identity for focus/scroll state.
     ///   - columns: The column definitions.
     public init(
         _ data: Data,
         selection: Binding<Int?>? = nil,
-        height: Int? = nil,
         id: String = "Table",
         @TableColumnBuilder<Data.Element> columns: () -> [TableColumn<Data.Element>]
     ) {
@@ -202,17 +201,15 @@ public struct Table<Data: RandomAccessCollection>: View, @unchecked Sendable {
         self.data = data
         self.columns = columns()
         self.selection = selection
-        self.height = height
         self.style = nil
     }
 
-    init(textStyle: TextStyle, id: String, data: Data, columns: [TableColumn<Data.Element>], selection: Binding<Int?>?, height: Int?, style: AnyTableStyle? = nil) {
+    init(textStyle: TextStyle, id: String, data: Data, columns: [TableColumn<Data.Element>], selection: Binding<Int?>?, style: AnyTableStyle? = nil) {
         self.textStyle = textStyle
         self.id = id
         self.data = data
         self.columns = columns
         self.selection = selection
-        self.height = height
         self.style = style
     }
 
@@ -223,7 +220,7 @@ public struct Table<Data: RandomAccessCollection>: View, @unchecked Sendable {
 
     @_spi(RenderingInternals)
     public func applyingStyle(_ style: TextStyle) -> Self {
-        Table(textStyle: textStyle.inheriting(style), id: id, data: data, columns: columns, selection: selection, height: height, style: self.style)
+        Table(textStyle: textStyle.inheriting(style), id: id, data: data, columns: columns, selection: selection, style: self.style)
     }
 
     @_spi(RenderingInternals)
@@ -236,7 +233,9 @@ public struct Table<Data: RandomAccessCollection>: View, @unchecked Sendable {
         let totalWidth = widths.reduce(0, +) + gap * (widths.count - 1)
 
         // Register for input; decide focus + selection + scroll behaviour.
-        let resolvedHeight = height ?? EnvironmentStack.current.maxHeight
+        // `.frame(height:)` pins `maxHeight` to the table's total height; the
+        // pinned header and rule take two of those rows, the body the rest.
+        let resolvedHeight = Swift.max(1, EnvironmentStack.current.maxHeight - 2)
         let scrolls = rows.count > resolvedHeight
         var focused = false
         var selectedIndex: Int? = nil
@@ -304,7 +303,7 @@ public struct Table<Data: RandomAccessCollection>: View, @unchecked Sendable {
     ///
     /// - Parameter newStyle: A value conforming to ``TableStyle``.
     public func tableStyle(_ newStyle: some TableStyle) -> Self {
-        Table(textStyle: textStyle, id: id, data: data, columns: columns, selection: selection, height: height, style: AnyTableStyle(newStyle))
+        Table(textStyle: textStyle, id: id, data: data, columns: columns, selection: selection, style: AnyTableStyle(newStyle))
     }
 
     /// Resolves each column's width so the row fills the terminal: flexible

@@ -58,34 +58,34 @@ public struct TextEditor: View {
     let placeholder: String
     let text: Binding<String>
     let tabBehavior: TabBehavior
-    let height: Int?
 
     /// Creates a multi-line text editor.
+    ///
+    /// Constrain the visible rows with ``View/frame(width:height:alignment:)``:
+    /// when the text has more lines than fit, the editor scrolls to keep the
+    /// cursor line in view (drawing a scrollbar). Unconstrained, it grows to
+    /// fit all lines.
+    ///
     /// - Parameters:
     ///   - placeholder: Prompt shown when empty and unfocused; also the default identity.
     ///   - text: The bound string to edit (may contain newlines).
     ///   - id: An explicit identity; defaults to the placeholder text.
     ///   - tabBehavior: Whether Tab moves focus (default) or indents (code editor).
-    ///   - height: A fixed visible-row count. When the text has more lines than
-    ///     this, the editor scrolls to keep the cursor line in view (drawing a
-    ///     scrollbar). `nil` grows to fit all lines.
-    public init(_ placeholder: LocalizedStringKey = "", text: Binding<String>, id: String? = nil, tabBehavior: TabBehavior = .focus, height: Int? = nil) {
+    public init(_ placeholder: LocalizedStringKey = "", text: Binding<String>, id: String? = nil, tabBehavior: TabBehavior = .focus) {
         let resolved = placeholder.resolve()
         self.style = .plain
         self.id = id ?? (resolved.isEmpty ? "TextEditor" : resolved)
         self.placeholder = resolved
         self.text = text
         self.tabBehavior = tabBehavior
-        self.height = height
     }
 
-    init(style: TextStyle, id: String, placeholder: String, text: Binding<String>, tabBehavior: TabBehavior, height: Int?) {
+    init(style: TextStyle, id: String, placeholder: String, text: Binding<String>, tabBehavior: TabBehavior) {
         self.style = style
         self.id = id
         self.placeholder = placeholder
         self.text = text
         self.tabBehavior = tabBehavior
-        self.height = height
     }
 
     /// The content and behavior of the text editor view.
@@ -95,7 +95,7 @@ public struct TextEditor: View {
 
     @_spi(RenderingInternals)
     public func applyingStyle(_ style: TextStyle) -> Self {
-        TextEditor(style: self.style.inheriting(style), id: id, placeholder: placeholder, text: text, tabBehavior: tabBehavior, height: height)
+        TextEditor(style: self.style.inheriting(style), id: id, placeholder: placeholder, text: text, tabBehavior: tabBehavior)
     }
 
     @_spi(RenderingInternals)
@@ -133,7 +133,8 @@ public struct TextEditor: View {
         // line so the cursor column stays visible (the whole viewport shifts,
         // like a terminal editor in no-wrap mode).
         let gutterWidth = 2
-        let resolvedHeight = height ?? EnvironmentStack.current.maxHeight
+        // `.frame(height:)` pins `maxHeight`, bounding the visible rows.
+        let resolvedHeight = EnvironmentStack.current.maxHeight
         let scrollsVertically = lines.count > resolvedHeight
         let contentWidth = Swift.max(1, EnvironmentStack.current.maxWidth - gutterWidth - (scrollsVertically ? 1 : 0))
         // One extra column so the block cursor fits at the end of the longest line.

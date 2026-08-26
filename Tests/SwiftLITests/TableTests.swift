@@ -49,16 +49,21 @@ struct TableTests {
     @Test("A tall table pins the header and shows only a height-row body window")
     func scrollsBodyUnderPinnedHeader() {
         let people = (0..<20).map { Person(name: "Name\($0)", email: "e\($0)") }
-        // No selection → plain scroll; body height 4, fresh id → offset 0.
-        let node = Table(people, height: 4, id: "tbl-scroll-test") {
+        // No selection → plain scroll; 6 total rows leave a 4-row body under
+        // the pinned header + rule, fresh id → offset 0.
+        let node = Table(people, id: "tbl-scroll-test") {
             TableColumn("Name") { $0.name }
             TableColumn("Email") { $0.email }
-        }.makeNode()
+        }
+        .frame(height: 6)
+        .makeNode()
         let lines = plainLines(node).filter { !$0.isEmpty }
         // header + rule + 4 body rows = 6 lines (not all 20 rows).
         #expect(lines.count == 6)
         #expect(lines[0].contains("Name"))
-        #expect(lines[1].allSatisfy { $0 == "─" })
+        // The frame pads lines to a uniform width, so trim before checking the rule.
+        let rule = lines[1].trimmingCharacters(in: .whitespaces)
+        #expect(!rule.isEmpty && rule.allSatisfy { $0 == "─" })
         #expect(lines[2].contains("Name0"))
         #expect(lines[5].contains("Name3"))
     }
