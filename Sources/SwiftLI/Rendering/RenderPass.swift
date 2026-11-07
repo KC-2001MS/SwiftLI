@@ -34,8 +34,12 @@ final class ThreadLocalSlot<Value: AnyObject>: @unchecked Sendable {
     init() {
         // The destructor runs when a thread exits with a value still stored
         // and balances the retain taken when it was stored.
+        // The pointer is optional on Glibc and non-optional on Darwin; the
+        // cast to an optional reads the same on both.
         pthread_key_create(&key) { pointer in
-            Unmanaged<AnyObject>.fromOpaque(pointer).release()
+            if let pointer = pointer as UnsafeMutableRawPointer? {
+                Unmanaged<AnyObject>.fromOpaque(pointer).release()
+            }
         }
     }
 

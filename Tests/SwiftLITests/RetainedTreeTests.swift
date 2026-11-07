@@ -28,6 +28,12 @@ private struct Counter: View {
     @State private var count = 0
     let probe: BindingProbe<Int>
 
+    // Spelled out because older compilers (e.g. Swift 6.2) count the private
+    // state's storage in the memberwise initializer, which makes it private.
+    init(probe: BindingProbe<Int>) {
+        self.probe = probe
+    }
+
     var body: some View {
         let _ = probe.record($count)
         Text("count=\(count)")
