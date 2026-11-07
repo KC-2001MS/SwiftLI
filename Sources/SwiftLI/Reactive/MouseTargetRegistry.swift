@@ -47,6 +47,9 @@ final class MouseTargetRegistry: @unchecked Sendable {
     /// One text-editor line's text run (excluding the gutter): a click maps
     /// the position to a cursor line and column.
     static func lineRole(_ index: Int) -> String { "line:\(index)" }
+    /// A scroll viewport's scrollbar: a press grabs the thumb (or jumps to
+    /// the pressed spot on the track) and a drag moves it.
+    static let scrollbarRole = "scrollbar"
 
     /// Builds the region id for a sub-region of control `id`.
     static func regionID(control id: String, role: String) -> String {
@@ -121,6 +124,7 @@ final class MouseTargetRegistry: @unchecked Sendable {
         if passDepth == 1 {
             currentPass = []
             transforms = []
+            controlStack = []
         }
     }
 
@@ -139,6 +143,7 @@ final class MouseTargetRegistry: @unchecked Sendable {
         currentPass = nil
         regions.removeAll()
         transforms.removeAll()
+        controlStack.removeAll()
         passDepth = 0
         originRow = 0
         pendingInlineHeight = nil
@@ -167,9 +172,37 @@ final class MouseTargetRegistry: @unchecked Sendable {
     /// Records the footprint of control `id`, mapping it through the active
     /// transforms. A rectangle fully clipped away is dropped. No-op outside a
     /// render pass.
+    /// Runs `body` with region recording disabled, for a repeated draw of a
+    /// subtree whose regions were already recorded by an earlier draw.
+    func withRecordingSuppressed<T>(_ body: () -> T) -> T {
+        lock.lock(); recordingSuppressed += 1; lock.unlock()
+        defer { lock.lock(); recordingSuppressed -= 1; lock.unlock() }
+        return body()
+    }
+
+    private var recordingSuppressed = 0
+
+    /// The ids of the controls being drawn, innermost last.
+    private var controlStack: [String] = []
+
+    /// Runs `body` — the draw of control `id`'s content — with `id` as the
+    /// innermost enclosing control, so parts drawn deep inside the layout
+    /// engine (a scrollbar) can record a sub-region for their owner.
+    func withControl(id: String, _ body: () -> Void) {
+        lock.lock(); controlStack.append(id); lock.unlock()
+        defer { lock.lock(); if !controlStack.isEmpty { controlStack.removeLast() }; lock.unlock() }
+        body()
+    }
+
+    /// The innermost control being drawn, or `nil` outside any control.
+    var enclosingControlID: String? {
+        lock.lock(); defer { lock.unlock() }
+        return controlStack.last
+    }
+
     func record(id: String, rect: Rect) {
         lock.lock(); defer { lock.unlock() }
-        guard currentPass != nil else { return }
+        guard currentPass != nil, recordingSuppressed == 0 else { return }
         var mapped = rect
         // Innermost transform first: translate into the enclosing space, then
         // clip to the container's visible window there.
@@ -247,9 +280,7 @@ struct HitRegion: View, @unchecked Sendable {
     let role: String
     let content: any View
 
-    var body: some View {
-        EmptyView()
-    }
+    typealias Body = Never
 
     func makeNode() -> RenderNode {
         let node = content.makeNode()

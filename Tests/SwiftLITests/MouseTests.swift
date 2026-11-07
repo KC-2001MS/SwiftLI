@@ -36,6 +36,11 @@ struct MouseDecodingTests {
     func sgrWheel() {
         #expect(decode("\u{1B}[<64;10;4M") == [.mouse(MouseEvent(kind: .scrollUp, column: 9, row: 3))])
         #expect(decode("\u{1B}[<65;10;4M") == [.mouse(MouseEvent(kind: .scrollDown, column: 9, row: 3))])
+        // Horizontal wheel codes, and Shift + vertical wheel read as sideways.
+        #expect(decode("\u{1B}[<66;10;4M") == [.mouse(MouseEvent(kind: .scrollLeft, column: 9, row: 3))])
+        #expect(decode("\u{1B}[<67;10;4M") == [.mouse(MouseEvent(kind: .scrollRight, column: 9, row: 3))])
+        #expect(decode("\u{1B}[<68;10;4M") == [.mouse(MouseEvent(kind: .scrollLeft, column: 9, row: 3, isShifted: true))])
+        #expect(decode("\u{1B}[<69;10;4M") == [.mouse(MouseEvent(kind: .scrollRight, column: 9, row: 3, isShifted: true))])
     }
 
     @Test("An SGR motion report with a held button decodes as a drag")
@@ -275,6 +280,46 @@ struct MouseRoutingTests {
         #expect(coord.isFocused("field"))
     }
 
+    @Test("A horizontal swipe scrolls a horizontal viewport the way the vertical wheel does its axis")
+    func horizontalSwipeDirection() {
+        let coord = FocusCoordinator.shared
+        coord.reset()
+        defer { coord.reset() }
+
+        coord.registerScroll(id: "h", viewportHeight: 10, contentHeight: 100, isHorizontal: true)
+        publish("h", rect: Rect(origin: Point(column: 0, row: 0), size: Size(width: 10, height: 2)))
+
+        // The vertical wheel passes a horizontal viewport over, as in SwiftUI.
+        #expect(!coord.handleMouse(MouseEvent(kind: .scrollDown, column: 2, row: 0)))
+        #expect(coord.scrollOffset(for: "h") == 0)
+        // "Right" reveals what lies to the right: the offset grows.
+        #expect(coord.handleMouse(MouseEvent(kind: .scrollRight, column: 2, row: 0)))
+        #expect(coord.scrollOffset(for: "h") == 3)
+        #expect(coord.handleMouse(MouseEvent(kind: .scrollRight, column: 2, row: 0)))
+        #expect(coord.scrollOffset(for: "h") == 6)
+        #expect(coord.handleMouse(MouseEvent(kind: .scrollLeft, column: 2, row: 0)))
+        #expect(coord.scrollOffset(for: "h") == 3)
+    }
+
+    @Test("Shift + wheel scrolls a horizontal viewport sideways; the plain wheel leaves it alone")
+    func shiftedWheelScrollsSideways() {
+        let coord = FocusCoordinator.shared
+        coord.reset()
+        defer { coord.reset() }
+
+        coord.registerScroll(id: "h", viewportHeight: 10, contentHeight: 100, isHorizontal: true)
+        publish("h", rect: Rect(origin: Point(column: 0, row: 0), size: Size(width: 10, height: 2)))
+
+        // Shift + wheel down (as the decoder reports it) reveals the right.
+        #expect(coord.handleMouse(MouseEvent(kind: .scrollRight, column: 2, row: 0, isShifted: true)))
+        #expect(coord.scrollOffset(for: "h") == 3)
+        #expect(coord.handleMouse(MouseEvent(kind: .scrollLeft, column: 2, row: 0, isShifted: true)))
+        #expect(coord.scrollOffset(for: "h") == 0)
+        // Without Shift the vertical wheel is not for this viewport.
+        #expect(!coord.handleMouse(MouseEvent(kind: .scrollDown, column: 2, row: 0)))
+        #expect(coord.scrollOffset(for: "h") == 0)
+    }
+
     @Test("The wheel over a scrolling list moves its row window")
     func wheelScrollsList() {
         let coord = FocusCoordinator.shared
@@ -427,6 +472,41 @@ struct MouseRoutingTests {
         // A report with no outstanding query is ignored.
         registry.resolveInlineOrigin(parkedRow: 42)
         #expect(registry.frameOriginRow == 9)
+    }
+
+    @Test("Dragging a scroll view's thumb scrolls it; a track press jumps the thumb")
+    func dragFollowsScrollBar() {
+        let coord = FocusCoordinator.shared
+        coord.reset()
+        defer { coord.reset() }
+
+        // 10-row viewport over 50 rows: a 2-cell thumb on a 10-cell bar in column 39.
+        coord.registerScroll(id: "scroll", viewportHeight: 10, contentHeight: 50)
+        let registry = MouseTargetRegistry.shared
+        registry.beginPass()
+        registry.record(id: "scroll", rect: Rect(origin: Point(column: 0, row: 0), size: Size(width: 40, height: 10)))
+        registry.record(
+            id: MouseTargetRegistry.regionID(control: "scroll", role: MouseTargetRegistry.scrollbarRole),
+            rect: Rect(origin: Point(column: 39, row: 0), size: Size(width: 1, height: 10)))
+        registry.endPass()
+
+        // Grab the thumb by its second cell and drag it down four rows.
+        #expect(coord.handleMouse(MouseEvent(kind: .press(.left), column: 39, row: 1)))
+        #expect(coord.isFocused("scroll"))
+        #expect(coord.scrollOffset(for: "scroll") == 0)
+        #expect(coord.handleMouse(MouseEvent(kind: .drag(.left), column: 39, row: 5)))
+        #expect(coord.scrollOffset(for: "scroll") == 20)
+        // Past the end clamps.
+        #expect(coord.handleMouse(MouseEvent(kind: .drag(.left), column: 39, row: 30)))
+        #expect(coord.scrollOffset(for: "scroll") == 40)
+        _ = coord.handleMouse(MouseEvent(kind: .release(.left), column: 39, row: 30))
+        // After release, drags no longer scroll.
+        #expect(!coord.handleMouse(MouseEvent(kind: .drag(.left), column: 39, row: 0)))
+        #expect(coord.scrollOffset(for: "scroll") == 40)
+
+        // A press on the track centres the thumb on the pointer.
+        #expect(coord.handleMouse(MouseEvent(kind: .press(.left), column: 39, row: 1)))
+        #expect(coord.scrollOffset(for: "scroll") == 0)
     }
 
     @Test("A press on a slider's track captures the pointer; drags follow, release lets go")

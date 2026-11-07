@@ -40,7 +40,7 @@ struct TextEditorCommand: FullScreenCommand {
             Divider()
                 .padding(.top, 1)
             Text("\(notes.count) chars, \(lineCount) line(s)")
-                .forgroundColor(.yellow)
+                .foregroundStyle(.yellow)
         }
     }
 }

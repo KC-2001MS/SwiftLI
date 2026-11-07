@@ -9,9 +9,11 @@
 
 /// The two layout axes, mirroring SwiftUI's `Axis` type.
 public struct Axis: Sendable {
-    /// A set of axes. Use `.vertical`, `.horizontal`, or both.
-    public struct Set: Equatable, Sendable {
-        let rawValue: Int
+    /// A set of axes. Use `.vertical`, `.horizontal`, or both
+    /// (`[.vertical, .horizontal]`).
+    public struct Set: OptionSet, Sendable {
+        public let rawValue: Int8
+        public init(rawValue: Int8) { self.rawValue = rawValue }
         public static let vertical   = Set(rawValue: 1)
         public static let horizontal = Set(rawValue: 2)
         var isHorizontal: Bool { self == .horizontal }
@@ -29,26 +31,39 @@ public struct Axis: Sendable {
 /// <kbd>Space</kbd> by a page, and <kbd>Home</kbd>/<kbd>End</kbd> jump to the
 /// ends. <kbd>Tab</kbd> / <kbd>Shift-Tab</kbd> cycle focus.
 ///
-/// A proportional scrollbar is drawn as a solid strip with half-cell
-/// precision. For vertical viewports it is pinned to the trailing edge; for
-/// horizontal viewports it runs along the bottom edge. It is hidden when
-/// everything already fits, or when `showsIndicators` is `false`.
+/// With the pointer, the vertical wheel scrolls the vertical viewport under
+/// it and, as in SwiftUI, never a horizontal one. A horizontal viewport
+/// follows a horizontal wheel or swipe where the terminal reports one, and
+/// Shift + wheel everywhere (Terminal.app reports vertical wheel events
+/// only, so Shift + wheel is its horizontal gesture).
 ///
-/// The viewport size defaults to the full available space in the scroll axis.
-/// Use `.frame(height:)` or `.frame(width:)` to constrain it:
+/// A proportional scrollbar is drawn as a solid strip of whole cells. For
+/// vertical viewports it is pinned to the trailing edge; for horizontal
+/// viewports it runs along the bottom edge. It is hidden when everything
+/// already fits or when ``View/scrollIndicators(_:axes:)`` hides it for the
+/// axis. Drag its thumb to
+/// scroll; a press on the track jumps the thumb to the pointer.
+///
+/// Like SwiftUI's, the viewport fills the space it is given: its extent in
+/// the scroll axis defaults to the full available space, and while it
+/// scrolls it also spans the available space in the other axis so the
+/// scrollbar sits at that edge — the trailing column for a vertical
+/// viewport, the bottom row for a horizontal one. Use `.frame` to size it:
 ///
 /// ```swift
-/// // Vertical: 10-row window over a tall list.
+/// // Vertical: 10-row window over a tall list; the bar sits at the
+/// // trailing edge of the available width.
 /// ScrollView {
 ///     ForEach(0..<100) { i in Text("Row \(i)") }
 /// }
 /// .frame(height: 10)
 ///
-/// // Horizontal: 40-column window over a wide row.
+/// // Horizontal: 40-column window over a one-row strip; the bar sits on the
+/// // second row.
 /// ScrollView(.horizontal) {
 ///     HStack { /* wide content */ }
 /// }
-/// .frame(width: 40)
+/// .frame(width: 40, height: 2)
 /// ```
 ///
 /// > Note: Identity is keyed by `id`; give each scroll view a distinct `id`
@@ -74,31 +89,58 @@ public struct ScrollView: View, @unchecked Sendable {
     private let content: [any View]
     private let driver: Driver
 
-    /// Creates a self-scrolling viewport along `axes`.
+    /// Creates a self-scrolling viewport along `axes`, mirroring SwiftUI's
+    /// `ScrollView(_:content:)`.
     ///
-    /// The viewport fills the available space in the scroll axis by default.
-    /// Constrain it with `.frame(height:)` for a vertical viewport or
-    /// `.frame(width:)` for a horizontal one.
+    /// The viewport fills the available space in the scroll axis by default,
+    /// and the available space in the other axis while it scrolls (that is
+    /// where its scrollbar sits). Size it with `.frame(height:)` for a
+    /// vertical viewport or `.frame(width:height:)` for a horizontal one.
+    /// Hide the scrollbar with ``View/scrollIndicators(_:axes:)``.
+    ///
+    /// Each call site is its own scroll view: focus and scroll offset are
+    /// tracked per source location, so several scroll views on one screen
+    /// keep independent positions.
     ///
     /// - Parameters:
     ///   - axes: The scroll axis. Pass `.vertical` (the default) or
     ///     `.horizontal`.
-    ///   - showsIndicators: Whether to draw the scrollbar. Defaults to `true`.
-    ///   - id: A stable identity used to track focus and scroll offset.
-    ///     Defaults to `"ScrollView"` for vertical, `"HScrollView"` for
-    ///     horizontal.
     ///   - content: A ``ViewBuilder`` closure producing the scrolled content.
     public init<Content: View>(
         _ axes: Axis.Set = .vertical,
-        showsIndicators: Bool = true,
-        id: String? = nil,
+        fileID: String = #fileID,
+        line: Int = #line,
+        column: Int = #column,
         @ViewBuilder content: () -> Content
     ) {
+        self.init(axes, showsIndicators: true, id: "\(fileID):\(line):\(column)", content: content)
+    }
+
+    /// Creates a self-scrolling viewport that can hide its scrollbar.
+    ///
+    /// Like SwiftUI, this initializer is deprecated in favour of
+    /// ``View/scrollIndicators(_:axes:)``, which also reaches ``List``,
+    /// ``Table`` and ``TextEditor``.
+    @available(*, deprecated, message: "Use the scrollIndicators(_:axes:) modifier instead.")
+    public init<Content: View>(
+        _ axes: Axis.Set = .vertical,
+        showsIndicators: Bool,
+        fileID: String = #fileID,
+        line: Int = #line,
+        column: Int = #column,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.init(axes, showsIndicators: showsIndicators, id: "\(fileID):\(line):\(column)", content: content)
+    }
+
+    /// Creates a self-scrolling viewport with an explicit identity. Internal:
+    /// the public initializers derive the identity from the call site.
+    init<Content: View>(_ axes: Axis.Set, showsIndicators: Bool, id: String, @ViewBuilder content: () -> Content) {
         self.extent = nil
         self.isHorizontal = axes.isHorizontal
         self.showsIndicators = showsIndicators
         self.content = content()._flattenedChildren()
-        self.driver = .managed(id: id ?? (axes.isHorizontal ? "HScrollView" : "ScrollView"))
+        self.driver = .managed(id: id)
     }
 
     /// Creates a viewport whose offset is controlled by an enclosing view.
@@ -106,22 +148,21 @@ public struct ScrollView: View, @unchecked Sendable {
     /// The scroll view does **not** register its own scroll control here — the
     /// caller (``List``/``Table``) already owns focus and computes the offset —
     /// so this simply windows and draws the scrollbar. Internal on purpose.
-    init(height: Int, offset: Int, focused: Bool, showsIndicators: Bool, content: [any View]) {
+    init(height: Int, offset: Int, focused: Bool, content: [any View]) {
         self.extent = height
         self.isHorizontal = false
-        self.showsIndicators = showsIndicators
+        self.showsIndicators = true
         self.content = content
         self.driver = .controlled(offset: offset, focused: focused)
     }
 
-    /// The body of the scroll view; rendering is performed by ``makeNode()`` rather than this property.
-    public var body: some View {
-        EmptyView()
-    }
+    /// `ScrollView` is a layout primitive: it lowers directly via
+    /// ``makeNode()`` and has no body.
+    public typealias Body = Never
 
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
-        let childNode = Group(contents: content).makeNode()
+        let childNode = Group(contents: content).lowered(at: 0)
 
         // nil extent fills the available space in the scroll axis.
         let resolvedExtent: Int = isHorizontal
@@ -146,11 +187,19 @@ public struct ScrollView: View, @unchecked Sendable {
             focused = f
         }
 
-        let bar = showsIndicators ? Self.scrollBar(focused: focused) : nil
+        // Both the initializer and `.scrollIndicators(_:axes:)` can hide the
+        // bar; it is drawn only when neither does.
+        let environment = EnvironmentStack.current
+        let visibility = isHorizontal
+            ? environment.horizontalScrollIndicatorVisibility
+            : environment.verticalScrollIndicatorVisibility
+        let bar = showsIndicators && visibility.showsIndicator ? Self.scrollBar(focused: focused) : nil
         let node: RenderNode
         if isHorizontal {
             // The horizontal bar sits on the bottom edge of the viewport.
-            node = .hscroll(offset: offset, extent: resolvedExtent, bar: bar, child: childNode)
+            // Pin the scrollbar to the bottom edge of the rows this viewport is
+            // allotted, as the vertical viewport pins its bar to the far column.
+            node = .hscroll(offset: offset, extent: resolvedExtent, bar: bar, height: EnvironmentStack.current.maxHeight, child: childNode)
         } else {
             // Pin the scrollbar to the far edge of the columns this viewport is
             // allotted, macOS-style, instead of hugging the content's own width.
@@ -169,8 +218,8 @@ public struct ScrollView: View, @unchecked Sendable {
     /// a controlled ``ScrollView``) get an identical scrollbar.
     static func scrollBar(focused: Bool) -> ScrollBar {
         ScrollBar(
-            thumb: focused ? .cyan : .eight_bit(245),
-            track: .eight_bit(238)
+            thumb: focused ? .cyan : .eightBit(245),
+            track: .eightBit(238)
         )
     }
 }

@@ -63,12 +63,12 @@ public struct PlainListStyle: ListStyle {
     /// A single row: a selection marker plus the row content, highlighted when
     /// selected (bright when focused, dim when not).
     private func styledRow(_ row: AnyView, selected: Bool, focused: Bool, selectable: Bool) -> any View {
-        let markerColor: Color = selected ? (focused ? .cyan : .eight_bit(245)) : .eight_bit(240)
-        let marker = Text(content: selectable ? (selected ? "❯ " : "  ") : "").forgroundColor(markerColor)
+        let markerColor: Color = selected ? (focused ? .cyan : .eightBit(245)) : .eightBit(240)
+        let marker = Text(content: selectable ? (selected ? "❯ " : "  ") : "").foregroundStyle(markerColor)
 
         let base = HStack(alignment: .top, spacing: 0, children: [marker, row], style: .plain)
-        if selected && focused { return base.forgroundColor(.cyan).bold() }
-        if selected            { return base.forgroundColor(.eight_bit(245)) }
+        if selected && focused { return base.foregroundStyle(.cyan).bold() }
+        if selected            { return base.foregroundStyle(.eightBit(245)) }
         return base
     }
 }
@@ -181,9 +181,46 @@ public struct List<Data: RandomAccessCollection, RowContent: View>: View, @unche
         self.style = style
     }
 
-    /// The content of the list; always ``EmptyView`` because rendering is handled by ``makeNode()``.
+    /// The rows as decorated by the resolved ``ListStyle`` — scrolled to the
+    /// selection when a height bounds them — carrying the list's own text
+    /// style and, when selectable, marked as the list's pointer footprint.
+    /// Evaluating it also registers a selectable list for keyboard handling.
     public var body: some View {
-        EmptyView()
+        // Scroll to keep the selection visible when a height is set and
+        // exceeded, by composing a controlled ``ScrollView`` (which owns the
+        // .scroll IR and the scrollbar); otherwise just the rows.
+        if isScrolling {
+            ScrollView(height: resolvedHeight, offset: FocusCoordinator.shared.listOffset(for: id), focused: isFocused, content: [styledRows])
+        } else {
+            styledRows
+        }
+    }
+
+    /// `.frame(height:)` pins `maxHeight`, bounding the visible rows.
+    private var resolvedHeight: Int {
+        EnvironmentStack.current.maxHeight
+    }
+
+    private var isScrolling: Bool {
+        selection != nil && data.count > resolvedHeight
+    }
+
+    /// Only a selectable list takes focus.
+    private var isFocused: Bool {
+        selection != nil && FocusCoordinator.shared.isFocused(id)
+    }
+
+    /// Every row plus the selection state, handed to the active style, which
+    /// returns the stacked, decorated rows.
+    private var styledRows: AnyView {
+        // Nearest wins: instance style, then subtree environment, then default.
+        let resolvedStyle = style ?? EnvironmentStack.current.listStyle ?? AnyListStyle(PlainListStyle())
+        return resolvedStyle.makeBody(configuration: ListStyleConfiguration(
+            rows: data.map { AnyView(erasing: rowContent($0)) },
+            selectedIndex: selection?.wrappedValue,
+            isFocused: isFocused,
+            isSelectable: selection != nil
+        ))
     }
 
     @_spi(RenderingInternals)
@@ -191,44 +228,17 @@ public struct List<Data: RandomAccessCollection, RowContent: View>: View, @unche
         List(textStyle: textStyle.inheriting(style), id: id, data: data, selection: selection, rowContent: rowContent, style: self.style)
     }
 
+    /// Registers a selectable list for keyboard handling, then lowers ``body``
+    /// with the list's own text style cascaded onto it — as the list's pointer
+    /// footprint when selectable; a static list stays inert.
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
-        let rows = Array(data)
-        // `.frame(height:)` pins `maxHeight`, bounding the visible rows.
-        let resolvedHeight = EnvironmentStack.current.maxHeight
-
-        var focused = false
-        var selectedIndex: Int? = nil
         if let selection {
-            let scrolls = rows.count > resolvedHeight
-            FocusCoordinator.shared.registerList(id: id, selection: selection, count: rows.count, viewportRows: scrolls ? resolvedHeight : nil)
+            FocusCoordinator.shared.registerList(id: id, selection: selection, count: data.count, viewportRows: isScrolling ? resolvedHeight : nil)
             KeyInputRouter.shared.ensureStarted()
-            focused = FocusCoordinator.shared.isFocused(id)
-            selectedIndex = selection.wrappedValue
         }
-
-        // Hand every row plus the selection state to the active style, which
-        // returns the stacked, decorated rows.
-        // Nearest wins: instance style, then subtree environment, then default.
-        let resolvedStyle = style ?? EnvironmentStack.current.listStyle ?? AnyListStyle(PlainListStyle())
-        let styledBody = resolvedStyle.makeBody(configuration: ListStyleConfiguration(
-            rows: rows.map { AnyView(erasing: rowContent($0)) },
-            selectedIndex: selectedIndex,
-            isFocused: focused,
-            isSelectable: selection != nil
-        ))
-        // Scroll to keep the selection visible when a height is set and exceeded,
-        // by composing a controlled ``ScrollView`` (which owns the .scroll IR and
-        // the scrollbar); otherwise just render the styled rows.
-        let node: RenderNode
-        if rows.count > resolvedHeight, selection != nil {
-            let offset = FocusCoordinator.shared.listOffset(for: id)
-            node = ScrollView(height: resolvedHeight, offset: offset, focused: focused, showsIndicators: true, content: [styledBody]).makeNode()
-        } else {
-            node = styledBody.makeNode()
-        }
+        let node = body.makeNode()
         let styled = textStyle.isPlain ? node : node.applyingStyle(textStyle)
-        // Only a selectable list is a control; a static list stays inert.
         return selection != nil ? styled.asControl(id: id) : styled
     }
 

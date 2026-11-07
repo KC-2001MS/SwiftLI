@@ -13,7 +13,7 @@
 /// @Environment(\.colorScheme) var colorScheme
 ///
 /// var body: some View {
-///     Text("Hello").forgroundColor(colorScheme == .dark ? .white : .black)
+///     Text("Hello").foregroundStyle(colorScheme == .dark ? .white : .black)
 /// }
 /// ```
 public enum ColorScheme: Equatable, Sendable {

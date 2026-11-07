@@ -32,7 +32,7 @@ struct ForEachCommand: InlineCommand {
     var body: some Scene {
         NavigationStack {
             Text("ForEach(_ data:) over a collection")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
                 .navigationTitle("ForEach")
 
             ForEach(fruits) { fruit in
@@ -40,7 +40,7 @@ struct ForEachCommand: InlineCommand {
             }
 
             Text("ForEach(0..<5) over a range, inside an HStack")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
                 .padding(.top, 1)
 
             HStack(spacing: 1) {
@@ -51,14 +51,14 @@ struct ForEachCommand: InlineCommand {
 
             // A modifier applied to the whole ForEach cascades onto every
             // generated child.
-            Text("Style cascade: .forgroundColor(.green) on the ForEach")
-                .forgroundColor(.cyan)
+            Text("Style cascade: .foregroundStyle(.green) on the ForEach")
+                .foregroundStyle(.cyan)
                 .padding(.top, 1)
 
             ForEach(fruits) { fruit in
                 Text("• \(fruit)")
             }
-                .forgroundColor(.green)
+                .foregroundStyle(.green)
         }
     }
 }

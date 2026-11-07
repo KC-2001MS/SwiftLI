@@ -12,7 +12,7 @@ import Foundation
 ///
 /// `Text` is the fundamental building block of SwiftLI layouts. It displays a
 /// plain string or a repeated character with optional styling applied via
-/// modifier methods such as ``forgroundColor(_:)``, ``bold()``, or ``italic()``.
+/// modifier methods such as ``foregroundStyle(_:)``, ``bold()``, or ``italic()``.
 ///
 /// ## Creating a text view
 ///
@@ -25,7 +25,7 @@ import Foundation
 ///
 /// // Display with styling
 /// Text("Hello, SwiftLI!")
-///     .forgroundColor(.red)
+///     .foregroundStyle(.red)
 ///     .bold()
 ///     .render()
 /// ```
@@ -127,9 +127,7 @@ public struct Text: View, Sendable, Equatable {
 
     /// `Text` is a rendering leaf: it lowers directly via ``makeNode()`` and
     /// has no body.
-    public var body: some View {
-        EmptyView()
-    }
+    public typealias Body = Never
 
     @_spi(RenderingInternals)
     public func applyingStyle(_ style: TextStyle) -> Self {
@@ -153,7 +151,7 @@ public struct Text: View, Sendable, Equatable {
     ///   ```swift
     ///   HStack {
     ///       Text("Hello, ")
-    ///       Text("SwiftLI").forgroundColor(.orange)
+    ///       Text("SwiftLI").foregroundStyle(.orange)
     ///   }
     ///   ```
     @available(*, deprecated, message: "Compose adjacent Text views inside an HStack (which defaults to spacing: 0) instead.")
@@ -193,7 +191,7 @@ public struct Text: View, Sendable, Equatable {
 /// ## Styling
 ///
 /// Apply styles through the modifier methods declared in the `View`
-/// extension: ``forgroundColor(_:)``, ``bold()``, ``italic()``, ``underline()``,
+/// extension: ``foregroundStyle(_:)``, ``bold()``, ``italic()``, ``underline()``,
 /// ``blink(_:)``, ``hidden()``, and ``strikethrough()``. Styles are carried
 /// through the intermediate representation as structured ``TextStyle`` values;
 /// the rendering engine lowers them to escape sequences only at draw time.
@@ -214,7 +212,7 @@ public protocol View: Scene {
     /// var body: some View {
     ///     VStack {
     ///         Text("Title").bold()
-    ///         Text("Subtitle").forgroundColor(.cyan)
+    ///         Text("Subtitle").foregroundStyle(.cyan)
     ///     }
     /// }
     /// ```
@@ -309,13 +307,21 @@ public extension View {
 
     // MARK: - Style modifiers
 
-    /// Applies a foreground color to every character in the view.
+    /// Sets the foreground color of every character in the view, mirroring
+    /// SwiftUI's `foregroundStyle(_:)`.
     ///
     /// ```swift
-    /// Text("Error").forgroundColor(.red).render()
+    /// Text("Error").foregroundStyle(.red).render()
     /// ```
-    func forgroundColor(_ color: Color) -> Self {
+    func foregroundStyle(_ color: Color) -> Self {
         applyingStyle(TextStyle(foreground: color))
+    }
+
+    /// Sets the foreground color of every character in the view.
+    ///
+    /// This is the older SwiftUI spelling; prefer ``foregroundStyle(_:)``.
+    func foregroundColor(_ color: Color) -> Self {
+        foregroundStyle(color)
     }
 
     /// Fills the background of the view's cells with the given color.
@@ -417,5 +423,25 @@ public extension View {
     /// - Parameter isActive: When `true`, strikethrough is applied.
     func strikethrough(_ isActive: Bool) -> Self {
         isActive ? strikethrough() : self
+    }
+}
+
+// MARK: - Primitive views
+
+/// `Never` is a view so that primitive views — the leaves and containers the
+/// rendering engine lowers itself — can declare `Body == Never`, exactly as
+/// SwiftUI's primitives do. Such a view has no `body`; reading it is a
+/// programming error.
+extension Never: Scene {}
+
+extension Never: View {
+    public typealias Body = Never
+}
+
+public extension View where Body == Never {
+    /// A primitive view is lowered by the rendering engine directly and has
+    /// no body to evaluate.
+    var body: Never {
+        fatalError("\(Self.self) is a primitive view and has no body")
     }
 }

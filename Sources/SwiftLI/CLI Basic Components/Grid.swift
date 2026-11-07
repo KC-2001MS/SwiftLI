@@ -47,7 +47,7 @@ public struct VGrid: View {
         // Column widths: the widest cell in each column, so columns align.
         var colWidth = Array(repeating: 0, count: cols)
         for (i, child) in children.enumerated() {
-            let w = NodeLayout.measure(child.makeNode()).width
+            let w = NodeLayout.measure(child.lowered(at: i)).width
             colWidth[i % cols] = Swift.max(colWidth[i % cols], w)
         }
 
@@ -106,7 +106,7 @@ public struct HGrid: View {
         // Row heights: the tallest cell in each row, so rows align across columns.
         var rowHeight = Array(repeating: 0, count: rowCount)
         for (i, child) in children.enumerated() {
-            let h = NodeLayout.measure(child.makeNode()).height
+            let h = NodeLayout.measure(child.lowered(at: i)).height
             rowHeight[i % rowCount] = Swift.max(rowHeight[i % rowCount], h)
         }
 

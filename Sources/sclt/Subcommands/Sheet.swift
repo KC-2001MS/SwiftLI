@@ -9,7 +9,7 @@ import Foundation
 import ArgumentParser
 import SwiftLI
 
-/// A full-screen sample of ``View/sheet(isPresented:id:onDismiss:content:)``:
+/// A full-screen sample of ``View/sheet(isPresented:onDismiss:content:)``:
 /// a button presents a modal card, and `dismiss()` inside the sheet closes it.
 struct SheetCommand: FullScreenCommand {
     static let configuration = CommandConfiguration(
@@ -37,7 +37,7 @@ struct SheetCommand: FullScreenCommand {
                 .navigationSubtitle("Return/Space: open   Tab: focus   Ctrl-C: quit")
 
             Text("name: \(name.isEmpty ? "(unset)" : name)")
-                .forgroundColor(.yellow)
+                .foregroundStyle(.yellow)
                 .padding(.top, 1)
                 .sheet(isPresented: $showsSheet) {
                     SheetContent(name: $name)

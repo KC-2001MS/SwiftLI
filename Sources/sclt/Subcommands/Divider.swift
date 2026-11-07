@@ -29,38 +29,38 @@ struct DividerCommand: InlineCommand {
         NavigationStack {
             // Full-width divider: no count → spans the whole terminal width.
             Text("Divider() full width:")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
                 .navigationTitle("Divider")
             Divider()
 
             // Horizontal divider (VStack context)
                 .padding(.top, 1)
-            Text("Divider(_ count: Int) in VStack (horizontal):")
-                .forgroundColor(.cyan)
+            Text("Divider().frame(width: 20) in VStack (horizontal):")
+                .foregroundStyle(.cyan)
             VStack {
-                Text("Section A").forgroundColor(.green)
-                Divider(20)
-                Text("Section B").forgroundColor(.yellow)
+                Text("Section A").foregroundStyle(.green)
+                Divider().frame(width: 20)
+                Text("Section B").foregroundStyle(.yellow)
             }
 
             // Vertical divider (HStack context)
                 .padding(.top, 1)
             Text("Divider() in HStack (vertical):")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
             HStack(spacing: 1) {
-                Text("Left").forgroundColor(.red)
+                Text("Left").foregroundStyle(.red)
                 Divider()
-                Text("Right").forgroundColor(.blue)
+                Text("Right").foregroundStyle(.blue)
             }
 
             // lineStyle demo
                 .padding(.top, 1)
-            Text("Divider().lineStyle(.double_line):")
-                .forgroundColor(.cyan)
+            Text("Divider().lineStyle(.doubleLine):")
+                .foregroundStyle(.cyan)
             VStack {
-                Text("Above").forgroundColor(.magenta)
-                Divider(20).lineStyle(.double_line)
-                Text("Below").forgroundColor(.cyan)
+                Text("Above").foregroundStyle(.magenta)
+                Divider().lineStyle(.doubleLine).frame(width: 20)
+                Text("Below").foregroundStyle(.cyan)
             }
         }
     }

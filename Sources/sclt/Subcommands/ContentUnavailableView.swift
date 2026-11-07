@@ -30,19 +30,19 @@ struct ContentUnavailableCommand: InlineCommand {
     var body: some Scene {
         NavigationStack {
             Text("ContentUnavailableView(_ title:)")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
                 .navigationTitle("ContentUnavailableView")
 
             ContentUnavailableView("No Data")
 
             Text("ContentUnavailableView(_ title:, image:)")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
                 .padding(.top, 1)
 
             ContentUnavailableView("No Mail", image: "📭")
 
             Text("ContentUnavailableView(_ title:, image:, description:)")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
                 .padding(.top, 1)
 
             ContentUnavailableView(

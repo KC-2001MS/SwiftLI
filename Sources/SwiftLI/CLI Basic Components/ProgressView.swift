@@ -79,9 +79,9 @@ public struct DefaultProgressViewStyle: ProgressViewStyle {
     public func makeBody(configuration: ProgressViewStyleConfiguration) -> some View {
         HStack(spacing: 1) {
             Text(verbatim: String(ProgressSpinner.character(for: configuration.phase)))
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
             if let label = configuration.label {
-                label.forgroundColor(.cyan)
+                label.foregroundStyle(.cyan)
             }
         }
     }

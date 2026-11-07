@@ -179,9 +179,7 @@ struct NavigationBarConfigWriter: View {
     let content: AnyView
     let update: (inout NavigationBarConfig) -> Void
 
-    public var body: some View {
-        EmptyView()
-    }
+    public typealias Body = Never
 
     @_spi(RenderingInternals)
     public func applyingStyle(_ style: TextStyle) -> Self {

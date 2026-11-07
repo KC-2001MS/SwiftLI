@@ -57,7 +57,7 @@ struct HelloCommand: InlineCommand {
     var body: some Scene {
         Text("Hello, SwiftLI!")
             .bold()
-            .forgroundColor(.cyan)
+            .foregroundStyle(.cyan)
     }
 }
 ```
@@ -68,9 +68,12 @@ later examples omit it for brevity, but real commands should declare one.
 
 ### Reactive state
 `@State` and Swift's `Observation` framework (`@Observable`) drive the display.
-Start work with the `.task` modifier; every property the body reads is
-observation-tracked, so mutations redraw automatically. The session ends on
-its own when the work finishes:
+`@State` is a macro, as in SwiftUI since Xcode 27: the value lives in storage
+tied to the view's position in the tree, so state declared in a child view
+persists while the parent's body is re-evaluated, and its initial value is
+computed only when first read. Start work with the `.task` modifier; every
+property the body reads is observation-tracked, so mutations redraw
+automatically. The session ends on its own when the work finishes:
 
 ```swift
 @Observable
@@ -83,7 +86,7 @@ struct FetchCommand: InlineCommand {
 
     var body: some Scene {
         ProgressView(min: 0, value: .constant(model.progress), max: 1)
-            .task { await download(into: model) }   // 完了 → やることゼロ → 自動終了
+            .task { await download(into: model) }   // done → nothing left to do → exits
     }
 }
 ```
@@ -111,7 +114,7 @@ struct ConfirmCommand: InlineCommand {
     var body: some Scene {
         if !answered {
             Toggle("Proceed?", isOn: $proceed)
-            Button("OK") { answered = true }   // コントロールが消える → 終了
+            Button("OK") { answered = true }   // the controls disappear → exits
         } else {
             Text(proceed ? "✔ Proceeding" : "✗ Cancelled")
         }
@@ -169,6 +172,56 @@ Commands compose as views: because every command is a `View`, one command's
 a `FullScreenCommand`-conforming view embedded in an inline session renders
 inline.
 
+### Modifiers
+View modifiers carry SwiftUI's names, argument labels, and behavior, so code
+reads the same way it would in a SwiftUI app. Lengths are whole terminal
+cells (`Int`) instead of points:
+
+```swift
+Text("Report")
+    .foregroundStyle(.cyan)          // also available as foregroundColor(_:)
+    .bold()
+    .padding()                       // one cell on every edge
+    .padding(.horizontal, 2)         // edges first, then the length
+    .frame(width: 30, alignment: .leading)
+    .lineLimit(2)
+    .border(.green)                  // a box around the view
+    .background(.eightBit(236))      // paints the whole footprint, box included
+    .shadow(x: 1, y: 1)              // one-cell drop shadow down and right
+```
+
+Order matters exactly as in SwiftUI: a `.background` applied after
+`.padding()` or `.frame()` fills the padding and the frame's slack, while
+one applied before leaves them transparent. A `.background` applied after
+`.border(...)` fills the box, border cells included.
+
+Scrollable views (`ScrollView`, `List`, `Table`, `TextEditor`) take their
+indicator visibility from the environment, so one modifier covers a whole
+subtree:
+
+```swift
+VStack {
+    ScrollView { … }
+    List(items, selection: $selection) { … }
+}
+.scrollIndicators(.hidden)
+```
+
+Presentation and lifecycle modifiers are SwiftUI's too: `.sheet(isPresented:onDismiss:content:)`,
+`.inspector(isPresented:content:)`, `.onAppear(perform:)`, `.task(_:)`,
+`.task(id:_:)`, `.focused(_:equals:)`, `.navigationTitle(_:)`, `.toolbar { … }`,
+`.environment(_:_:)`, and `.preference(key:value:)`.
+
+Where the terminal cannot do what SwiftUI does, the API differs — and only
+there:
+
+| Modifier | Difference from SwiftUI | Why |
+|---|---|---|
+| `.border(_ color:, style:)` | A trailing `style:` picks the box-drawing glyphs (`.rounded`, `.single`, `.double`, `.heavy`) instead of `width:` | A character cell has no sub-cell line widths |
+| `.shadow(color:radius:x:y:)` | `radius` defaults to `0` and widens the shadow band instead of blurring it | Terminals cannot blur |
+| `.blink(_:)`, `Divider().lineStyle(_:)` | Terminal-only additions | No SwiftUI counterpart |
+| `Color.eightBit(_:)`, `Color.rgb(r:g:b:)` | 256-color palette and 24-bit colors by index/component | SwiftUI has no palette colors |
+
 ### Styles
 Controls resolve their styles from the environment, so a style applied to a
 container flows down to every matching control in the subtree:
@@ -182,18 +235,11 @@ VStack {
 ```
 
 ### Environment values
-SwiftLI propagates environment values down the view tree just like SwiftUI. Built-in values such as `\.maxWidth`, `\.colorScheme`, and `\.dismiss` are available, and you can define your own with `EnvironmentKey`:
+SwiftLI propagates environment values down the view tree just like SwiftUI. Built-in values such as `\.maxWidth`, `\.colorScheme`, and `\.dismiss` are available, and you can define your own with the `@Entry` macro (or a hand-written `EnvironmentKey`):
 
 ```swift
-private struct VerbosityKey: EnvironmentKey {
-    static var defaultValue: Int { 0 }
-}
-
 extension EnvironmentValues {
-    var verbosity: Int {
-        get { self[VerbosityKey.self] }
-        set { self[VerbosityKey.self] = newValue }
-    }
+    @Entry var verbosity: Int = 0
 }
 
 // Inject for a subtree (the nearest injection wins) …

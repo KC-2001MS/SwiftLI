@@ -59,7 +59,7 @@ struct TableCommand: FullScreenCommand {
             Divider()
                 .padding(.top, 1)
             Text("Fills the terminal width; body scrolls under a pinned header.")
-                .forgroundColor(.yellow)
+                .foregroundStyle(.yellow)
         }
     }
 }

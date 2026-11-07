@@ -362,7 +362,7 @@ public extension InlineCommand {
     ///
     ///     var body: some Scene {      // no run() required
     ///         ProgressView(min: 0, value: .constant(model.progress), max: 1)
-    ///             .task { await model.fetch() }   // 完了 → やることゼロ → 終了
+    ///             .task { await model.fetch() }   // done → nothing left to do → exits
     ///     }
     /// }
     /// ```

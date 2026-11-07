@@ -28,7 +28,7 @@ struct EmoticonCommand: InlineCommand {
     var body: some Scene {
         NavigationStack {
             Text("init()")
-                .forgroundColor(Color.cyan)
+                .foregroundStyle(Color.cyan)
                 .navigationTitle("Emoticon")
 
             HStack(spacing: 1) {
@@ -36,11 +36,11 @@ struct EmoticonCommand: InlineCommand {
                 Spacer()
                 Text("Emoticon()  ← default :)")
                     .fontWeight(.thin)
-                    .forgroundColor(.red)
+                    .foregroundStyle(.red)
             }
 
             Text("EyesStyle cases")
-                .forgroundColor(Color.cyan)
+                .foregroundStyle(Color.cyan)
                 .padding(.top, 1)
 
             ForEach(EyesStyle.allCases) { eye in
@@ -49,12 +49,12 @@ struct EmoticonCommand: InlineCommand {
                     Spacer()
                     Text(".\(eye)")
                         .fontWeight(.thin)
-                        .forgroundColor(.red)
+                        .foregroundStyle(.red)
                 }
             }
 
             Text("MouthStyle cases")
-                .forgroundColor(Color.cyan)
+                .foregroundStyle(Color.cyan)
                 .padding(.top, 1)
 
             ForEach(MouthStyle.allCases) { mouth in
@@ -63,7 +63,7 @@ struct EmoticonCommand: InlineCommand {
                     Spacer()
                     Text(".\(mouth)")
                         .fontWeight(.thin)
-                        .forgroundColor(.red)
+                        .foregroundStyle(.red)
                 }
             }
         }

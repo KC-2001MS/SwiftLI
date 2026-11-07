@@ -30,7 +30,7 @@ struct EmptyViewCommand: InlineCommand {
     var body: some Scene {
         NavigationStack {
             Text("EmptyView()")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
                 .navigationTitle("EmptyView")
 
             // The brackets sit flush together: the EmptyView between them
@@ -39,7 +39,7 @@ struct EmptyViewCommand: InlineCommand {
                 Text("[")
                 EmptyView()
                 Text("] ← an EmptyView sits between the brackets")
-                    .forgroundColor(.eight_bit(245))
+                    .foregroundStyle(.eightBit(245))
             }
 
             // Unlike .hidden(), which blanks a view but keeps its width.
@@ -47,7 +47,7 @@ struct EmptyViewCommand: InlineCommand {
                 Text("[")
                 Text("hidden").hidden()
                 Text("] ← .hidden() keeps the width for comparison")
-                    .forgroundColor(.eight_bit(245))
+                    .foregroundStyle(.eightBit(245))
             }
         }
     }

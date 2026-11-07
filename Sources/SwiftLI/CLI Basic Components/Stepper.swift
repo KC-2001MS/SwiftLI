@@ -94,9 +94,21 @@ public struct Stepper: View {
         self.onDecrement = onDecrement
     }
 
-    /// The content of the stepper view; rendering is handled by ``makeNode()``.
+    /// `label [-] value [+]` — the two brackets are plain-styled ``Button``s
+    /// that register themselves in the focus ring as usual.
     public var body: some View {
-        EmptyView()
+        HStack(alignment: .top, spacing: 1) {
+            if let label {
+                label
+            }
+            Button(id: "\(id).decrement", action: onDecrement) { Text(verbatim: "[-]") }
+                .buttonStyle(PlainButtonStyle())
+            if let text = valueText() {
+                Text(verbatim: text).bold()
+            }
+            Button(id: "\(id).increment", action: onIncrement) { Text(verbatim: "[+]") }
+                .buttonStyle(PlainButtonStyle())
+        }
     }
 
     @_spi(RenderingInternals)
@@ -104,24 +116,10 @@ public struct Stepper: View {
         Stepper(style: self.style.inheriting(style), id: id, label: label, valueText: valueText, onIncrement: onIncrement, onDecrement: onDecrement)
     }
 
-    /// Lowers to `label [-] value [+]` — the two brackets are plain-styled
-    /// ``Button``s that register themselves in the focus ring as usual.
+    /// Lowers ``body`` with the stepper's own text style cascaded onto it.
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
-        var cells: [any View] = []
-        if let label { cells.append(label) }
-        cells.append(
-            Button(id: "\(id).decrement", action: onDecrement) { Text(verbatim: "[-]") }
-                .buttonStyle(PlainButtonStyle())
-        )
-        if let text = valueText() {
-            cells.append(Text(verbatim: text).bold())
-        }
-        cells.append(
-            Button(id: "\(id).increment", action: onIncrement) { Text(verbatim: "[+]") }
-                .buttonStyle(PlainButtonStyle())
-        )
-        let node = HStack(alignment: .top, spacing: 1, children: cells, style: .plain).makeNode()
+        let node = body.makeNode()
         return style.isPlain ? node : node.applyingStyle(style)
     }
 }

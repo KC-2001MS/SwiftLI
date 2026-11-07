@@ -239,7 +239,7 @@ struct FrameWrappingTests {
     }
 
     private var plainBar: ScrollBar {
-        ScrollBar(thumb: .cyan, track: .eight_bit(238))
+        ScrollBar(thumb: .cyan, track: .eightBit(238))
     }
 
     @Test("The scrollbar is pinned to the far edge of the viewport's width")
@@ -252,22 +252,33 @@ struct FrameWrappingTests {
         for line in lines {
             // Content on the left, then a gap, then the bar in the last column.
             #expect(TextMetrics.visibleWidth(line) == 12)
-            #expect(["█", "▀", "▄"].contains(String(line.suffix(1))))
         }
         #expect(NodeLayout.measure(node).width == 12)
     }
 
-    @Test("The scrollbar is a continuous solid strip with half-block end caps")
-    func scrollBarHalfBlockPrecision() {
-        // 8 content rows through a 4-row viewport → the thumb is exactly two
-        // rows (four half rows). Offset 1 shifts it by one half row, so its
-        // ends land mid-cell: ▄ on the entering cell, ▀ on the leaving one,
-        // and the remaining track cells stay solid — no gaps anywhere.
+    @Test("The scrollbar is a continuous strip of background-filled cells")
+    func scrollBarSolidCells() {
+        // 8 content rows through a 4-row viewport → the thumb is two rows.
+        // Offset 4 (the end) puts it on the last two rows.
         let content = RenderNode.vstack(alignment: .leading, spacing: 0, children:
             (0..<8).map { RenderNode.text(style: .plain, contents: ["r\($0)"]) })
-        let node = RenderNode.scroll(offset: 1, height: 4, bar: plainBar, width: nil, child: content)
-        let caps = plainLines(node).map { String($0.suffix(1)) }
-        #expect(caps == ["▄", "█", "▀", "█"])
+        let node = RenderNode.scroll(offset: 4, height: 4, bar: plainBar, width: nil, child: content)
+        let thumb = TextStyle(background: .cyan).sgrPrefix
+        let track = TextStyle(background: .eightBit(238)).sgrPrefix
+        let lines = NodeLayout.frame(of: node).lines
+        #expect(lines.map { $0.contains(thumb) } == [false, false, true, true])
+        #expect(lines.map { $0.contains(track) } == [true, true, false, false])
+    }
+
+    @Test("Thumb geometry and its inverse agree")
+    func thumbGeometryRoundTrip() {
+        // 10-cell track over 50 rows of content in a 10-row viewport.
+        #expect(ScrollBar.thumb(length: 10, viewport: 10, content: 50, offset: 0) == (0, 2))
+        #expect(ScrollBar.thumb(length: 10, viewport: 10, content: 50, offset: 40) == (8, 2))
+        #expect(ScrollBar.offset(forThumbStart: 0, length: 10, viewport: 10, content: 50) == 0)
+        #expect(ScrollBar.offset(forThumbStart: 8, length: 10, viewport: 10, content: 50) == 40)
+        #expect(ScrollBar.offset(forThumbStart: 99, length: 10, viewport: 10, content: 50) == 40)
+        #expect(ScrollBar.offset(forThumbStart: 4, length: 10, viewport: 10, content: 50) == 20)
     }
 }
 
@@ -283,7 +294,7 @@ struct HScrollTests {
 
     @Test("An hscroll node shows an extent-wide column window offset from the left")
     func hscrollWindow() {
-        let node = RenderNode.hscroll(offset: 2, extent: 4, bar: nil,
+        let node = RenderNode.hscroll(offset: 2, extent: 4, bar: nil, height: nil,
                                       child: Text(verbatim: "abcdefghij").makeNode())
         let lines = NodeLayout.frame(of: node).lines.map { TextMetrics.stripANSI($0) }
         #expect(lines.first == "cdef")
@@ -291,11 +302,41 @@ struct HScrollTests {
 
     @Test("An hscroll offset past the end is clamped to the last window")
     func hscrollClampsAtEnd() {
-        let node = RenderNode.hscroll(offset: 999, extent: 4, bar: nil,
+        let node = RenderNode.hscroll(offset: 999, extent: 4, bar: nil, height: nil,
                                       child: Text(verbatim: "abcdefghij").makeNode())
         let lines = NodeLayout.frame(of: node).lines.map { TextMetrics.stripANSI($0) }
         // 10 columns, window 4 → max offset 6 → last window is "ghij".
         #expect(lines.first == "ghij")
+    }
+
+    @Test("An hscroll window keeps each glyph in its column when a wide glyph straddles the edge")
+    func hscrollKeepsColumnsAroundWideGlyphs() {
+        // "a日b": the wide glyph occupies columns 1-2. A window starting at
+        // column 2 cuts through it, so it is left out and "b" stays at its
+        // own window column (1), not pulled left into the gap.
+        let node = RenderNode.hscroll(offset: 2, extent: 3, bar: nil, height: nil,
+                                      child: Text(verbatim: "a日bc").makeNode())
+        let lines = NodeLayout.frame(of: node).lines.map { TextMetrics.stripANSI($0) }
+        #expect(lines.first == " bc")
+    }
+
+    @Test("A scrollable hscroll spans its allotted height with the bar on the bottom row")
+    func hscrollBarPinnedToAllottedHeight() {
+        let bar = ScrollBar(thumb: .cyan, track: .eightBit(238))
+        let child = Text(verbatim: "abcdefghij").makeNode()
+        let pinned = RenderNode.hscroll(offset: 0, extent: 4, bar: bar, height: 4, child: child)
+        #expect(NodeLayout.measure(pinned) == Size(width: 4, height: 4))
+        let lines = NodeLayout.frame(of: pinned).lines.map { TextMetrics.stripANSI($0) }
+        #expect(lines.count == 4)
+        #expect(lines[0] == "abcd")
+        #expect(lines[1].isEmpty && lines[2].isEmpty)
+        #expect(lines[3].count == 4)   // the bar strip
+        // Without an allotted height the bar sits right below the content.
+        let hugging = RenderNode.hscroll(offset: 0, extent: 4, bar: bar, height: nil, child: child)
+        #expect(NodeLayout.measure(hugging) == Size(width: 4, height: 2))
+        // Content that fits needs no bar and ignores the allotted height.
+        let fits = RenderNode.hscroll(offset: 0, extent: 20, bar: bar, height: 4, child: child)
+        #expect(NodeLayout.measure(fits) == Size(width: 20, height: 1))
     }
 }
 

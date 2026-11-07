@@ -124,7 +124,9 @@ public struct TextStyle: Equatable, Sendable {
     /// `EnvironmentWritingView` is still on the stack — so that draw-time
     /// lowering via ``ansiPrefix`` never reads a stale or empty scope.
     func resolving() -> TextStyle {
-        guard foreground != nil || background != nil else { return self }
+        // Only a dynamic (light/dark) color depends on the scheme; every other
+        // color resolves to itself, so the environment isn't even consulted.
+        guard foreground?.isDynamic == true || background?.isDynamic == true else { return self }
         let scheme = EnvironmentStack.current.colorScheme
         var result = self
         result.foreground = foreground?.resolved(scheme: scheme)
@@ -141,12 +143,20 @@ public struct TextStyle: Equatable, Sendable {
     /// and closes the run with an SGR reset. `isHidden` deliberately emits
     /// nothing — the engine blanks hidden glyphs instead.
     var ansiPrefix: String {
+        linkOpenSequence + sgrPrefix
+    }
+
+    /// The OSC 8 "open" for ``link`` (terminated by ST), or an empty string
+    /// without a link. The canvas closes a linked run so the link never leaks
+    /// past it.
+    var linkOpenSequence: String {
+        guard let link else { return "" }
+        return "\u{001B}]8;;\(link)\u{001B}\\"
+    }
+
+    /// The SGR part of ``ansiPrefix``: every attribute except the hyperlink.
+    var sgrPrefix: String {
         var out = ""
-        if let link {
-            // OSC 8 "open", terminated by ST; the canvas closes each linked
-            // cell so the link never leaks past the run.
-            out += "\u{001B}]8;;\(link)\u{001B}\\"
-        }
         if let weight, weight != .default { out += "\u{001B}[\(weight.rawValue)m" }
         if isItalic { out += "\u{001B}[3m" }
         if isUnderlined { out += "\u{001B}[4m" }

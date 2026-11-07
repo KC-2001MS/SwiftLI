@@ -50,12 +50,12 @@ struct TextTests {
             #expect(text4.contents == [string])
         }
 
-        @Test("Is the color set by the forgroundColor function applied to the style variable?", arguments: allColors)
-        func forgroundColorFuncTesting(
+        @Test("Is the color set by the foregroundStyle function applied to the style variable?", arguments: allColors)
+        func foregroundStyleFuncTesting(
             color: Color
         ) async throws {
             // The innermost application wins; a repeated application collapses.
-            let text = Text("").forgroundColor(color).forgroundColor(.primary)
+            let text = Text("").foregroundStyle(color).foregroundStyle(.primary)
 
             #expect(text.style == TextStyle(foreground: color))
         }

@@ -13,8 +13,17 @@ import Observation
 /// A key for accessing values in the environment, mirroring SwiftUI's
 /// `EnvironmentKey`.
 ///
-/// Define custom environment values by declaring a key with a default, then
-/// exposing it as a computed property on ``EnvironmentValues``:
+/// The shortest way to define a custom environment value is the
+/// ``Entry()`` macro, which generates the key for you:
+///
+/// ```swift
+/// extension EnvironmentValues {
+///     @Entry var verbosity: Int = 0
+/// }
+/// ```
+///
+/// Written out by hand, a custom value is a key with a default, exposed as a
+/// computed property on ``EnvironmentValues``:
 ///
 /// ```swift
 /// private struct VerbosityKey: EnvironmentKey {
@@ -83,6 +92,32 @@ public protocol EnvironmentKey {
     static var defaultValue: Value { get }
 }
 
+// MARK: - @Entry macro
+
+/// Creates an environment value from a single property declaration,
+/// mirroring SwiftUI's `Entry()` macro.
+///
+/// Apply it to a property in an ``EnvironmentValues`` extension; the macro
+/// generates the ``EnvironmentKey`` and the subscript-backed accessors, so the
+/// declaration's initial value becomes the key's default:
+///
+/// ```swift
+/// extension EnvironmentValues {
+///     @Entry var verbosity: Int = 0
+///     @Entry var uploadProgress: ProgressModel?   // defaults to nil
+/// }
+///
+/// StatusView().environment(\.verbosity, 2)
+/// @Environment(\.verbosity) private var verbosity
+/// ```
+///
+/// The property needs an explicit type, and an initial value unless the type
+/// is optional. The default expression is evaluated each time an un-injected
+/// value is read, as with a hand-written `static var defaultValue`.
+@attached(accessor, names: named(get), named(set))
+@attached(peer, names: prefixed(__Key_))
+public macro Entry() = #externalMacro(module: "SwiftLIMacros", type: "EntryMacro")
+
 // MARK: - EnvironmentValues
 
 /// A collection of environment values propagated down the view tree,
@@ -103,6 +138,14 @@ public protocol EnvironmentKey {
 ///   `@Environment(MyModel.self)`, no key declaration needed.
 public struct EnvironmentValues {
     private var values: [ObjectIdentifier: Any] = [:]
+
+    // The three values the layout engine reads on nearly every node live in
+    // dedicated fields rather than the keyed dictionary: a field read is a
+    // few nanoseconds, a dictionary lookup plus an `Any` cast is a few
+    // hundred, and measurement reads them thousands of times per frame.
+    private var maxWidthValue: Int?
+    private var maxHeightValue: Int?
+    private var colorSchemeValue: ColorScheme?
 
     /// Creates an environment holding only default values.
     public init() {}
@@ -128,30 +171,17 @@ public struct EnvironmentValues {
 
 // MARK: - Built-in environment values
 
-private struct MaxWidthKey: EnvironmentKey {
-    // Read at access time so the top-level value follows terminal resizes.
-    static var defaultValue: Int { TerminalSize.current.columns }
-}
-
-private struct MaxHeightKey: EnvironmentKey {
-    // Read at access time so the top-level value follows terminal resizes.
-    static var defaultValue: Int { TerminalSize.current.rows }
-}
-
-private struct ColorSchemeKey: EnvironmentKey {
-    static var defaultValue: ColorScheme { ColorSchemeDetector.detected }
-}
-
 public extension EnvironmentValues {
     /// The maximum number of columns the current view can occupy.
     ///
     /// At the top level this matches the terminal width. Width-constraining
     /// modifiers narrow it on the way down: inside `.frame(width: 30)` it is
-    /// `30`; a `.padding()`, `.border(...)`, or `.shadow()` subtracts the
+    /// `30`; a `.padding()`, `.border(...)`, or `.shadow(...)` subtracts the
     /// columns it consumes.
     var maxWidth: Int {
-        get { self[MaxWidthKey.self] }
-        set { self[MaxWidthKey.self] = newValue }
+        // Read at access time so the top-level value follows terminal resizes.
+        get { maxWidthValue ?? TerminalSize.current.columns }
+        set { maxWidthValue = newValue }
     }
 
     /// The maximum number of rows the current view can occupy.
@@ -160,8 +190,9 @@ public extension EnvironmentValues {
     /// inline session, where a row is reserved for the parked cursor).
     /// Vertical ``Spacer``s expand their column up to this height.
     var maxHeight: Int {
-        get { self[MaxHeightKey.self] }
-        set { self[MaxHeightKey.self] = newValue }
+        // Read at access time so the top-level value follows terminal resizes.
+        get { maxHeightValue ?? TerminalSize.current.rows }
+        set { maxHeightValue = newValue }
     }
 
     /// Whether the terminal has a dark or light background.
@@ -171,8 +202,8 @@ public extension EnvironmentValues {
     /// common terminal appearance). Override it for a subtree with
     /// `.environment(\.colorScheme, .light)`.
     var colorScheme: ColorScheme {
-        get { self[ColorSchemeKey.self] }
-        set { self[ColorSchemeKey.self] = newValue }
+        get { colorSchemeValue ?? ColorSchemeDetector.detected }
+        set { colorSchemeValue = newValue }
     }
 }
 
@@ -204,7 +235,7 @@ public extension EnvironmentValues {
 /// ```
 public struct DismissAction: Sendable {
     /// A presentation-specific dismissal, when the action was injected by a
-    /// presenter (a full-screen ``View/sheet(isPresented:id:onDismiss:content:)``
+    /// presenter (a full-screen ``View/sheet(isPresented:onDismiss:content:)``
     /// closes the sheet); `nil` falls back to ending the session.
     private let handler: (@Sendable () -> Void)?
 
@@ -281,18 +312,33 @@ enum EnvironmentStack {
 
     /// The environment visible at the current point of the tree walk.
     static var current: EnvironmentValues {
-        stack.last ?? EnvironmentValues()
+        box.stack.last ?? EnvironmentValues()
     }
 
-    private static var stack: [EnvironmentValues] {
-        get { Thread.current.threadDictionary[key] as? [EnvironmentValues] ?? [] }
-        set { Thread.current.threadDictionary[key] = newValue }
+    // The stack lives in a reference-type box so reads and pushes mutate it in
+    // place, and the box sits in a per-thread slot (see `ThreadLocalSlot`),
+    // which is read in nanoseconds. Storing the array itself in
+    // `threadDictionary` bridged it to an `NSArray` on every access — a copy
+    // per `current` read and two per push — and the dictionary lookup alone
+    // cost a few hundred nanoseconds per node.
+    private final class Box {
+        var stack: [EnvironmentValues] = []
+    }
+
+    private static let slot = ThreadLocalSlot<Box>()
+
+    private static var box: Box {
+        if let existing = slot.value { return existing }
+        let created = Box()
+        slot.value = created
+        return created
     }
 
     /// Runs `body` with `values` as the current environment.
     static func with<T>(_ values: EnvironmentValues, perform body: () throws -> T) rethrows -> T {
-        stack.append(values)
-        defer { stack.removeLast() }
+        let box = self.box
+        box.stack.append(values)
+        defer { box.stack.removeLast() }
         return try body()
     }
 }
@@ -309,7 +355,7 @@ enum EnvironmentStack {
 ///
 ///     var body: some View {
 ///         Text("width: \(maxWidth)")
-///             .forgroundColor(colorScheme == .dark ? .white : .black)
+///             .foregroundStyle(colorScheme == .dark ? .white : .black)
 ///     }
 /// }
 /// ```
@@ -391,9 +437,7 @@ struct EnvironmentWritingView: View, @unchecked Sendable {
     let content: any View
     let transform: (inout EnvironmentValues) -> Void
 
-    var body: some View {
-        EmptyView()
-    }
+    typealias Body = Never
 
     func applyingStyle(_ style: TextStyle) -> Self {
         EnvironmentWritingView(content: content.applyingStyle(style), transform: transform)

@@ -66,9 +66,7 @@ public struct Spacer: View, Sendable, Equatable {
     /// The content of this spacer, which renders as an empty view.
     ///
     /// The actual spacing behaviour is provided by the layout engine via ``makeNode()``.
-    public var body: some View {
-        EmptyView()
-    }
+    public typealias Body = Never
 
     @_spi(RenderingInternals)
     public func applyingStyle(_ style: TextStyle) -> Self {

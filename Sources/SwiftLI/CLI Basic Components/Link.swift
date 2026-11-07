@@ -15,7 +15,7 @@ import Foundation
 ///
 /// ```swift
 /// Link("Apple", destination: "https://apple.com")
-///     .forgroundColor(.blue)
+///     .foregroundStyle(.blue)
 ///     .underline()
 ///     .render()
 /// ```
@@ -57,10 +57,38 @@ public struct Link: View, Sendable {
         self.destination = destination
     }
 
-    /// The content of this view; always empty because ``Link`` is rendered
-    /// entirely through ``makeNode()``.
+    /// A ``Text`` whose style carries the OSC 8 hyperlink destination. The
+    /// rendering pipeline measures only the label's width (the escape occupies
+    /// no columns) and emits the label as a clickable run.
+    ///
+    /// Inside a reactive runtime the link additionally registers itself in the
+    /// focus ring so <kbd>Return</kbd>/<kbd>Space</kbd> open the destination,
+    /// and marks the text as its pointer footprint.
     public var body: some View {
-        EmptyView()
+        Text(style: resolvedStyle, content: label)
+    }
+
+    /// Whether a reactive runtime is active, so the link joins the focus ring.
+    private var isInteractive: Bool {
+        AppRuntime.shared != nil || BodyRenderingStore.shared.sessionActive
+    }
+
+    private var controlID: String {
+        "Link:\(destination):\(label)"
+    }
+
+    /// The link's style: the destination attached and — while focused — cyan
+    /// + underline as a fallback, like a highlighted hyperlink, which the
+    /// link's own style overrides.
+    private var resolvedStyle: TextStyle {
+        var resolved = style
+        if isInteractive && FocusCoordinator.shared.isFocused(controlID) {
+            resolved = resolved.inheriting(TextStyle(foreground: .cyan, isUnderlined: true))
+        }
+        if resolved.link == nil {
+            resolved.link = destination
+        }
+        return resolved
     }
 
     @_spi(RenderingInternals)
@@ -68,37 +96,18 @@ public struct Link: View, Sendable {
         .init(style: self.style.inheriting(style), label: label, destination: destination)
     }
 
-    /// Lowers to a styled ``RenderNode/text`` whose style carries the OSC 8
-    /// hyperlink destination. The rendering pipeline measures only the label's
-    /// width (the escape occupies no columns) and the canvas emits each label
-    /// cell as a self-contained clickable unit.
-    ///
-    /// Inside a reactive runtime the link additionally registers itself in the
-    /// focus ring so <kbd>Return</kbd>/<kbd>Space</kbd> open the destination.
+    /// Inside a reactive runtime, registers the link in the focus ring so
+    /// <kbd>Return</kbd>/<kbd>Space</kbd> open the destination, and lowers
+    /// ``body`` as the link's pointer footprint; otherwise lowers it plain.
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
-        var resolved = style
-        let interactive = AppRuntime.shared != nil || BodyRenderingStore.shared.sessionActive
-        var controlID: String?
-        if interactive {
-            let id = "Link:\(destination):\(label)"
-            let destination = self.destination
-            FocusCoordinator.shared.registerButton(id: id) {
-                LinkOpener.handler(destination)
-            }
-            KeyInputRouter.shared.ensureStarted()
-            controlID = id
-            if FocusCoordinator.shared.isFocused(id) {
-                // Focused: cyan + underline, like a highlighted hyperlink —
-                // a fallback the link's own style overrides.
-                resolved = resolved.inheriting(TextStyle(foreground: .cyan, isUnderlined: true))
-            }
+        guard isInteractive else { return body.makeNode() }
+        let destination = self.destination
+        FocusCoordinator.shared.registerButton(id: controlID) {
+            LinkOpener.handler(destination)
         }
-        if resolved.link == nil {
-            resolved.link = destination
-        }
-        let node = RenderNode.text(style: resolved.resolving(), contents: [label])
-        return controlID.map { node.asControl(id: $0) } ?? node
+        KeyInputRouter.shared.ensureStarted()
+        return body.makeNode().asControl(id: controlID)
     }
 }
 

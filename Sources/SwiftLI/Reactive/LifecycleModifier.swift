@@ -162,11 +162,9 @@ public struct OnAppearView: View {
         self.key = key
     }
 
-    /// The nominal view body; not used by the runtime because `makeNode()` is overridden.
-    public var body: some View {
-        // makeNode() is overridden, so body is not used by the runtime.
-        EmptyView()
-    }
+    /// A rendering primitive: it lowers directly via ``makeNode()`` and has
+    /// no body.
+    public typealias Body = Never
 
     /// Lowers the wrapped content, firing the appear action exactly once per
     /// session.
@@ -177,7 +175,7 @@ public struct OnAppearView: View {
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
         SessionLifecycle.shared.performOnce(key: key, action: action)
-        return .group(children: content.map { $0.makeNode() })
+        return .group(children: content.enumerated().map { $1.lowered(at: $0) })
     }
 }
 
@@ -209,11 +207,9 @@ public struct TaskView: View, @unchecked Sendable {
         self.action = action
     }
 
-    /// The nominal view body; not used by the runtime because `makeNode()` is overridden.
-    public var body: some View {
-        // makeNode() is overridden, so body is not used by the runtime.
-        EmptyView()
-    }
+    /// A rendering primitive: it lowers directly via ``makeNode()`` and has
+    /// no body.
+    public typealias Body = Never
 
     /// Lowers the wrapped content, starting the task on the first render pass
     /// of a reactive session that includes this view.
@@ -226,7 +222,7 @@ public struct TaskView: View, @unchecked Sendable {
         if BodyRenderingStore.shared.sessionActive || AppRuntime.shared != nil {
             SessionLifecycle.shared.startTask(key: key, id: id, priority: priority, action: action)
         }
-        return .group(children: content.map { $0.makeNode() })
+        return .group(children: content.enumerated().map { $1.lowered(at: $0) })
     }
 }
 

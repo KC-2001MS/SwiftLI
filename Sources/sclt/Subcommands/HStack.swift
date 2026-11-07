@@ -29,53 +29,53 @@ struct HStackCommand: InlineCommand {
         NavigationStack {
             // Basic HStack
             Text("HStack { ... }")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
                 .navigationTitle("HStack")
             HStack(spacing: 1) {
                 Text("[")
-                Text("Left").forgroundColor(.red)
+                Text("Left").foregroundStyle(.red)
                 Text("|")
-                Text("Center").forgroundColor(.green)
+                Text("Center").foregroundStyle(.green)
                 Text("|")
-                Text("Right").forgroundColor(.blue)
+                Text("Right").foregroundStyle(.blue)
                 Text("]")
             }
 
             // Spacing demo
                 .padding(.top, 1)
             Text("HStack(spacing: 0):")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
             HStack(spacing: 0) {
-                Text("█").forgroundColor(.red)
-                Text("█").forgroundColor(.green)
-                Text("█").forgroundColor(.yellow)
-                Text("█").forgroundColor(.blue)
-                Text("█").forgroundColor(.magenta)
+                Text("█").foregroundStyle(.red)
+                Text("█").foregroundStyle(.green)
+                Text("█").foregroundStyle(.yellow)
+                Text("█").foregroundStyle(.blue)
+                Text("█").foregroundStyle(.magenta)
             }
             Text("HStack(spacing: 3):")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
             HStack(spacing: 3) {
-                Text("█").forgroundColor(.red)
-                Text("█").forgroundColor(.green)
-                Text("█").forgroundColor(.yellow)
-                Text("█").forgroundColor(.blue)
-                Text("█").forgroundColor(.magenta)
+                Text("█").foregroundStyle(.red)
+                Text("█").foregroundStyle(.green)
+                Text("█").foregroundStyle(.yellow)
+                Text("█").foregroundStyle(.blue)
+                Text("█").foregroundStyle(.magenta)
             }
 
             // Alignment demo
                 .padding(.top, 1)
             Text("HStack(alignment: .top):")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
             HStack(alignment: .top, spacing: 2) {
-                Text("Short").forgroundColor(.red)
-                Text("Also short").forgroundColor(.blue)
+                Text("Short").foregroundStyle(.red)
+                Text("Also short").foregroundStyle(.blue)
             }
             Text("HStack(alignment: .bottom):")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
                 .padding(.top, 1)
             HStack(alignment: .bottom, spacing: 2) {
-                Text("Short").forgroundColor(.red)
-                Text("Also short").forgroundColor(.blue)
+                Text("Short").foregroundStyle(.red)
+                Text("Also short").foregroundStyle(.blue)
             }
         }
     }

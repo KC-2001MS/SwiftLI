@@ -32,7 +32,7 @@ struct LinkCommand: FullScreenCommand {
         NavigationStack {
             HStack(spacing: 1) {
                 Text("Link(_ label:, destination:)")
-                    .forgroundColor(.cyan)
+                    .foregroundStyle(.cyan)
                 Link("SwiftLI on GitHub", destination: "https://github.com/KC-2001MS/SwiftLI")
             }
                 .navigationTitle("Link")
@@ -42,15 +42,15 @@ struct LinkCommand: FullScreenCommand {
             // a classic underlined blue hyperlink.
             HStack(spacing: 1) {
                 Text("Styled like a web link:")
-                    .forgroundColor(.cyan)
+                    .foregroundStyle(.cyan)
                 Link("Apple", destination: "https://apple.com")
-                    .forgroundColor(.blue)
+                    .foregroundStyle(.blue)
                     .underline()
             }
                 .padding(.top, 1)
 
             Text("Terminal.app ignores OSC 8 — the plain label still renders.")
-                .forgroundColor(.eight_bit(240))
+                .foregroundStyle(.eightBit(240))
                 .padding(.top, 1)
         }
     }

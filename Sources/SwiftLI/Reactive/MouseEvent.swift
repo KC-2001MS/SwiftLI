@@ -57,6 +57,12 @@ public struct MouseEvent: Equatable, Sendable {
     public let column: Int
     /// Vertical position, 0-based (0 = topmost row).
     public let row: Int
+    /// Whether Shift was held.
+    ///
+    /// A shifted vertical wheel is reported as ``Kind/scrollLeft`` /
+    /// ``Kind/scrollRight`` — the desktop convention for scrolling sideways
+    /// with a device, or a terminal, that has no horizontal wheel.
+    public let isShifted: Bool
 
     /// Creates a mouse event with the given action and position.
     ///
@@ -64,9 +70,11 @@ public struct MouseEvent: Equatable, Sendable {
     ///   - kind: The type of pointing-device action that occurred.
     ///   - column: The 0-based horizontal grid position of the pointer.
     ///   - row: The 0-based vertical grid position of the pointer.
-    public init(kind: Kind, column: Int, row: Int) {
+    ///   - isShifted: Whether Shift was held. Defaults to `false`.
+    public init(kind: Kind, column: Int, row: Int, isShifted: Bool = false) {
         self.kind = kind
         self.column = column
         self.row = row
+        self.isShifted = isShifted
     }
 }

@@ -32,7 +32,7 @@ struct ProgressViewCommand: FullScreenCommand {
     var body: some Scene {
         NavigationStack {
             Text("An indeterminate spinner — phase advances each tick (\(tick))")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
                 .navigationTitle("ProgressView")
                 .task {
                     for _ in 0..<200 {
@@ -43,27 +43,27 @@ struct ProgressViewCommand: FullScreenCommand {
                 }
 
             HStack(spacing: 1) {
-                Text("With label ").forgroundColor(.red)
+                Text("With label ").foregroundStyle(.red)
                 ProgressView("Loading", phase: tick)
             }
                 .padding(.top, 1)
 
             HStack(spacing: 1) {
-                Text("Bare glyph ").forgroundColor(.red)
+                Text("Bare glyph ").foregroundStyle(.red)
                 ProgressView(phase: tick)
             }
 
             // ProgressView-specific modifier: progressViewStyle picks the
             // indicator's appearance (.automatic is the cyan spinner).
             HStack(spacing: 1) {
-                Text(".progressViewStyle(.automatic)").forgroundColor(.red)
+                Text(".progressViewStyle(.automatic)").foregroundStyle(.red)
                 ProgressView("Styled", phase: tick)
                     .progressViewStyle(.automatic)
             }
 
             Divider()
                 .padding(.top, 1)
-            Text("Ctrl-C to quit").forgroundColor(.eight_bit(240))
+            Text("Ctrl-C to quit").foregroundStyle(.eightBit(240))
         }
     }
 }

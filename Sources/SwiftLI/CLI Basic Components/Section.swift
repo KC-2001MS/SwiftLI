@@ -86,7 +86,7 @@ public struct Section: View {
         VStack(alignment: .leading, spacing: 0, children: content)
             .padding(.leading, 2)
         if let footer {
-            footer.forgroundColor(.eight_bit(240)).padding(.leading, 2)
+            footer.foregroundStyle(.eightBit(240)).padding(.leading, 2)
         }
     }
 }

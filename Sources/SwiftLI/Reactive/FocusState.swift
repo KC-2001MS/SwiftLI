@@ -152,10 +152,9 @@ public struct FocusModifier: View {
     let onUnfocus: @Sendable () -> Void
     let isRequested: @Sendable () -> Bool
 
-    /// The view body; returns an empty view because rendering is handled by ``makeNode()``.
-    public var body: some View {
-        EmptyView()
-    }
+    /// A rendering primitive: it lowers directly via ``makeNode()`` and has
+    /// no body.
+    public typealias Body = Never
 
     @_spi(RenderingInternals)
     public func applyingStyle(_ style: TextStyle) -> FocusModifier {

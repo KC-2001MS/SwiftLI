@@ -65,6 +65,19 @@ public struct TerminalSize: Equatable, Sendable {
     /// Falls back to environment variables and then ``default`` when there is no
     /// attached terminal (e.g. when output is redirected).
     public static var current: TerminalSize {
+        // Inside a render pass the geometry is queried once and reused: the
+        // layout engine consults it per node (dividers, fills, environment
+        // defaults), and each query is a syscall.
+        if let context = RenderPassContext.current {
+            if let cached = context.terminalSize { return cached }
+            let size = query()
+            context.terminalSize = size
+            return size
+        }
+        return query()
+    }
+
+    private static func query() -> TerminalSize {
         #if os(Windows)
         if let size = consoleSize() { return size }
         #else

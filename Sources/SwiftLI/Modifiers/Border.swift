@@ -10,10 +10,9 @@
 struct BorderModifier: ViewModifier {
     let box: BorderStyle
     let style: TextStyle
-    let fill: TextStyle
 
     func node(for content: RenderNode) -> RenderNode {
-        .border(style: style.resolving(), fill: fill.resolving(), box: box, child: content)
+        .border(style: style.resolving(), fill: .plain, box: box, child: content)
     }
 
     /// The box occupies one column on each side of the content.
@@ -26,36 +25,40 @@ struct BorderModifier: ViewModifier {
 
 public extension View {
 
-    /// Draws a box around this view using the given ``BorderStyle``.
+    /// Draws a box around this view in the given colour, mirroring SwiftUI's
+    /// `border(_:width:)`.
     ///
     /// The box is drawn one cell outside the view's content on every side, so
     /// the content is never clipped. Combine with ``padding(_:_:)`` to inset the
-    /// content from the border.
+    /// content from the border, and with ``background(_:)`` to fill the box —
+    /// a background applied after the border paints the whole box, border
+    /// cells included, just as SwiftUI paints behind a bordered view:
     ///
     /// ```swift
     /// Text("Rounded box")
     ///     .padding()
-    ///     .border(.rounded, color: .green)
+    ///     .border(.green)
+    ///
+    /// Text("Filled card")
+    ///     .padding()
+    ///     .border(.white, style: .single)
+    ///     .background(.blue)
     /// ```
     ///
     /// - Parameters:
-    ///   - style: The corner and edge glyph style. Defaults to ``BorderStyle/rounded``.
-    ///   - color: An optional colour for the border glyphs. `nil` uses the
-    ///     terminal's default foreground colour.
-    ///   - fill: An optional colour that fills the whole box — interior,
-    ///     padding, and the border cells themselves — so it reads as one solid
-    ///     shape (the content inherits it so its text sits on the fill). `nil`
-    ///     leaves the box transparent.
+    ///   - color: The colour of the border glyphs. Pass ``Color/primary`` for
+    ///     the terminal's default foreground colour.
+    ///   - style: The corner and edge glyph style, a terminal-specific
+    ///     refinement of SwiftUI's line width. Defaults to
+    ///     ``BorderStyle/rounded``.
     ///
     ///     > Note: A filled box has a square silhouette even with ``BorderStyle/rounded``.
     ///     > A character cell has a single background colour, so a rounded
     ///     > *filled* corner cannot be drawn — the arc becomes a decorative glyph
     ///     > on the fill. This matches Textual, Rich, and Lipgloss. For a truly
-    ///     > round silhouette, use a rounded border with no `fill` (an outline).
+    ///     > round silhouette, use a rounded border with no background (an outline).
     /// - Returns: A view wrapped in the requested border.
-    func border(_ style: BorderStyle = .rounded, color: Color? = nil, fill: Color? = nil) -> some View {
-        let borderStyle = color.map { TextStyle(foreground: $0) } ?? .plain
-        let fillStyle = fill.map { TextStyle(background: $0) } ?? .plain
-        return modifier(BorderModifier(box: style, style: borderStyle, fill: fillStyle))
+    func border(_ color: Color, style: BorderStyle = .rounded) -> some View {
+        modifier(BorderModifier(box: style, style: TextStyle(foreground: color)))
     }
 }

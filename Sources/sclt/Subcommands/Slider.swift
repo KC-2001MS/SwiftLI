@@ -42,7 +42,7 @@ struct SliderCommand: FullScreenCommand {
             Divider()
                 .padding(.top, 1)
             Text("volume: \(Int(volume))   brightness: \(Int(brightness * 100))%")
-                .forgroundColor(.yellow)
+                .foregroundStyle(.yellow)
         }
     }
 }

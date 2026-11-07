@@ -60,11 +60,11 @@ struct DividerTests {
             #expect(lineStyle == .default ? hDivider.character == "-" : hDivider.character == "=")
         }
         
-        @Test("Is the color set by the forgroundColor function applied to the style variable?", arguments: allColors)
-        func forgroundColorFuncTesting(
+        @Test("Is the color set by the foregroundStyle function applied to the style variable?", arguments: allColors)
+        func foregroundStyleFuncTesting(
             color: Color
         ) async throws {
-            let hDivider = Divider(1).forgroundColor(color).forgroundColor(color)
+            let hDivider = Divider(1).foregroundStyle(color).foregroundStyle(color)
 
             // Duplicate applications collapse: one attribute, applied once.
             #expect(hDivider.style == TextStyle(foreground: color))
@@ -254,11 +254,11 @@ struct EmoticonTests {
             #expect(emoticon4.content == randomStrings)
         }
 
-        @Test("Is the color set by the forgroundColor function applied to the style variable?", arguments: allColors)
-        func forgroundColorFuncTesting(
+        @Test("Is the color set by the foregroundStyle function applied to the style variable?", arguments: allColors)
+        func foregroundStyleFuncTesting(
             color: Color
         ) async throws {
-            let emoticon = Emoticon().forgroundColor(color).forgroundColor(color)
+            let emoticon = Emoticon().foregroundStyle(color).foregroundStyle(color)
 
             // Duplicate applications collapse: one attribute, applied once.
             #expect(emoticon.style == TextStyle(foreground: color))

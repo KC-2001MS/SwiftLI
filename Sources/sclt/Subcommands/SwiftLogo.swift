@@ -28,7 +28,7 @@ struct SwiftLogoCommand: InlineCommand {
     var body: some Scene {
         NavigationStack {
             Text("init()")
-                .forgroundColor(Color.cyan)
+                .foregroundStyle(Color.cyan)
                 .navigationTitle("SwiftLogo")
 
             SwiftLogo()

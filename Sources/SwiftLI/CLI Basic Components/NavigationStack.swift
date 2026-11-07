@@ -50,10 +50,11 @@ public struct NavigationStack: View {
         self.root = AnyView(root())
     }
 
-    /// The content of the navigation stack, delegated to the rendering engine via ``makeNode()``.
-    public var body: some View {
-        EmptyView()
-    }
+    /// The title bar above the stack's layers: the active layer alone in
+    /// full-screen mode, every layer (older ones inert) inline.
+    /// A navigation container is a rendering root: it lowers its layers
+    /// directly (older ones with registration suppressed) and has no body.
+    public typealias Body = Never
 
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
@@ -73,17 +74,17 @@ public struct NavigationStack: View {
         if fullScreen {
             // Full-screen: the newest destination replaces the content.
             let active = layers.last ?? root
-            contentNodes.append(scoped(active).makeNode())
+            contentNodes.append(scoped(active).lowered(at: layers.count))
         } else {
             // Inline: destinations accumulate below the root. Only the newest
             // layer's controls stay live; the layers above it render inert.
             let all = [root] + layers
             for (index, layer) in all.enumerated() {
                 if index == all.count - 1 {
-                    contentNodes.append(scoped(layer).makeNode())
+                    contentNodes.append(scoped(layer).lowered(at: index))
                 } else {
                     contentNodes.append(FocusCoordinator.shared.withRegistrationSuppressed {
-                        scoped(layer).makeNode()
+                        scoped(layer).lowered(at: index)
                     })
                 }
             }

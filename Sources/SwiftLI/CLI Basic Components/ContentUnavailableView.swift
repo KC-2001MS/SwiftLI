@@ -52,14 +52,15 @@ public struct ContentUnavailableView: View {
         self.description = description.map { $0.resolve() }
     }
 
-    /// The rendered content of the empty-state view: an optional icon, a bold title, and an optional dimmed description.
+    /// The rendered content of the empty-state view: an optional icon, a bold
+    /// title, and an optional dimmed description.
     public var body: some View {
         if !image.isEmpty {
             Text(content: image)
         }
         Text(content: title).bold()
         if let description {
-            Text(content: description).forgroundColor(.eight_bit(245))
+            Text(content: description).foregroundStyle(.eightBit(245))
         }
     }
 
@@ -68,8 +69,7 @@ public struct ContentUnavailableView: View {
         .init(style: self.style.inheriting(style), image: image, title: title, description: description)
     }
 
-    /// Lowers the empty-state view by building its body, then cascading the
-    /// view's own style onto the resulting node.
+    /// Lowers ``body`` with the view's own style cascaded onto it.
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
         let node = body.makeNode()

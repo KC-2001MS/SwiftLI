@@ -224,7 +224,7 @@ struct MenuBarHost: View {
                 .padding(.leading, 2)
         }
         Text(repeating: "─", count: Swift.max(0, EnvironmentStack.current.maxWidth))
-            .forgroundColor(.eight_bit(240))
+            .foregroundStyle(.eightBit(240))
         content
     }
 

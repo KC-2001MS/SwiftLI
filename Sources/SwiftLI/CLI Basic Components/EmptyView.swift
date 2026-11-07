@@ -13,10 +13,8 @@ public struct EmptyView: View, Sendable, Equatable {
     /// Creates an empty view.
     public init() {}
 
-    /// The content of the empty view, which renders nothing.
-    public var body: some View {
-        EmptyView()
-    }
+    /// The empty view is a rendering leaf: it lowers to nothing and has no body.
+    public typealias Body = Never
 
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {

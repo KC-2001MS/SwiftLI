@@ -17,7 +17,7 @@ import Foundation
 /// A style is expressed purely as a composition of existing views and
 /// modifiers — a ``Gauge`` has no bespoke rendering of its own; it is entirely
 /// *derived* from the primitives (``HStack``, ``Text``,
-/// ``View/forgroundColor(_:)``) its style returns.
+/// ``View/foregroundStyle(_:)``) its style returns.
 ///
 /// ## Built-in styles
 ///
@@ -141,10 +141,10 @@ public struct BarGaugeStyle: GaugeStyle {
             if width > 0 {
                 Text(verbatim: "[")
                 if !bar.filled.isEmpty {
-                    Text(verbatim: bar.filled).forgroundColor(.green)
+                    Text(verbatim: bar.filled).foregroundStyle(.green)
                 }
                 if !bar.empty.isEmpty {
-                    Text(verbatim: bar.empty).forgroundColor(.eight_bit(240))
+                    Text(verbatim: bar.empty).foregroundStyle(.eightBit(240))
                 }
                 Text(verbatim: "] \(percentage)%")
             } else {
@@ -186,11 +186,11 @@ public struct LinearGaugeStyle: GaugeStyle {
             if width > 0 {
                 if filled > 0 {
                     Text(repeating: "━", count: filled)
-                        .forgroundColor(.green)
+                        .foregroundStyle(.green)
                 }
                 if empty > 0 {
                     Text(repeating: "─", count: empty)
-                        .forgroundColor(.eight_bit(240))
+                        .foregroundStyle(.eightBit(240))
                 }
             } else {
                 Text(verbatim: String(ProgressSpinner.character(for: fraction)))
@@ -227,16 +227,16 @@ public struct PercentageGaugeStyle: GaugeStyle {
 
         HStack(spacing: 0) {
             if percentage == 100 {
-                Text(verbatim: "\(percentage)%").forgroundColor(.green)
+                Text(verbatim: "\(percentage)%").foregroundStyle(.green)
                 if let label = configuration.label {
-                    Text(verbatim: " ").forgroundColor(.green)
-                    label.forgroundColor(.green)
+                    Text(verbatim: " ").foregroundStyle(.green)
+                    label.foregroundStyle(.green)
                 }
             } else if percentage >= 50 {
-                Text(verbatim: "\(percentage)%").forgroundColor(.yellow)
+                Text(verbatim: "\(percentage)%").foregroundStyle(.yellow)
                 if let label = configuration.label {
-                    Text(verbatim: " ").forgroundColor(.yellow)
-                    label.forgroundColor(.yellow)
+                    Text(verbatim: " ").foregroundStyle(.yellow)
+                    label.foregroundStyle(.yellow)
                 }
             } else {
                 Text(verbatim: "\(percentage)%")

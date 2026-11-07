@@ -46,7 +46,7 @@ struct StepperCommand: FullScreenCommand {
             Divider()
                 .padding(.top, 1)
             Text("quantity: \(quantity)   volume: \(volume)   zoom: \(zoom)x")
-                .forgroundColor(.yellow)
+                .foregroundStyle(.yellow)
         }
     }
 }

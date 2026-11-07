@@ -50,16 +50,16 @@ public struct InlinePickerStyle: PickerStyle {
     /// - Parameter configuration: The style configuration containing label, options, selection, and focus state.
     /// - Returns: A horizontal view with optional label and the selected option between arrow characters.
     public func makeBody(configuration: PickerStyleConfiguration) -> some View {
-        let arrowColor: Color = configuration.isFocused ? .cyan : .eight_bit(240)
+        let arrowColor: Color = configuration.isFocused ? .cyan : .eightBit(240)
         return HStack(spacing: 0) {
-            if configuration.isFocused { Text(content: "> ").forgroundColor(.cyan) }
+            if configuration.isFocused { Text(content: "> ").foregroundStyle(.cyan) }
             if let label = configuration.label {
                 label
                 Text(content: " ")
             }
-            Text(content: "‹ ").forgroundColor(arrowColor)
+            Text(content: "‹ ").foregroundStyle(arrowColor)
             Text(content: configuration.selection).bold()
-            Text(content: " ›").forgroundColor(arrowColor)
+            Text(content: " ›").foregroundStyle(arrowColor)
         }
     }
 }
@@ -75,16 +75,16 @@ public struct SegmentedPickerStyle: PickerStyle {
     /// - Returns: A horizontal view where the selected option is highlighted in green brackets and unselected options are dimmed.
     public func makeBody(configuration: PickerStyleConfiguration) -> some View {
         var cells: [any View] = []
-        if configuration.isFocused { cells.append(Text(content: "> ").forgroundColor(.cyan)) }
+        if configuration.isFocused { cells.append(Text(content: "> ").foregroundStyle(.cyan)) }
         if let label = configuration.label {
             cells.append(label)
             cells.append(Text(content: " "))
         }
         for (index, option) in configuration.options.enumerated() {
             if index == configuration.selectedIndex {
-                cells.append(Text(content: "[\(option)]").forgroundColor(.green).bold())
+                cells.append(Text(content: "[\(option)]").foregroundStyle(.green).bold())
             } else {
-                cells.append(Text(content: " \(option) ").forgroundColor(.eight_bit(244)))
+                cells.append(Text(content: " \(option) ").foregroundStyle(.eightBit(244)))
             }
         }
         return HStack(spacing: 0) { Group(contents: cells) }
@@ -108,7 +108,7 @@ public struct ListPickerStyle: PickerStyle {
         if let label = configuration.label {
             rows.append(HStack(spacing: 0) {
                 Group(contents: [
-                    Text(content: focused ? "> " : "  ").forgroundColor(.cyan),
+                    Text(content: focused ? "> " : "  ").foregroundStyle(.cyan),
                     label.bold()
                 ])
             })
@@ -119,12 +119,12 @@ public struct ListPickerStyle: PickerStyle {
             // Selected + focused stands out (cyan/bold); selected + unfocused is
             // still marked but dim; unselected rows are dimmest.
             let color: Color = selected
-                ? (focused ? .cyan : .eight_bit(245))
-                : (focused ? .primary : .eight_bit(240))
+                ? (focused ? .cyan : .eightBit(245))
+                : (focused ? .primary : .eightBit(240))
             let row = HStack(spacing: 0) {
                 Group(contents: [
-                    Text(content: selected ? "❯ " : "  ").forgroundColor(color),
-                    Text(content: option).forgroundColor(color).bold(selected && focused)
+                    Text(content: selected ? "❯ " : "  ").foregroundStyle(color),
+                    Text(content: option).foregroundStyle(color).bold(selected && focused)
                 ])
             }
             rows.append(row)
@@ -230,9 +230,27 @@ public struct Picker: View {
         self.style = style
     }
 
-    /// The rendered content of this picker, delegated to the resolved ``PickerStyle``.
+    /// The resolved ``PickerStyle``'s body for the picker's current selection
+    /// and focus, hosted as a focusable control and carrying the picker's own
+    /// text style.
     public var body: some View {
-        EmptyView()
+        resolvedStyle.makeBody(configuration: configuration)
+    }
+
+    /// Nearest wins: instance style, then subtree environment, then default.
+    private var resolvedStyle: AnyPickerStyle {
+        style ?? EnvironmentStack.current.pickerStyle ?? AnyPickerStyle(InlinePickerStyle())
+    }
+
+    /// The style configuration, with the selection clamped to the options.
+    private var configuration: PickerStyleConfiguration {
+        let index = options.isEmpty ? 0 : Swift.min(Swift.max(selection.wrappedValue, 0), options.count - 1)
+        return PickerStyleConfiguration(
+            label: label,
+            options: options,
+            selectedIndex: index,
+            isFocused: FocusCoordinator.shared.isFocused(id)
+        )
     }
 
     @_spi(RenderingInternals)
@@ -240,21 +258,14 @@ public struct Picker: View {
         Picker(textStyle: textStyle.inheriting(style), id: id, label: label, options: options, selection: selection, style: self.style)
     }
 
+    /// Registers the picker for keyboard handling, then lowers ``body`` with
+    /// the picker's own text style cascaded onto it as the picker's pointer
+    /// footprint.
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
         FocusCoordinator.shared.registerPicker(id: id, selection: selection, count: options.count)
         KeyInputRouter.shared.ensureStarted()
-
-        let index = options.isEmpty ? 0 : Swift.min(Swift.max(selection.wrappedValue, 0), options.count - 1)
-        let configuration = PickerStyleConfiguration(
-            label: label,
-            options: options,
-            selectedIndex: index,
-            isFocused: FocusCoordinator.shared.isFocused(id)
-        )
-        // Nearest wins: instance style, then subtree environment, then default.
-        let resolvedStyle = style ?? EnvironmentStack.current.pickerStyle ?? AnyPickerStyle(InlinePickerStyle())
-        let node = resolvedStyle.makeBody(configuration: configuration).makeNode()
+        let node = body.makeNode()
         return (textStyle.isPlain ? node : node.applyingStyle(textStyle)).asControl(id: id)
     }
 

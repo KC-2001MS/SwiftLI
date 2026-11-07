@@ -88,4 +88,10 @@ public struct Rect: Equatable, Sendable {
 
     /// A zero rect at the origin.
     public static let zero = Rect(origin: .zero, size: .zero)
+
+    /// Whether `point` lies inside the rectangle.
+    public func contains(_ point: Point) -> Bool {
+        point.column >= minColumn && point.column < maxColumn
+            && point.row >= minRow && point.row < maxRow
+    }
 }

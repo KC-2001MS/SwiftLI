@@ -8,8 +8,8 @@
 import Foundation
 
 public extension View {
-    /// Presents a modal sheet when `isPresented` is `true`, mirroring
-    /// SwiftUI's `sheet(isPresented:onDismiss:content:)`.
+    /// Presents a modal sheet when `isPresented` is `true`, with the same
+    /// shape as SwiftUI's `sheet(isPresented:onDismiss:content:)`.
     ///
     /// The sheet's content renders inside a rounded-border card. Its
     /// placement follows the session's rendering mode — and unlike
@@ -46,19 +46,29 @@ public extension View {
     /// }
     /// ```
     ///
+    /// Each call site is its own sheet: presentation transitions are tracked
+    /// per source location, so a screen may define several sheets without
+    /// naming them.
+    ///
     /// - Parameters:
     ///   - isPresented: A binding that controls whether the sheet is shown.
-    ///   - id: A stable identity used to track presentation transitions;
-    ///     give each sheet a distinct `id` when a screen defines several.
     ///   - onDismiss: Called when the sheet transitions to dismissed.
     ///   - content: A ``ViewBuilder`` producing the sheet's content.
     func sheet<Content: View>(
         isPresented: Binding<Bool>,
-        id: String = "Sheet",
         onDismiss: (() -> Void)? = nil,
+        fileID: String = #fileID,
+        line: Int = #line,
+        column: Int = #column,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        SheetModifier(content: AnyView(self), isPresented: isPresented, id: id, onDismiss: onDismiss, sheet: AnyView(content()))
+        SheetModifier(
+            content: AnyView(self),
+            isPresented: isPresented,
+            id: "\(fileID):\(line):\(column)",
+            onDismiss: onDismiss,
+            sheet: AnyView(content())
+        )
     }
 }
 
@@ -99,9 +109,7 @@ struct SheetModifier: View, @unchecked Sendable {
     let onDismiss: (() -> Void)?
     let sheet: AnyView
 
-    public var body: some View {
-        EmptyView()
-    }
+    public typealias Body = Never
 
     @_spi(RenderingInternals)
     public func applyingStyle(_ style: TextStyle) -> Self {
@@ -122,7 +130,7 @@ struct SheetModifier: View, @unchecked Sendable {
         guard presented else { return content.makeNode() }
 
         // The sheet content renders as a rounded-border card.
-        let card = AnyView(sheet).padding().border(.rounded)
+        let card = AnyView(sheet).padding().border(.primary)
         if BodyRenderingStore.shared.fullScreenActive {
             // Full-screen: the sheet covers the view, and `\.dismiss` inside
             // it closes the sheet instead of ending the session.
@@ -133,8 +141,8 @@ struct SheetModifier: View, @unchecked Sendable {
         } else {
             // Inline: the card is appended below; the base view stays
             // visible but its controls render inert.
-            let base = FocusCoordinator.shared.withRegistrationSuppressed { content.makeNode() }
-            return .vstack(alignment: .leading, spacing: 0, children: [base, card.makeNode()])
+            let base = FocusCoordinator.shared.withRegistrationSuppressed { content.lowered(at: 0) }
+            return .vstack(alignment: .leading, spacing: 0, children: [base, card.lowered(at: 1)])
         }
     }
 }

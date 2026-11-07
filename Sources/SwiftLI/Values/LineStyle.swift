@@ -16,7 +16,7 @@
 /// Divider().lineStyle(.default)      // draws: --------
 ///
 /// // Double-line divider
-/// Divider().lineStyle(.double_line)  // draws: ========
+/// Divider().lineStyle(.doubleLine)  // draws: ========
 /// ```
 public enum LineStyle: CaseIterable, Sendable {
 
@@ -24,5 +24,5 @@ public enum LineStyle: CaseIterable, Sendable {
     case `default`
 
     /// A double-line divider using `=` (horizontal) and `‖` (vertical).
-    case double_line
+    case doubleLine
 }

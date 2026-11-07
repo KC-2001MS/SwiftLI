@@ -188,9 +188,7 @@ struct NavigationTitleWriter: View {
     let text: String
     let isSubtitle: Bool
 
-    public var body: some View {
-        EmptyView()
-    }
+    public typealias Body = Never
 
     @_spi(RenderingInternals)
     public func applyingStyle(_ style: TextStyle) -> Self {
@@ -231,16 +229,16 @@ enum NavigationChrome {
         // A forced bar colour scheme picks the text colours; otherwise the
         // regular title colours apply.
         let titleColor: Color? = config.colorScheme.map { $0 == .dark ? .white : .black }
-        let subtitleColor: Color = config.colorScheme.map { $0 == .dark ? .eight_bit(250) : .eight_bit(240) } ?? .secondary
+        let subtitleColor: Color = config.colorScheme.map { $0 == .dark ? .eightBit(250) : .eightBit(240) } ?? .secondary
 
         func titleText(_ text: String) -> AnyView {
             let base = Text(content: text).bold()
-            if let titleColor { return AnyView(base.forgroundColor(titleColor)) }
+            if let titleColor { return AnyView(base.foregroundStyle(titleColor)) }
             return AnyView(base)
         }
 
         func subtitleText(_ text: String) -> AnyView {
-            AnyView(Text(content: text).forgroundColor(subtitleColor))
+            AnyView(Text(content: text).foregroundStyle(subtitleColor))
         }
 
         // Toolbar items render icon-only labels and plain (label-only)
@@ -324,7 +322,7 @@ enum NavigationChrome {
 
         // The same light rule Table draws under its header, at full width.
         let rule = Text(repeating: "─", count: Swift.max(0, EnvironmentStack.current.maxWidth))
-            .forgroundColor(.eight_bit(240))
+            .foregroundStyle(.eightBit(240))
         if let background = config.background {
             rows.append(rule.background(background))
         } else {

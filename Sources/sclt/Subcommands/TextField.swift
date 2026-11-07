@@ -55,12 +55,12 @@ struct TextFieldCommand: FullScreenCommand {
             }
 
             let focusName = focus == .name ? "Name" : (focus == .email ? "Email" : "none")
-            Text("Focused: \(focusName)").forgroundColor(.cyan)
+            Text("Focused: \(focusName)").foregroundStyle(.cyan)
                 .padding(.top, 1)
             if submitted {
-                Text("Submitted: \(name) <\(email)>").forgroundColor(.green).bold()
+                Text("Submitted: \(name) <\(email)>").foregroundStyle(.green).bold()
             } else {
-                Text("Preview: \(name) <\(email)>").forgroundColor(.yellow)
+                Text("Preview: \(name) <\(email)>").foregroundStyle(.yellow)
             }
         }
     }

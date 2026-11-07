@@ -39,7 +39,7 @@ let allColors: [Color] = [
     .magenta,
     .cyan,
     .white,
-    .eight_bit(202),
+    .eightBit(202),
     .primary
 ]
 
@@ -63,8 +63,14 @@ func occurrences(of needle: String, in haystack: String) -> Int {
     return count
 }
 
-/// The ANSI "erase entire line" sequence emitted once per rewritten line.
+/// The ANSI "erase entire line" sequence emitted once per rewritten line
+/// (used by `FrameDiff.inlineUpdate`, and to blank rows that vanished).
 let eraseLineCode = "\u{001B}[2K"
+
+/// The ANSI "erase to end of line" sequence `FrameDiff.fullScreenUpdate`
+/// emits *after* writing a changed row's new content, clearing only a
+/// shorter replacement's leftover tail rather than blanking the row first.
+let eraseToEndOfLineCode = "\u{001B}[K"
 
 // MARK: - TextField input testing
 

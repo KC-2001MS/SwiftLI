@@ -19,8 +19,8 @@
 ///
 /// ```swift
 /// Group {
-///     Text("First line").forgroundColor(.red)
-///     Text("Second line").forgroundColor(.blue)
+///     Text("First line").foregroundStyle(.red)
+///     Text("Second line").foregroundStyle(.blue)
 ///     Text("Third line").bold()
 /// }
 /// .render()
@@ -36,7 +36,7 @@
 ///     Text("B")
 ///     Text("C")
 /// }
-/// .forgroundColor(.cyan)   // all three texts become cyan
+/// .foregroundStyle(.cyan)   // all three texts become cyan
 /// .render()
 /// ```
 public struct Group: View {
@@ -71,10 +71,9 @@ public struct Group: View {
         style.isPlain ? contents : contents.map { $0.applyingStyle(style) }
     }
 
-    /// `Group` is transparent: it lowers directly via ``makeNode()``.
-    public var body: some View {
-        EmptyView()
-    }
+    /// `Group` is transparent: it lowers directly via ``makeNode()`` and has
+    /// no body.
+    public typealias Body = Never
 
     @_spi(RenderingInternals)
     public func applyingStyle(_ style: TextStyle) -> Self {
@@ -93,7 +92,7 @@ public struct Group: View {
     /// `Group` never introduces spacing or alignment of its own.
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
-        let node = RenderNode.group(children: contents.map { $0.makeNode() })
+        let node = RenderNode.group(children: contents.enumerated().map { $1.lowered(at: $0) })
         return style.isPlain ? node : node.applyingStyle(style)
     }
 }

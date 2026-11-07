@@ -31,6 +31,10 @@ final class InlineRenderer: @unchecked Sendable {
     private var previousColumns: Int?
     /// The terminal height used for the previous frame, to detect a resize.
     private var previousRows: Int?
+    /// What the session keeps between frames: unchanged subtrees, their
+    /// measurements, and child views' `@State`. Replaced when a session ends
+    /// so the next one starts without stale state.
+    private(set) var retained = RetainedTree()
     private let lock = NSLock()
 
     // MARK: - Public interface
@@ -39,6 +43,12 @@ final class InlineRenderer: @unchecked Sendable {
     ///
     /// - Parameter view: The view to render.
     func render(_ view: any View) {
+        // One render pass: the terminal size is read once and container
+        // measurements are shared between lowering and layout.
+        RenderPassContext.withPass(retaining: retained) { renderPass(view) }
+    }
+
+    private func renderPass(_ view: any View) {
         lock.lock()
         defer { lock.unlock() }
 
@@ -62,7 +72,7 @@ final class InlineRenderer: @unchecked Sendable {
         rootValues.maxWidth = clip
         rootValues.maxHeight = Swift.max(1, size.rows - 1)
         var frame = EnvironmentStack.with(rootValues) {
-            NodeLayout.frame(of: view.makeNode())
+            NodeLayout.frame(of: view.lowered(at: 0))
         }
         frame.lines = frame.lines.map { TextMetrics.truncate($0, toColumns: clip) }
         // Clamp the body to the visible screen (one row is reserved for the
@@ -113,5 +123,6 @@ final class InlineRenderer: @unchecked Sendable {
         previousFrame = nil
         previousColumns = nil
         previousRows = nil
+        retained = RetainedTree()
     }
 }

@@ -39,26 +39,26 @@ struct ViewThatFitsCommand: InlineCommand {
     var body: some Scene {
         NavigationStack {
             Text("The same ViewThatFits at three widths:")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
                 .navigationTitle("ViewThatFits")
 
             // Wide enough for the first candidate.
             progressLabel()
                 .frame(width: 42, alignment: .topLeading)
-                .border(.rounded, color: .eight_bit(240))
+                .border(.eightBit(240))
 
             // Only the middle candidate fits.
             progressLabel()
                 .frame(width: 16, alignment: .topLeading)
-                .border(.rounded, color: .eight_bit(240))
+                .border(.eightBit(240))
 
             // Only the shortest candidate fits.
             progressLabel()
                 .frame(width: 6, alignment: .topLeading)
-                .border(.rounded, color: .eight_bit(240))
+                .border(.eightBit(240))
 
             Text("Candidates are listed widest first; the last is the fallback.")
-                .forgroundColor(.eight_bit(240))
+                .foregroundStyle(.eightBit(240))
                 .padding(.top, 1)
         }
     }

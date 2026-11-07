@@ -16,7 +16,7 @@
 /// ```swift
 /// Text("Rounded")
 ///     .padding()
-///     .border(.rounded)
+///     .border(.primary, style: .rounded)
 /// ```
 public enum BorderStyle: CaseIterable, Sendable {
 

@@ -17,11 +17,15 @@ struct ScrollViewCommand: FullScreenCommand {
         commandName: "scrollview",
         abstract: "Display of ScrollView structure",
         discussion: """
-        A fixed-height viewport over a 50-row list (scrollbar pinned to the
-        trailing edge) and a fixed-width viewport over one wide row (scrollbar
-        along the bottom edge). ↑/↓ or ←/→ scroll one step, Space pages,
-        Home/End jump to the ends, Tab moves between the viewports. Ctrl-C
-        quits.
+        A 40×10 frame over a 50-row list (scrollbar pinned to the frame's
+        trailing column), a 40×2 frame over one wide row (scrollbar on the
+        frame's bottom row), and a 40×3 viewport whose bar is hidden with
+        .scrollIndicators(.hidden). ↑/↓ or ←/→ scroll one step, Space pages,
+        Home/End jump to the ends, Tab moves between the viewports. The mouse
+        wheel scrolls the vertical viewport under the pointer; the horizontal
+        one follows a horizontal swipe (on terminals that report one) or
+        Shift + wheel (the only pointer gesture for it on Terminal.app).
+        Ctrl-C quits.
         """,
         version: "0.0.3",
         shouldDisplay: true,
@@ -32,36 +36,46 @@ struct ScrollViewCommand: FullScreenCommand {
 
     var body: some Scene {
         NavigationStack {
-            Text("Vertical — a 10-row window onto 50 rows:").forgroundColor(.cyan)
+            Text("Vertical — a 40×10 frame onto 50 rows:").foregroundStyle(.cyan)
                 .navigationTitle("ScrollView")
-                .navigationSubtitle("↑/↓ or ←/→: scroll   Space: page   Home/End: jump   Tab: switch   Ctrl-C: quit")
+                .navigationSubtitle("↑/↓ ←/→: scroll   Space: page   Home/End: jump   Tab: switch   Shift+wheel: sideways   Ctrl-C: quit")
             ScrollView {
                 ForEach(0..<50) { i in
                     HStack(spacing: 1) {
-                        Text(String(format: "%3d", i)).forgroundColor(.eight_bit(240))
-                        Text("│").forgroundColor(.cyan)
+                        Text(String(format: "%3d", i)).foregroundStyle(.eightBit(240))
+                        Text("│").foregroundStyle(.cyan)
                         Text("List item number \(i)")
                     }
                 }
             }
-            .frame(height: 10)
+            .frame(width: 40, height: 10)
 
-            Text("Horizontal — a 40-column window onto one wide row:").forgroundColor(.cyan)
+            Text("Horizontal — a 40×2 frame onto one wide row:").foregroundStyle(.cyan)
                 .padding(.top, 1)
             ScrollView(.horizontal) {
                 HStack(spacing: 0) {
                     ForEach(0..<26) { i in
                         Text(" \(Character(UnicodeScalar(65 + i)!))\(i) ")
-                            .forgroundColor(i % 2 == 0 ? .cyan : .primary)
+                            .foregroundStyle(i % 2 == 0 ? .cyan : .primary)
                     }
                 }
             }
-            .frame(width: 40)
+            .frame(width: 40, height: 2)
+
+            Text("Hidden indicators — .scrollIndicators(.hidden) on a 40×3 frame:").foregroundStyle(.cyan)
+                .padding(.top, 1)
+            ScrollView {
+                ForEach(0..<12) { i in
+                    Text("Quiet row \(i) — scrolls, but draws no bar")
+                }
+            }
+            .frame(width: 40, height: 3)
+            .scrollIndicators(.hidden)
 
             Divider()
                 .padding(.top, 1)
-            Text("Both scrollbars are solid strips with half-cell end caps")
-                .forgroundColor(.yellow)
+            Text("Each bar sits at the far edge of its frame; the wheel follows the content")
+                .foregroundStyle(.yellow)
         }
     }
 }

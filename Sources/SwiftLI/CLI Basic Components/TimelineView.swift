@@ -93,9 +93,20 @@ public struct TimelineView<Schedule: TimelineSchedule, Content: View>: View {
         self.content = content
     }
 
-    /// The view's content, rendered for the current date at the time of layout.
+    /// The content for the current date.
     public var body: some View {
-        EmptyView()
+        content(context)
+    }
+
+    /// The context for this pass. Reading it arms the next update: a redraw
+    /// at the schedule's next date (coalesced by
+    /// ``TimelineSchedule/timelineKey``), so the timeline perpetuates itself.
+    private var context: Context {
+        let now = Date()
+        if let next = schedule.nextDate(after: now) {
+            TimelineCoordinator.shared.arm(key: schedule.timelineKey, fireAt: next)
+        }
+        return Context(date: now, cadence: schedule.cadence)
     }
 
     @_spi(RenderingInternals)
@@ -103,21 +114,10 @@ public struct TimelineView<Schedule: TimelineSchedule, Content: View>: View {
         TimelineView(style: self.style.inheriting(style), schedule: schedule, content: content)
     }
 
-    /// Lowers the content for the current date, and arms the next update.
-    ///
-    /// Each layout pass:
-    /// 1. Reads the current date and builds the content ``Context``.
-    /// 2. Asks the coordinator to schedule a redraw at the schedule's next
-    ///    date (coalesced by ``TimelineSchedule/timelineKey``).
-    /// 3. Returns the lowered content, cascading any accumulated style.
+    /// Lowers ``body`` with any accumulated style cascaded onto it.
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
-        let now = Date()
-        if let next = schedule.nextDate(after: now) {
-            TimelineCoordinator.shared.arm(key: schedule.timelineKey, fireAt: next)
-        }
-        let context = Context(date: now, cadence: schedule.cadence)
-        let node = content(context).makeNode()
+        let node = body.makeNode()
         return style.isPlain ? node : node.applyingStyle(style)
     }
 }

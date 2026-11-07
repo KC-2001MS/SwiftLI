@@ -47,18 +47,18 @@ public struct YesNoToggleStyle: ToggleStyle {
     public func makeBody(configuration: ToggleStyleConfiguration) -> some View {
         let on = configuration.isOn
         let focused = configuration.isFocused
-        let yesColor: Color = on ? .green : .eight_bit(240)
-        let noColor: Color = !on ? .red : .eight_bit(240)
+        let yesColor: Color = on ? .green : .eightBit(240)
+        let noColor: Color = !on ? .red : .eightBit(240)
 
         return HStack(spacing: 0) {
-            if focused { Text(content: "> ").forgroundColor(.cyan) }
+            if focused { Text(content: "> ").foregroundStyle(.cyan) }
             if let label = configuration.label {
                 label
                 Text(content: "  ")
             }
-            Text(content: on ? "[Yes]" : " Yes ").forgroundColor(yesColor).bold(on)
+            Text(content: on ? "[Yes]" : " Yes ").foregroundStyle(yesColor).bold(on)
             Text(content: " ")
-            Text(content: !on ? "[No]" : " No ").forgroundColor(noColor).bold(!on)
+            Text(content: !on ? "[No]" : " No ").foregroundStyle(noColor).bold(!on)
         }
     }
 }
@@ -74,7 +74,7 @@ public struct CheckboxToggleStyle: ToggleStyle {
     public func makeBody(configuration: ToggleStyleConfiguration) -> some View {
         let box = configuration.isOn ? "[x]" : "[ ]"
         return HStack(spacing: 1) {
-            Text(content: box).forgroundColor(configuration.isFocused ? .cyan : .primary)
+            Text(content: box).foregroundStyle(configuration.isFocused ? .cyan : .primary)
             if let label = configuration.label { label }
         }
     }
@@ -96,13 +96,13 @@ public struct SwitchToggleStyle: ToggleStyle {
         // the state in colour — position alone is easy to misread.
         let track = on ? "[──●]" : "[●──]"
         let word = on ? "ON" : "OFF"
-        let color: Color = on ? .green : .eight_bit(244)
+        let color: Color = on ? .green : .eightBit(244)
 
         return HStack(spacing: 1) {
-            if configuration.isFocused { Text(content: ">").forgroundColor(.cyan) }
+            if configuration.isFocused { Text(content: ">").foregroundStyle(.cyan) }
             if let label = configuration.label { label }
-            Text(content: track).forgroundColor(color)
-            Text(content: word).forgroundColor(color).bold()
+            Text(content: track).foregroundStyle(color)
+            Text(content: word).foregroundStyle(color).bold()
         }
     }
 }
@@ -125,11 +125,11 @@ public struct PromptToggleStyle: ToggleStyle {
                 label
                 Text(content: " ")
             }
-            Text(content: "[y/n]: ").forgroundColor(.eight_bit(240))
+            Text(content: "[y/n]: ").foregroundStyle(.eightBit(240))
             if configuration.isFocused {
-                Text(content: answer).background(.white).forgroundColor(.black)
+                Text(content: answer).background(.white).foregroundStyle(.black)
             } else {
-                Text(content: answer).forgroundColor(configuration.isOn ? .green : .red)
+                Text(content: answer).foregroundStyle(configuration.isOn ? .green : .red)
             }
         }
     }
@@ -225,10 +225,20 @@ public struct Toggle: View {
         self.style = style
     }
 
-    /// The content and behavior of the toggle; always an `EmptyView` because
-    /// rendering is driven by ``makeNode()`` rather than the SwiftUI body pipeline.
+    /// The resolved ``ToggleStyle``'s body for the toggle's current value and
+    /// focus, hosted as a focusable control and carrying the toggle's own
+    /// text style.
     public var body: some View {
-        EmptyView()
+        resolvedStyle.makeBody(configuration: ToggleStyleConfiguration(
+            label: label,
+            isOn: isOn.wrappedValue,
+            isFocused: FocusCoordinator.shared.isFocused(id)
+        ))
+    }
+
+    /// Nearest wins: instance style, then subtree environment, then default.
+    private var resolvedStyle: AnyToggleStyle {
+        style ?? EnvironmentStack.current.toggleStyle ?? AnyToggleStyle(YesNoToggleStyle())
     }
 
     @_spi(RenderingInternals)
@@ -236,19 +246,14 @@ public struct Toggle: View {
         Toggle(textStyle: textStyle.inheriting(style), id: id, label: label, isOn: isOn, style: self.style)
     }
 
+    /// Registers the toggle for keyboard handling, then lowers ``body`` with
+    /// the toggle's own text style cascaded onto it as the toggle's pointer
+    /// footprint.
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
         FocusCoordinator.shared.registerToggle(id: id, isOn: isOn)
         KeyInputRouter.shared.ensureStarted()
-
-        let configuration = ToggleStyleConfiguration(
-            label: label,
-            isOn: isOn.wrappedValue,
-            isFocused: FocusCoordinator.shared.isFocused(id)
-        )
-        // Nearest wins: instance style, then subtree environment, then default.
-        let resolvedStyle = style ?? EnvironmentStack.current.toggleStyle ?? AnyToggleStyle(YesNoToggleStyle())
-        let node = resolvedStyle.makeBody(configuration: configuration).makeNode()
+        let node = body.makeNode()
         return (textStyle.isPlain ? node : node.applyingStyle(textStyle)).asControl(id: id)
     }
 

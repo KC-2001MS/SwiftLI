@@ -30,7 +30,7 @@ struct SectionCommand: InlineCommand {
     var body: some Scene {
         NavigationStack {
             Text("Section(_ title: LocalizedStringKey)")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
                 .navigationTitle("Section")
 
             Section("Account") {
@@ -39,7 +39,7 @@ struct SectionCommand: InlineCommand {
             }
 
             Text("Section(content:header:)")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
                 .padding(.top, 1)
 
             Section {
@@ -50,7 +50,7 @@ struct SectionCommand: InlineCommand {
             }
 
             Text("Section(content:footer:)")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
                 .padding(.top, 1)
 
             Section {
@@ -60,7 +60,7 @@ struct SectionCommand: InlineCommand {
             }
 
             Text("Section(content:header:footer:)")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
                 .padding(.top, 1)
 
             Section {

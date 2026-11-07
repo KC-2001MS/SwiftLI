@@ -91,7 +91,7 @@ struct ForEachTests {
     @Test("A style modifier on ForEach cascades to every generated child")
     func forEachStyleCascade() {
         let green = "\u{001B}[3\(Color.green.ansi)m"
-        let view = ForEach(0..<3) { Text("\($0)") }.forgroundColor(.green)
+        let view = ForEach(0..<3) { Text("\($0)") }.foregroundStyle(.green)
         let raw = view.renderString()
         // Every one of the three rows must carry the green foreground code.
         let occurrences = raw.components(separatedBy: green).count - 1

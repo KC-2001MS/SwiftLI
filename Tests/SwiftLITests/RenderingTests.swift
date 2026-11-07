@@ -125,8 +125,10 @@ struct ConditionalDiffTests {
         let a = NodeLayout.frame(of: sameWidthBranch(true).makeNode())
         let b = NodeLayout.frame(of: sameWidthBranch(false).makeNode())
         let diff = FrameDiff.fullScreenUpdate(from: a, to: b)
-        // Only the middle line is repositioned & rewritten.
-        #expect(occurrences(of: eraseLineCode, in: diff) == 1)
+        // Only the middle line is repositioned & rewritten — written over the
+        // old content in place (never blanked first, to avoid a flash) with a
+        // trailing erase for any shorter-replacement leftover.
+        #expect(occurrences(of: eraseToEndOfLineCode, in: diff) == 1)
         #expect(sgrStripped(diff).contains("BBBBB"))
         #expect(!sgrStripped(diff).contains("top"))
     }

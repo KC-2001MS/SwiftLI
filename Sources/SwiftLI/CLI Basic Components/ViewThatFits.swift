@@ -53,13 +53,12 @@ public struct ViewThatFits: View {
         }
     }
 
-    /// The body of the view; the actual rendering is performed by ``makeNode()``.
-    public var body: some View {
-        EmptyView()
-    }
+    /// `ViewThatFits` is a layout primitive: it lowers directly via
+    /// ``makeNode()`` and has no body.
+    public typealias Body = Never
 
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
-        .viewThatFits(checkWidth: checkWidth, checkHeight: checkHeight, candidates: candidates.map { $0.makeNode() })
+        .viewThatFits(checkWidth: checkWidth, checkHeight: checkHeight, candidates: candidates.enumerated().map { $1.lowered(at: $0) })
     }
 }

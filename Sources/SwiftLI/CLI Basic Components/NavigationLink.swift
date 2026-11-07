@@ -86,11 +86,32 @@ public struct NavigationLink: View {
         self.destination = destination
     }
 
-    /// The content of this view; returns an empty placeholder because
-    /// `NavigationLink` is rendered directly by the navigation container via
-    /// ``makeNode()``.
+    /// The link's row — `  label ›`, filled with the selection colours while
+    /// focused — marked as its pointer footprint. Evaluating it also registers
+    /// the link in the focus ring.
+    /// `  label ›` — filled with the selection colours while focused.
     public var body: some View {
-        EmptyView()
+        // Focus is shown by filling the row with a background color — like a
+        // selected sidebar row — rather than a marker character. The label's
+        // own style attributes take precedence, so an explicit color set on
+        // it still wins over the cascaded selection colors.
+        if isFocused {
+            row.background(.cyan).foregroundStyle(.black)
+        } else {
+            row
+        }
+    }
+
+    private var isFocused: Bool {
+        FocusCoordinator.shared.isFocused(id)
+    }
+
+    private var row: HStack {
+        HStack(spacing: 0) {
+            Text(content: "  ")
+            label
+            Text(content: " ›").foregroundStyle(isFocused ? .black : .eightBit(240))
+        }
     }
 
     @_spi(RenderingInternals)
@@ -98,10 +119,12 @@ public struct NavigationLink: View {
         NavigationLink(style: self.style.inheriting(style), id: id, label: label, destination: destination)
     }
 
+    /// Registers the link in the focus ring — the enclosing container is read
+    /// while lowering, inside the container's environment scope, and captured
+    /// into the action — then lowers ``body`` with the link's own text style
+    /// cascaded onto it as the link's pointer footprint.
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
-        // The enclosing container is read while lowering — inside the
-        // container's environment scope — and captured into the action.
         let container = EnvironmentStack.current.navigationContainerID
         let destination = destination
         FocusCoordinator.shared.registerButton(id: id) {
@@ -109,19 +132,7 @@ public struct NavigationLink: View {
             NavigationCoordinator.shared.push(destination(), onto: container)
         }
         KeyInputRouter.shared.ensureStarted()
-
-        let focused = FocusCoordinator.shared.isFocused(id)
-        // Focus is shown by filling the row with a background color — like a
-        // selected sidebar row — rather than a marker character. The label's
-        // own style attributes take precedence, so an explicit color set on
-        // it still wins over the cascaded selection colors.
-        let row = HStack(spacing: 0) {
-            Text(content: "  ")
-            label
-            Text(content: " ›").forgroundColor(focused ? .black : .eight_bit(240))
-        }
-        let styled: any View = focused ? row.background(.cyan).forgroundColor(.black) : row
-        let node = styled.makeNode()
+        let node = body.makeNode()
         return (style.isPlain ? node : node.applyingStyle(style)).asControl(id: id)
     }
 }

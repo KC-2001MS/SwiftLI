@@ -183,15 +183,21 @@ public struct KeyDecoder: Sendable {
     /// position, or `nil` for reports SwiftLI doesn't act on.
     ///
     /// The button code packs the button in bits 0–1, modifiers in bits 2–4
-    /// (ignored), motion in bit 5, and the wheel in bit 6.
+    /// (Shift in bit 2 is used, the rest ignored), motion in bit 5, and the
+    /// wheel in bit 6.
     private static func mouseEvent(cb: Int, column: Int, row: Int, isRelease: Bool) -> KeyEvent? {
         guard column >= 0, row >= 0 else { return nil }
+        let shift = cb & 4 != 0
         let kind: MouseEvent.Kind
         if cb & 64 != 0 {
-            // Wheel/swipe: 64=up, 65=down, 66=left, 67=right.
+            // Wheel/swipe: 64=up, 65=down, 66=left, 67=right. A shifted
+            // vertical wheel scrolls sideways, as it does on the desktop —
+            // the only way to scroll a horizontal viewport with the pointer
+            // on terminals that report no horizontal wheel at all
+            // (Terminal.app sends vertical codes only).
             switch cb & 0b11 {
-            case 0: kind = .scrollUp
-            case 1: kind = .scrollDown
+            case 0: kind = shift ? .scrollLeft : .scrollUp
+            case 1: kind = shift ? .scrollRight : .scrollDown
             case 2: kind = .scrollLeft
             case 3: kind = .scrollRight
             default: return nil
@@ -215,7 +221,7 @@ public struct KeyDecoder: Sendable {
                 return nil
             }
         }
-        return .mouse(MouseEvent(kind: kind, column: column, row: row))
+        return .mouse(MouseEvent(kind: kind, column: column, row: row, isShifted: shift))
     }
 
     // MARK: - UTF-8

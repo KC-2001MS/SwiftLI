@@ -36,7 +36,7 @@ struct GaugeCommand: FullScreenCommand {
         NavigationStack {
             let percent = Int((progress * 100).rounded())
             Text("Every style is driven live by the same value (\(percent)%)")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
                 .navigationTitle("Gauge")
                 .task {
                     for i in 1...100 {
@@ -47,25 +47,25 @@ struct GaugeCommand: FullScreenCommand {
                 }
 
             HStack(spacing: 1) {
-                Text("Bar        ").forgroundColor(.red)
+                Text("Bar        ").foregroundStyle(.red)
                 Gauge(min: min, value: progress, max: max).frame(width: 30, alignment: .topLeading)
             }
                 .padding(.top, 1)
 
             HStack(spacing: 1) {
-                Text("Linear     ").forgroundColor(.red)
+                Text("Linear     ").foregroundStyle(.red)
                 Gauge(min: min, value: progress, max: max).frame(width: 30, alignment: .topLeading)
                     .gaugeStyle(LinearGaugeStyle())
             }
 
             HStack(spacing: 1) {
-                Text("Percentage ").forgroundColor(.red)
+                Text("Percentage ").foregroundStyle(.red)
                 Gauge(min: min, value: progress, max: max).frame(width: 30, alignment: .topLeading)
                     .gaugeStyle(PercentageGaugeStyle())
             }
 
             Text("Labeled full width (label sits by the percentage):")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
                 .padding(.top, 1)
             Gauge("Downloading", min: min, value: progress, max: max)
             Gauge("Extracting", min: min, value: progress, max: max)
@@ -73,7 +73,7 @@ struct GaugeCommand: FullScreenCommand {
 
             Divider()
                 .padding(.top, 1)
-            Text("Ctrl-C to quit").forgroundColor(.eight_bit(240))
+            Text("Ctrl-C to quit").foregroundStyle(.eightBit(240))
         }
     }
 }

@@ -35,7 +35,7 @@ struct GridCommand: InlineCommand {
             // Cells fill left-to-right and wrap every `columns` items; each
             // column is as wide as its widest cell, so the cells line up.
             Text("VGrid(columns: 3, spacing: 2)")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
                 .navigationTitle("Grid")
 
             VGrid(columns: 3, spacing: 2) {
@@ -47,7 +47,7 @@ struct GridCommand: InlineCommand {
             // Cells fill top-to-bottom and wrap every `rows` items; each row
             // is as tall as its tallest cell.
             Text("HGrid(rows: 2, spacing: 2)")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
                 .padding(.top, 1)
 
             HGrid(rows: 2, spacing: 2) {

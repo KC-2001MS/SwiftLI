@@ -23,10 +23,9 @@ public struct TupleView<each Content: View>: View {
         self.value = value
     }
 
-    /// The body of this view; always empty because `TupleView` is rendered directly by its parent container.
-    public var body: some View {
-        EmptyView()
-    }
+    /// `TupleView` is a structural primitive: its parent container lowers its
+    /// children directly, so it has no body.
+    public typealias Body = Never
 
     /// Cascades a style onto every child.
     @_spi(RenderingInternals)
@@ -39,7 +38,7 @@ public struct TupleView<each Content: View>: View {
     public func makeNode() -> RenderNode {
         var children: [RenderNode] = []
         for child in repeat each value {
-            children.append(child.makeNode())
+            children.append(child.lowered(at: children.count))
         }
         return .group(children: children)
     }

@@ -49,7 +49,7 @@ public struct DefaultGroupBoxStyle: GroupBoxStyle {
         items.append(configuration.content)
         return VStack(alignment: .leading, spacing: 0, children: items)
             .padding()
-            .border(.rounded)
+            .border(.primary)
     }
 }
 

@@ -288,15 +288,15 @@ struct FocusCoordinatorTests {
         coord.reset()
         // 20 lines, 6-row viewport.
         // Cursor within the first window → no scroll.
-        #expect(coord.editorScrollOffset(id: "e", cursorLine: 3, viewport: 6, totalLines: 20) == 0)
+        #expect(coord.editorScrollOffset(id: "e", cursorLine: 3, cursorColumn: 0, viewport: 6, totalLines: 20) == 0)
         // Cursor past the bottom → scroll just enough to reveal it.
-        #expect(coord.editorScrollOffset(id: "e", cursorLine: 8, viewport: 6, totalLines: 20) == 3)  // 8-6+1
+        #expect(coord.editorScrollOffset(id: "e", cursorLine: 8, cursorColumn: 0, viewport: 6, totalLines: 20) == 3)  // 8-6+1
         // Cursor still inside the current window → offset unchanged (minimal).
-        #expect(coord.editorScrollOffset(id: "e", cursorLine: 5, viewport: 6, totalLines: 20) == 3)
+        #expect(coord.editorScrollOffset(id: "e", cursorLine: 5, cursorColumn: 0, viewport: 6, totalLines: 20) == 3)
         // Cursor above the window → scroll up to it.
-        #expect(coord.editorScrollOffset(id: "e", cursorLine: 1, viewport: 6, totalLines: 20) == 1)
+        #expect(coord.editorScrollOffset(id: "e", cursorLine: 1, cursorColumn: 0, viewport: 6, totalLines: 20) == 1)
         // Clamped so the last window doesn't overscroll.
-        #expect(coord.editorScrollOffset(id: "e", cursorLine: 19, viewport: 6, totalLines: 20) == 14) // 20-6
+        #expect(coord.editorScrollOffset(id: "e", cursorLine: 19, cursorColumn: 0, viewport: 6, totalLines: 20) == 14) // 20-6
         coord.reset()
     }
 
@@ -532,7 +532,7 @@ struct NavigationTests {
         let view = Group(contents: [
             Text("base-content"),
             Button("OpenSheet") { box.value = true }
-        ]).sheet(isPresented: Binding(get: { box.value }, set: { box.value = $0 }), id: "sheet-a") {
+        ]).sheet(isPresented: Binding(get: { box.value }, set: { box.value = $0 })) {
             Button("Close") { box.value = false }
         }
 
@@ -571,7 +571,7 @@ struct NavigationTests {
 
         let box = BoolBox(true)
         let view = Text("base-content")
-            .sheet(isPresented: Binding(get: { box.value }, set: { box.value = $0 }), id: "sheet-b") {
+            .sheet(isPresented: Binding(get: { box.value }, set: { box.value = $0 })) {
                 Text("sheet-content")
             }
 
@@ -605,7 +605,7 @@ struct NavigationTests {
         let view = Group(contents: [
             Text("base-content"),
             Button("OpenSheet") { box.value = true }
-        ]).sheet(isPresented: Binding(get: { box.value }, set: { box.value = $0 }), id: "sheet-c") {
+        ]).sheet(isPresented: Binding(get: { box.value }, set: { box.value = $0 })) {
             SheetBody()
         }
 

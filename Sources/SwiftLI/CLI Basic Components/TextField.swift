@@ -69,7 +69,7 @@ public struct DefaultTextFieldStyle: TextFieldStyle {
         if value.isEmpty && !focused {
             composed = Group(contents: [
                 Text(content: marker),
-                textRegion(Text(content: configuration.placeholder).forgroundColor(.eight_bit(240)))
+                textRegion(Text(content: configuration.placeholder).foregroundStyle(.eightBit(240)))
             ])
         } else if focused {
             let chars = Array(value)
@@ -77,14 +77,19 @@ public struct DefaultTextFieldStyle: TextFieldStyle {
             let before = String(chars[0..<c])
             let cursorChar = c < chars.count ? String(chars[c]) : " "
             let after = c < chars.count ? String(chars[(c + 1)...]) : ""
+            if let controlID = configuration._controlID {
+                // Visible width, not character count — see the matching note
+                // in TextEditor.swift: full-width characters are 2 columns.
+                FocusCoordinator.shared.reportCursor(id: controlID, regionID: MouseTargetRegistry.regionID(control: controlID, role: MouseTargetRegistry.textRole), offset: TextMetrics.visibleWidth(before))
+            }
 
             var cells: [any View] = []
             if !before.isEmpty { cells.append(Text(content: before)) }
             // Block cursor: reverse the foreground/background of the cell.
-            cells.append(Text(content: cursorChar).background(.white).forgroundColor(.black))
+            cells.append(Text(content: cursorChar).background(.white).foregroundStyle(.black))
             if !after.isEmpty { cells.append(Text(content: after)) }
             composed = Group(contents: [
-                Text(content: marker).forgroundColor(.cyan),
+                Text(content: marker).foregroundStyle(.cyan),
                 textRegion(HStack(spacing: 0) { Group(contents: cells) })
             ])
         } else {
@@ -186,9 +191,28 @@ public struct TextField: View {
         self.style = style
     }
 
-    /// The view content of the text field; rendering is handled by ``makeNode()``.
+    /// The field's current appearance (placeholder, text, and — when focused —
+    /// a block cursor) as composed by the resolved ``TextFieldStyle``, hosted
+    /// as a focusable control and carrying the field's own text style.
     public var body: some View {
-        EmptyView()
+        resolvedStyle.makeBody(configuration: configuration)
+    }
+
+    /// Nearest wins: instance style, then subtree environment, then default.
+    private var resolvedStyle: AnyTextFieldStyle {
+        style ?? EnvironmentStack.current.textFieldStyle ?? AnyTextFieldStyle(DefaultTextFieldStyle())
+    }
+
+    /// The style configuration: placeholder, text, focus and caret position.
+    private var configuration: TextFieldStyleConfiguration {
+        var configuration = TextFieldStyleConfiguration(
+            placeholder: placeholder,
+            text: text.wrappedValue,
+            isFocused: FocusCoordinator.shared.isFocused(id),
+            cursorIndex: FocusCoordinator.shared.cursor(for: id)
+        )
+        configuration._controlID = id
+        return configuration
     }
 
     @_spi(RenderingInternals)
@@ -196,27 +220,15 @@ public struct TextField: View {
         TextField(textStyle: textStyle.inheriting(style), id: id, placeholder: placeholder, text: text, onSubmit: onSubmit, style: self.style)
     }
 
-    /// Registers the field for keyboard handling and lowers its current
-    /// appearance (placeholder, text, and — when focused — a block cursor).
+    /// Registers the field for keyboard handling (every pass, so the
+    /// coordinator always has the latest binding; keyboard input starts the
+    /// first time any field appears), then lowers ``body`` with the field's
+    /// own text style cascaded onto it as the field's pointer footprint.
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
-        // Register on every layout pass so the coordinator always has the latest
-        // binding, and start keyboard input the first time any field appears.
         FocusCoordinator.shared.register(id: id, binding: text, onSubmit: onSubmit, keymap: SingleLineKeymap())
         KeyInputRouter.shared.ensureStarted()
-
-        let focused = FocusCoordinator.shared.isFocused(id)
-
-        // Nearest wins: instance style, then subtree environment, then default.
-        let resolvedStyle = style ?? EnvironmentStack.current.textFieldStyle ?? AnyTextFieldStyle(DefaultTextFieldStyle())
-        var configuration = TextFieldStyleConfiguration(
-            placeholder: placeholder,
-            text: text.wrappedValue,
-            isFocused: focused,
-            cursorIndex: FocusCoordinator.shared.cursor(for: id)
-        )
-        configuration._controlID = id
-        let node = resolvedStyle.makeBody(configuration: configuration).makeNode()
+        let node = body.makeNode()
         return (textStyle.isPlain ? node : node.applyingStyle(textStyle)).asControl(id: id)
     }
 

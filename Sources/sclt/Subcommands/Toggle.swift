@@ -57,7 +57,7 @@ struct ToggleCommand: FullScreenCommand {
             Divider()
                 .padding(.top, 1)
             Text("proceed=\(proceed)  verbose=\(verbose)  overwrite=\(overwrite)")
-                .forgroundColor(.yellow)
+                .foregroundStyle(.yellow)
         }
     }
 }

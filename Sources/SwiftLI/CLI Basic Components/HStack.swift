@@ -12,9 +12,9 @@
 ///
 /// ```swift
 /// HStack {
-///     Text("Left").forgroundColor(.red)
+///     Text("Left").foregroundStyle(.red)
 ///     Text("  |  ")
-///     Text("Right").forgroundColor(.blue)
+///     Text("Right").foregroundStyle(.blue)
 /// }
 /// .render()
 /// ```
@@ -57,9 +57,9 @@ public struct HStack: View, @unchecked Sendable {
         self.style = style
     }
 
-    public var body: some View {
-        EmptyView()
-    }
+    /// `HStack` is a layout primitive: it lowers directly via ``makeNode()``
+    /// and has no body.
+    public typealias Body = Never
 
     @_spi(RenderingInternals)
     public func applyingStyle(_ style: TextStyle) -> HStack {
@@ -77,7 +77,7 @@ public struct HStack: View, @unchecked Sendable {
         let node = RenderNode.hstack(
             alignment: alignment,
             spacing: spacing,
-            children: children.map { $0.makeNode() }
+            children: children.enumerated().map { $1.lowered(at: $0) }
         )
         return style.isPlain ? node : node.applyingStyle(style)
     }

@@ -43,6 +43,21 @@ extension EnvironmentValues {
     }
 }
 
+// The same kind of value declared with the `@Entry` macro.
+extension EnvironmentValues {
+    @Entry fileprivate var entryFlag: String = "entry-default"
+    @Entry fileprivate var optionalEntry: Int?
+}
+
+private struct EntryProbe: View {
+    @Environment(\.entryFlag) var flag
+    @Environment(\.optionalEntry) var number
+
+    var body: some View {
+        Text("\(flag)/\(number.map(String.init) ?? "nil")")
+    }
+}
+
 private struct FlagProbe: View {
     @Environment(\.testFlag) var flag
 
@@ -57,6 +72,26 @@ private struct FlagProbe: View {
 struct EnvironmentTests {
     private func plain(_ v: some View) -> String {
         TextMetrics.stripANSI(v.renderString())
+    }
+
+    @Test(".scrollIndicators hides the scrollbar for the axes it names")
+    func scrollIndicatorsModifier() {
+        // The vertical bar's track is painted with this background.
+        let track = TextStyle(background: .eightBit(238)).sgrPrefix
+        func tall() -> some View {
+            ScrollView {
+                ForEach(0..<20) { i in Text("row \(i)") }
+            }
+            .frame(width: 20, height: 5)
+        }
+        #expect(tall().renderString().contains(track))
+        #expect(tall().scrollIndicators(.visible).renderString().contains(track))
+        #expect(!tall().scrollIndicators(.hidden).renderString().contains(track))
+        #expect(!tall().scrollIndicators(.never, axes: .vertical).renderString().contains(track))
+        // Hiding only the horizontal axis leaves a vertical bar alone.
+        #expect(tall().scrollIndicators(.hidden, axes: .horizontal).renderString().contains(track))
+        // The setting flows down the environment from an enclosing container.
+        #expect(!VStack { tall() }.scrollIndicators(.hidden).renderString().contains(track))
     }
 
     @Test("At the top level, maxWidth matches the terminal width")
@@ -74,7 +109,7 @@ struct EnvironmentTests {
         // Outside-in: frame pins 30, padding consumes 2 × 2, border 2, so the
         // probe sees 30 − 4 − 2 = 24.
         let view = WidthProbe()
-            .border(.rounded)
+            .border(.primary)
             .padding(.horizontal, 2)
             .frame(width: 30, alignment: .topLeading)
         #expect(plain(view).contains("W=24"))
@@ -90,6 +125,15 @@ struct EnvironmentTests {
     func customKey() {
         #expect(plain(FlagProbe()) == "default")
         #expect(plain(FlagProbe().environment(\.testFlag, "injected")) == "injected")
+    }
+
+    @Test("An @Entry value reads its default and accepts injection")
+    func entryMacro() {
+        #expect(plain(EntryProbe()) == "entry-default/nil")
+        let view = EntryProbe()
+            .environment(\.entryFlag, "injected")
+            .environment(\.optionalEntry, 7)
+        #expect(plain(view) == "injected/7")
     }
 
     @Test("The nearest environment injection wins")
@@ -115,14 +159,14 @@ struct EnvironmentTests {
 /// during the render pass — inside any enclosing environment scope.
 private struct SecondaryProbe: View {
     var body: some View {
-        Text("x").forgroundColor(.secondary)
+        Text("x").foregroundStyle(.secondary)
     }
 }
 
 /// Same, with a custom light/dark pair.
 private struct DynamicPairProbe: View {
     var body: some View {
-        Text("x").forgroundColor(.dynamic(light: .red, dark: .yellow))
+        Text("x").foregroundStyle(.dynamic(light: .red, dark: .yellow))
     }
 }
 
@@ -130,7 +174,7 @@ private struct DynamicPairProbe: View {
 struct DynamicColorTests {
     @Test("A dynamic color resolves against the color scheme in scope")
     func dynamicColorFollowsScheme() {
-        // .secondary = eight_bit(240) on light, eight_bit(245) on dark.
+        // .secondary = eightBit(240) on light, eightBit(245) on dark.
         let light = SecondaryProbe().environment(\.colorScheme, .light).renderString()
         #expect(light.contains("38;5;240"))
 

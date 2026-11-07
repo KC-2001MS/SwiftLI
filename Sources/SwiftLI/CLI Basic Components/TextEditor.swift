@@ -88,33 +88,93 @@ public struct TextEditor: View {
         self.tabBehavior = tabBehavior
     }
 
-    /// The content and behavior of the text editor view.
+    /// The gutter-prefixed lines of the editor (a placeholder row while empty
+    /// and unfocused), windowed horizontally to the cursor and scrolled to it
+    /// vertically when a height bounds them, hosted as a focusable control
+    /// and carrying the editor's own text style.
     public var body: some View {
-        EmptyView()
+        let layout = self.layout
+        if layout.showsPlaceholder {
+            // Empty & unfocused → a single placeholder row.
+            HStack(spacing: 0) {
+                Text(content: "│ ").foregroundStyle(.eightBit(240))
+                Text(content: placeholder).foregroundStyle(.eightBit(240))
+            }
+        } else if layout.scrollsVertically {
+            // With a fixed height, scroll to follow the cursor line by
+            // composing a controlled ``ScrollView`` (same viewport machinery
+            // as List/Table).
+            ScrollView(height: layout.viewportHeight, offset: layout.scrollOffset, focused: layout.focused, content: [
+                ForEach(layout.lines) { line in
+                    row(line, focused: layout.focused)
+                }
+            ])
+        } else {
+            // Otherwise grow to fit every line.
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(layout.lines) { line in
+                    row(line, focused: layout.focused)
+                }
+            }
+        }
     }
 
-    @_spi(RenderingInternals)
-    public func applyingStyle(_ style: TextStyle) -> Self {
-        TextEditor(style: self.style.inheriting(style), id: id, placeholder: placeholder, text: text, tabBehavior: tabBehavior)
+    /// One row: the gutter, then the line's visible text as a pointer
+    /// sub-region (a click on it moves the cursor there) — split around a
+    /// block cursor on the cursor line.
+    @ViewBuilder
+    private func row(_ line: LineLayout, focused: Bool) -> some View {
+        HStack(spacing: 0) {
+            Text(content: "│ ").foregroundStyle(focused ? .cyan : .eightBit(240))
+            if let cursor = line.cursor {
+                HitRegion(controlID: id, role: MouseTargetRegistry.lineRole(line.index), content: HStack(spacing: 0) {
+                    if !line.before.isEmpty {
+                        Text(content: line.before)
+                    }
+                    Text(content: cursor).background(.white).foregroundStyle(.black)
+                    if !line.after.isEmpty {
+                        Text(content: line.after)
+                    }
+                })
+            } else {
+                HitRegion(controlID: id, role: MouseTargetRegistry.lineRole(line.index), content: Text(content: line.before))
+            }
+        }
     }
 
+    /// Registers the editor for keyboard handling, then lowers ``body`` with
+    /// the editor's own text style cascaded onto it as the editor's pointer
+    /// footprint.
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
         let keymap = MultiLineKeymap(indentsWithTab: tabBehavior == .indent)
         FocusCoordinator.shared.register(id: id, binding: text, onSubmit: nil, keymap: keymap)
         KeyInputRouter.shared.ensureStarted()
+        let node = body.makeNode()
+        return (style.isPlain ? node : node.applyingStyle(style)).asControl(id: id)
+    }
 
+    /// One row of the editor as laid out for the current pass: its index, the
+    /// visible text before the cursor (on any other line, the whole visible
+    /// window — a single space when empty), the glyph under the cursor and the
+    /// visible text after it (both on the cursor line only).
+    private typealias LineLayout = (index: Int, before: String, cursor: String?, after: String)
+
+    /// The editor's rows for the current pass and how they are scrolled.
+    /// `showsPlaceholder` is set when the editor is empty and unfocused, in
+    /// which case a single placeholder row replaces the lines.
+    private typealias Layout = (focused: Bool, showsPlaceholder: Bool, lines: [LineLayout], scrollsVertically: Bool, viewportHeight: Int, scrollOffset: Int)
+
+    /// The layout for this pass: the text laid out for the current focus and
+    /// cursor — the cursor located, the shared horizontal window slid to keep
+    /// it visible, its on-screen position reported (for the IME), and the
+    /// viewport following it vertically.
+    private var layout: Layout {
         let focused = FocusCoordinator.shared.isFocused(id)
         let value = text.wrappedValue
 
-        // Empty & unfocused → a single placeholder row.
         if value.isEmpty && !focused {
-            let row = HStack(spacing: 0) {
-                Text(content: "│ ").forgroundColor(.eight_bit(240))
-                Text(content: placeholder).forgroundColor(.eight_bit(240))
-            }
-            let node = row.makeNode()
-            return (style.isPlain ? node : node.applyingStyle(style)).asControl(id: id)
+            return (focused: focused, showsPlaceholder: true, lines: [], scrollsVertically: false, viewportHeight: 0, scrollOffset: 0)
         }
 
         // Locate the cursor's line and column from its flat character offset.
@@ -127,6 +187,7 @@ public struct TextEditor: View {
         }
 
         let lines = value.components(separatedBy: "\n")
+        _TextEditorDebugLog.write("layout id=\(id) focused=\(focused) valueLen=\(value.count) lines=\(lines.count) cursorLine=\(cursorLine) cursorColumn=\(cursorColumn) maxWidth=\(EnvironmentStack.current.maxWidth) maxHeight=\(EnvironmentStack.current.maxHeight)")
 
         // Long lines are never wrapped: the editor keeps one row per line and
         // scrolls horizontally instead, sliding a shared window over every
@@ -137,61 +198,114 @@ public struct TextEditor: View {
         let resolvedHeight = EnvironmentStack.current.maxHeight
         let scrollsVertically = lines.count > resolvedHeight
         let contentWidth = Swift.max(1, EnvironmentStack.current.maxWidth - gutterWidth - (scrollsVertically ? 1 : 0))
+        // `hOffset`/`contentWidth` are display *columns*, not characters: a
+        // full-width CJK character (kanji/kana) occupies 2 terminal columns,
+        // so measuring by character count would let a line's real on-screen
+        // width silently exceed `contentWidth` — which the frame's
+        // width-truncation then clips, taking whatever was drawn after it
+        // (e.g. the scrollbar) with it. `advanceByColumns` below converts
+        // between a column offset and the character index it falls on.
         // One extra column so the block cursor fits at the end of the longest line.
-        let totalColumns = lines.reduce(0) { Swift.max($0, $1.count) } + 1
+        let totalColumns = lines.reduce(0) { Swift.max($0, TextMetrics.visibleWidth($1)) } + 1
+        // The cursor's column measured the same way, for the horizontal-scroll
+        // math below — `cursorColumn` itself stays a character index, since
+        // text mutation (insert/delete) needs that, not a column.
+        let cursorLineChars = Array(lines[cursorLine])
+        let cursorVisualColumn = TextMetrics.visibleWidth(String(cursorLineChars.prefix(cursorColumn)))
         let hOffset: Int
         if totalColumns <= contentWidth {
             hOffset = 0
         } else if focused {
-            hOffset = FocusCoordinator.shared.editorHorizontalOffset(id: id, cursorColumn: cursorColumn, viewport: contentWidth, totalColumns: totalColumns)
+            hOffset = FocusCoordinator.shared.editorHorizontalOffset(id: id, cursorColumn: cursorVisualColumn, viewport: contentWidth, totalColumns: totalColumns)
         } else {
             // Keep the last position while blurred, clamped to the current content.
             hOffset = Swift.min(FocusCoordinator.shared.editorHorizontalOffset(for: id), totalColumns - contentWidth)
         }
 
-        var rows: [any View] = []
+        var rows: [LineLayout] = []
         for (index, line) in lines.enumerated() {
-            let gutter = Text(content: "│ ").forgroundColor(focused ? .cyan : .eight_bit(240))
             let lineChars = Array(line)
-            let windowEnd = Swift.min(lineChars.count, hOffset + contentWidth)
-            // Each line's visible text (after the gutter) is a pointer
-            // sub-region: a click on it moves the cursor to that position.
-            func lineRegion(_ content: any View) -> HitRegion {
-                HitRegion(controlID: id, role: MouseTargetRegistry.lineRole(index), content: content)
-            }
+            // Convert the shared column-based `hOffset`/`contentWidth` into
+            // this line's own character-index window: each line maps columns
+            // to characters differently depending on how many wide
+            // characters it contains before the window.
+            let startIdx = Self.advanceByColumns(lineChars, from: 0, budget: hOffset)
+            let windowEnd = Self.advanceByColumns(lineChars, from: startIdx, budget: contentWidth)
             if focused && index == cursorLine {
-                let col = Swift.min(Swift.max(cursorColumn, hOffset), lineChars.count)
-                let before = hOffset < col ? String(lineChars[hOffset..<col]) : ""
+                let col = Swift.min(Swift.max(cursorColumn, startIdx), lineChars.count)
+                let before = startIdx < col ? String(lineChars[startIdx..<col]) : ""
                 let cursorChar = col < lineChars.count ? String(lineChars[col]) : " "
                 let after = (col + 1) < windowEnd ? String(lineChars[(col + 1)..<windowEnd]) : ""
-
-                var cells: [any View] = []
-                if !before.isEmpty { cells.append(Text(content: before)) }
-                cells.append(Text(content: cursorChar).background(.white).forgroundColor(.black))
-                if !after.isEmpty { cells.append(Text(content: after)) }
-                rows.append(HStack(spacing: 0) {
-                    Group(contents: [gutter, lineRegion(HStack(spacing: 0) { Group(contents: cells) })])
-                })
+                // The column offset must be the *visible* width, not the
+                // character count: full-width CJK characters (kanji/kana —
+                // exactly what an IME commits) occupy 2 terminal columns each,
+                // so counting characters under-reports the real column
+                // whenever any wide character precedes the cursor, placing
+                // the real cursor (and so the IME's popup) to the left of
+                // where the glyph actually is.
+                FocusCoordinator.shared.reportCursor(id: id, regionID: MouseTargetRegistry.regionID(control: id, role: MouseTargetRegistry.lineRole(index)), offset: TextMetrics.visibleWidth(before))
+                rows.append((index: index, before: before, cursor: cursorChar, after: after))
             } else {
-                let visible = hOffset < lineChars.count ? String(lineChars[hOffset..<windowEnd]) : ""
+                let visible = startIdx < lineChars.count ? String(lineChars[startIdx..<windowEnd]) : ""
                 // An empty window still gets a one-cell region, so clicking
                 // an empty line can land the cursor on it.
-                rows.append(HStack(spacing: 0) {
-                    Group(contents: [gutter, lineRegion(Text(content: visible.isEmpty ? " " : visible))])
-                })
+                rows.append((index: index, before: visible.isEmpty ? " " : visible, cursor: nil, after: ""))
             }
         }
 
-        // With a fixed height, scroll to follow the cursor line by composing a
-        // controlled ``ScrollView`` (same viewport machinery as List/Table);
-        // otherwise grow to fit every line.
-        let node: RenderNode
-        if scrollsVertically {
-            let offset = FocusCoordinator.shared.editorScrollOffset(id: id, cursorLine: cursorLine, viewport: resolvedHeight, totalLines: rows.count)
-            node = ScrollView(height: resolvedHeight, offset: offset, focused: focused, showsIndicators: true, content: rows).makeNode()
-        } else {
-            node = VStack(alignment: .leading, children: rows).makeNode()
+        // With a fixed height, follow the cursor line.
+        let scrollOffset = scrollsVertically
+            ? FocusCoordinator.shared.editorScrollOffset(id: id, cursorLine: cursorLine, cursorColumn: cursorColumn, viewport: resolvedHeight, totalLines: rows.count)
+            : 0
+        _TextEditorDebugLog.write("  -> rows=\(rows.count) scrollsVertically=\(scrollsVertically) contentWidth=\(contentWidth) hOffset=\(hOffset) firstLine=\(lines.first?.debugDescription ?? "nil")")
+        return (focused: focused, showsPlaceholder: false, lines: rows, scrollsVertically: scrollsVertically, viewportHeight: resolvedHeight, scrollOffset: scrollOffset)
+    }
+
+    /// The index in `chars` at which the cumulative display width of
+    /// `chars[start...]` first reaches or exceeds `budget` columns (or
+    /// `chars.count` if the whole remainder fits within budget).
+    ///
+    /// Used to translate a column-based offset/width into the character
+    /// index it falls on, since a full-width character occupies 2 columns —
+    /// character position and column position only coincide when every
+    /// character in between is single-width.
+    fileprivate static func advanceByColumns(_ chars: [Character], from start: Int, budget: Int) -> Int {
+        guard budget > 0 else { return start }
+        var used = 0
+        var i = start
+        while i < chars.count {
+            let w = TextMetrics.width(of: chars[i])
+            if used + w > budget { break }
+            used += w
+            i += 1
         }
-        return (style.isPlain ? node : node.applyingStyle(style)).asControl(id: id)
+        return i
+    }
+}
+
+// TEMPORARY diagnostic logging — writes to a file (never the terminal itself,
+// so it can't interfere with the alt-screen display) to inspect what
+// `TextEditor.makeNode()` actually computed during a real interactive
+// session, since the bug it's chasing doesn't reproduce under any headless/
+// synthetic test harness. Remove once the root cause is found.
+enum _TextEditorDebugLog {
+    private static let lock = NSLock()
+    // Opt-in via `SWIFTLI_TEXTEDITOR_DEBUG=1`: unconditionally appending to a
+    // file on every render (two opens, seeks and writes per frame) is far too
+    // expensive to leave on, and the message is only built when enabled.
+    private static let isEnabled = ProcessInfo.processInfo.environment["SWIFTLI_TEXTEDITOR_DEBUG"] != nil
+    static func write(_ message: @autoclosure () -> String) {
+        guard isEnabled else { return }
+        lock.lock(); defer { lock.unlock() }
+        let line = "\(Date()) \(message())\n"
+        guard let data = line.data(using: .utf8) else { return }
+        let path = "/tmp/texteditor_debug.log"
+        if let handle = FileHandle(forWritingAtPath: path) {
+            handle.seekToEndOfFile()
+            handle.write(data)
+            handle.closeFile()
+        } else {
+            try? data.write(to: URL(fileURLWithPath: path))
+        }
     }
 }

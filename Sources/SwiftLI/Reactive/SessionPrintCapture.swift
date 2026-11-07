@@ -134,7 +134,10 @@ final class SessionPrintCapture: @unchecked Sendable {
         let readFD = fds[0]
         let done = DispatchSemaphore(value: 0)
         drained = done
-        Thread.detachNewThread {
+        // `stop()` blocks on `done` from whatever thread ends the session —
+        // typically a user-initiated one — so the drain thread runs at that
+        // QoS too; a lower-priority drainer would be a priority inversion.
+        let drainThread = Thread {
             var pending: [UInt8] = []
             var buffer = [UInt8](repeating: 0, count: 4096)
             while true {
@@ -158,6 +161,8 @@ final class SessionPrintCapture: @unchecked Sendable {
             }
             done.signal()
         }
+        drainThread.qualityOfService = .userInitiated
+        drainThread.start()
         return true
     }
 

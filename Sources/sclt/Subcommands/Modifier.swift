@@ -21,14 +21,17 @@ struct ModifierCommand: FullScreenCommand {
         Every modifier that applies to any View:
         - presentation & lifecycle: sheet, inspector, focused, onAppear, task
         - environment: environment(_:_:), transformEnvironment(_:transform:)
-        - style: forgroundColor, background, bold, fontWeight, italic,
+        - style: foregroundStyle, background, bold, fontWeight, italic,
           underline, strikethrough, blink, hidden
         - layout: padding (all three forms), frame(width:height:),
           frame(maxWidth:maxHeight:), lineLimit, border, shadow
-        Every one of them is a thin wrapper over modifier(_:) — conform to
-        ViewModifier to write your own. View-family styles (buttonStyle,
-        listStyle, …) are shown in each view's own command, and the navigation
-        bar modifiers in `sclt navigation`. Ctrl-C quits.
+        The modifiers share SwiftUI's names and argument labels; where the
+        terminal cannot do what SwiftUI does (blur, pixel widths) the
+        parameters differ and the sample's label says so. Every one of them
+        is a thin wrapper over modifier(_:) — conform to ViewModifier to write
+        your own. View-family styles (buttonStyle, listStyle, …) are shown in
+        each view's own command, scrollIndicators in `sclt scrollview`, and
+        the navigation bar modifiers in `sclt navigation`. Ctrl-C quits.
         """,
         version: "0.0.3",
         shouldDisplay: true,
@@ -56,20 +59,20 @@ struct ModifierCommand: FullScreenCommand {
     /// sample it produces.
     private func row(_ call: String, _ sample: some View) -> some View {
         HStack(spacing: 1) {
-            Text(call).forgroundColor(.eight_bit(245)).frame(width: callWidth, alignment: .topLeading)
+            Text(call).foregroundStyle(.eightBit(245)).frame(width: callWidth, alignment: .topLeading)
             sample
         }
     }
 
     var body: some Scene {
         NavigationStack {
-            Text("Presentation & lifecycle modifiers:").forgroundColor(.cyan)
+            Text("Presentation & lifecycle modifiers:").foregroundStyle(.cyan)
                 .navigationTitle("Modifier")
                 .navigationSubtitle("Tab: focus   Return/Space: activate   Ctrl-C: quit")
 
             // .sheet — a button presents a modal card; Close dismisses it.
             HStack(spacing: 1) {
-                Text(".sheet(isPresented:content:)").forgroundColor(.eight_bit(245)).frame(width: callWidth, alignment: .topLeading)
+                Text(".sheet(isPresented:content:)").foregroundStyle(.eightBit(245)).frame(width: callWidth, alignment: .topLeading)
                 Button("Open sheet…") { showsSheet = true }
             }
                 .sheet(isPresented: $showsSheet) {
@@ -79,7 +82,7 @@ struct ModifierCommand: FullScreenCommand {
 
             // .inspector — a side panel toggled next to the content.
             HStack(spacing: 1) {
-                Text(".inspector(isPresented:content:)").forgroundColor(.eight_bit(245)).frame(width: callWidth, alignment: .topLeading)
+                Text(".inspector(isPresented:content:)").foregroundStyle(.eightBit(245)).frame(width: callWidth, alignment: .topLeading)
                 Button("Toggle inspector") { showsInspector.toggle() }
             }
                 .inspector(isPresented: $showsInspector) {
@@ -91,14 +94,14 @@ struct ModifierCommand: FullScreenCommand {
             row(".focused(_:equals:)", HStack(spacing: 1) {
                 TextField("Type here", text: $sample)
                     .focused($focus, equals: .sample)
-                Text(focus == .sample ? "focused" : "not focused").forgroundColor(focus == .sample ? .green : .eight_bit(240))
+                Text(focus == .sample ? "focused" : "not focused").foregroundStyle(focus == .sample ? .green : .eightBit(240))
             })
 
             // .onAppear fires once when the view first renders; .task starts
             // async work tied to the view's lifetime.
-            row(".onAppear(perform:)", Text("fired: \(appeared ? "yes" : "no")").forgroundColor(.green)
+            row(".onAppear(perform:)", Text("fired: \(appeared ? "yes" : "no")").foregroundStyle(.green)
                 .onAppear { appeared = true })
-            row(".task(_:)", Text("async ticks: \(ticks)/5").forgroundColor(.green)
+            row(".task(_:)", Text("async ticks: \(ticks)/5").foregroundStyle(.green)
                 .task {
                     for _ in 0..<5 {
                         try? await Task.sleep(nanoseconds: 500_000_000)
@@ -106,16 +109,16 @@ struct ModifierCommand: FullScreenCommand {
                     }
                 })
 
-            Text("Environment modifiers:").forgroundColor(.cyan)
+            Text("Environment modifiers:").foregroundStyle(.cyan)
                 .padding(.top, 1)
             row(".environment(\\.colorScheme, _)", SchemeBadge().environment(\.colorScheme, .light))
             row(".transformEnvironment(\\.maxWidth)", WidthRule().transformEnvironment(\.maxWidth) { $0 = Swift.min($0, 24) })
 
-            Text("Style & layout modifiers (Tab to the list, ↑/↓ scroll):").forgroundColor(.cyan)
+            Text("Style & layout modifiers (Tab to the list, ↑/↓ scroll):").foregroundStyle(.cyan)
                 .padding(.top, 1)
             ScrollView {
-                row(".forgroundColor(.red)", Text("Sample").forgroundColor(.red))
-                row(".background(.yellow)", Text("Sample").background(.yellow).forgroundColor(.black))
+                row(".foregroundStyle(.red)", Text("Sample").foregroundStyle(.red))
+                row(".background(.yellow)", Text("Sample").background(.yellow).foregroundStyle(.black))
                 row(".bold()", Text("Sample").bold())
                 row(".fontWeight(.thin)", Text("Sample").fontWeight(.thin))
                 row(".italic()", Text("Sample").italic())
@@ -123,30 +126,33 @@ struct ModifierCommand: FullScreenCommand {
                 row(".strikethrough()", Text("Sample").strikethrough())
                 row(".blink(.default)", Text("Sample").blink(.default))
                 row(".hidden()", HStack(spacing: 0) {
-                    Text("[").forgroundColor(.eight_bit(240))
+                    Text("[").foregroundStyle(.eightBit(240))
                     Text("Sample").hidden()
-                    Text("] (blanked, keeps its width)").forgroundColor(.eight_bit(240))
+                    Text("] (blanked, keeps its width)").foregroundStyle(.eightBit(240))
                 })
-                row(".padding()", Text("Sample").padding().background(.eight_bit(238)))
-                row(".padding(.leading, 4)", Text("Sample").padding(.leading, 4).background(.eight_bit(238)))
-                row(".padding(EdgeInsets(...))", Text("Sample").padding(EdgeInsets(top: 0, leading: 2, bottom: 0, trailing: 6)).background(.eight_bit(238)))
-                row(".frame(width: 14, height: 3, ...)", Text("Sample").frame(width: 14, height: 3, alignment: .center).background(.eight_bit(238)))
-                row(".frame(maxWidth: .infinity, ...)", Text("Sample").frame(maxWidth: .infinity, alignment: .trailing).background(.eight_bit(238)))
+                row(".padding()", Text("Sample").padding().background(.eightBit(238)))
+                row(".padding(.leading, 4)", Text("Sample").padding(.leading, 4).background(.eightBit(238)))
+                row(".padding(EdgeInsets(...))", Text("Sample").padding(EdgeInsets(top: 0, leading: 2, bottom: 0, trailing: 6)).background(.eightBit(238)))
+                row(".frame(width: 14, height: 3, ...)", Text("Sample").frame(width: 14, height: 3, alignment: .center).background(.eightBit(238)))
+                row(".frame(maxWidth: .infinity, ...)", Text("Sample").frame(maxWidth: .infinity, alignment: .trailing).background(.eightBit(238)))
                 row(".frame(width: 22) + wrapping", Text(paragraph).frame(width: 22, alignment: .topLeading))
                 row(".frame(width: 22, height: 2)", Text(paragraph).frame(width: 22, height: 2, alignment: .topLeading))
                 row(".lineLimit(2)", Text(paragraph).frame(width: 22, alignment: .topLeading).lineLimit(2))
                 row("Gauge().frame(width: 24)", Gauge(value: 0.62).frame(width: 24, alignment: .topLeading))
-                row(".border(.rounded, color: .green)", Text("Sample").padding(.horizontal, 1).border(.rounded, color: .green))
-                row(".border(fill:) + .shadow()", Text("Sample").padding(.horizontal, 1).border(.rounded, color: .white, fill: .eight_bit(24)).shadow())
+                row(".border(.green)", Text("Sample").padding(.horizontal, 1).border(.green))
+                row(".border(.green, style: .double)", Text("Sample").padding(.horizontal, 1).border(.green, style: .double))
+                row(".border(...).background(...)", Text("Sample").padding(.horizontal, 1).border(.white).background(.eightBit(24)))
+                row(".shadow(x: 1, y: 1)", Text("Sample").padding(.horizontal, 1).border(.white).background(.eightBit(24)).shadow(x: 1, y: 1))
+                row(".shadow(color: .blue, radius: 1)", Text("Sample").padding(.horizontal, 1).border(.white).background(.eightBit(24)).shadow(color: .blue, radius: 1))
             }
             .frame(height: 10)
 
             Divider()
                 .padding(.top, 1)
             Text("All of the above wrap .modifier(_:) — conform to ViewModifier for your own.")
-                .forgroundColor(.eight_bit(240))
+                .foregroundStyle(.eightBit(240))
             Text("View-family styles: each view's command   Navigation bar: sclt navigation")
-                .forgroundColor(.eight_bit(240))
+                .foregroundStyle(.eightBit(240))
         }
     }
 }
@@ -166,6 +172,6 @@ private struct WidthRule: View {
     @Environment(\.maxWidth) var maxWidth
 
     var body: some View {
-        Text(repeating: "─", count: maxWidth).forgroundColor(.green)
+        Text(repeating: "─", count: maxWidth).foregroundStyle(.green)
     }
 }

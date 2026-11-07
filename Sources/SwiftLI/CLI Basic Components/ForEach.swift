@@ -50,7 +50,7 @@
 ///
 /// ```swift
 /// ForEach(fruits) { Text($0) }
-///     .forgroundColor(.green)   // every row becomes green
+///     .foregroundStyle(.green)   // every row becomes green
 /// ```
 public struct ForEach<Data: RandomAccessCollection, Content: View>: View {
     let style: TextStyle
@@ -61,6 +61,46 @@ public struct ForEach<Data: RandomAccessCollection, Content: View>: View {
     /// Builds the view for a single element.
     let content: (Data.Element) -> Content
 
+    /// Lowers every element's view, in order — see ``Specialised``.
+    private let lowerChildren: (Data, (Data.Element) -> Content) -> [RenderNode]
+    /// Flattens every element's view into the enclosing container's children.
+    private let flattenChildren: (Data, (Data.Element) -> Content) -> [any View]
+
+    /// The two per-element loops of a `ForEach`, built where the concrete
+    /// `Data` and `Content` are known.
+    ///
+    /// `ForEach` is reached through `any View` at render time, so its own
+    /// methods always run as unspecialised generic code: every element paid
+    /// for opaque collection and view operations, which cost more than
+    /// building and lowering the row itself. The public initializer is
+    /// inlinable, so the closures it creates here are compiled — and
+    /// specialised — in the module that declares the `ForEach`; the generic
+    /// methods just call them.
+    @usableFromInline
+    enum Specialised {
+        @inlinable
+        static func lower(_ data: Data, _ content: (Data.Element) -> Content) -> [RenderNode] {
+            var children: [RenderNode] = []
+            children.reserveCapacity(data.count)
+            var index = 0
+            for element in data {
+                children.append(content(element).lowered(at: index))
+                index += 1
+            }
+            return children
+        }
+
+        @inlinable
+        static func flatten(_ data: Data, _ content: (Data.Element) -> Content) -> [any View] {
+            var views: [any View] = []
+            views.reserveCapacity(data.count)
+            for element in data {
+                views.append(contentsOf: content(element).flattenedChildren())
+            }
+            return views
+        }
+    }
+
     /// Creates a view that generates one child per element of `data`.
     ///
     /// - Parameters:
@@ -68,33 +108,42 @@ public struct ForEach<Data: RandomAccessCollection, Content: View>: View {
     ///     equals the number of elements.
     ///   - content: A ``ViewBuilder`` closure that produces the view for each
     ///     element.
+    @inlinable
     public init(
         _ data: Data,
         @ViewBuilder content: @escaping (Data.Element) -> Content
     ) {
-        self.style = .plain
-        self.data = data
-        self.content = content
+        self.init(
+            style: .plain,
+            data: data,
+            content: content,
+            lowerChildren: Specialised.lower,
+            flattenChildren: Specialised.flatten
+        )
     }
 
+    @usableFromInline
     init(
         style: TextStyle,
         data: Data,
-        content: @escaping (Data.Element) -> Content
+        content: @escaping (Data.Element) -> Content,
+        lowerChildren: @escaping (Data, (Data.Element) -> Content) -> [RenderNode],
+        flattenChildren: @escaping (Data, (Data.Element) -> Content) -> [any View]
     ) {
         self.style = style
         self.data = data
         self.content = content
+        self.lowerChildren = lowerChildren
+        self.flattenChildren = flattenChildren
     }
 
-    /// The content and behavior of this view.
-    public var body: some View {
-        EmptyView()
-    }
+    /// `ForEach` is a structural primitive: it lowers its generated children
+    /// directly and has no body.
+    public typealias Body = Never
 
     @_spi(RenderingInternals)
     public func applyingStyle(_ style: TextStyle) -> Self {
-        ForEach(style: self.style.inheriting(style), data: data, content: content)
+        ForEach(style: self.style.inheriting(style), data: data, content: content, lowerChildren: lowerChildren, flattenChildren: flattenChildren)
     }
 
     /// Lowers the iteration into a transparent ``RenderNode/group`` node whose
@@ -105,7 +154,7 @@ public struct ForEach<Data: RandomAccessCollection, Content: View>: View {
     /// Any accumulated style is cascaded onto every generated child.
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
-        let node = RenderNode.group(children: data.map { content($0).makeNode() })
+        let node = RenderNode.group(children: lowerChildren(data, content))
         return style.isPlain ? node : node.applyingStyle(style)
     }
 
@@ -114,7 +163,7 @@ public struct ForEach<Data: RandomAccessCollection, Content: View>: View {
     /// cascaded onto each.
     @_spi(RenderingInternals)
     public func _flattenedChildren() -> [any View] {
-        let views = data.flatMap { content($0)._flattenedChildren() }
+        let views = flattenChildren(data, content)
         return style.isPlain ? views : views.map { $0.applyingStyle(style) }
     }
 }

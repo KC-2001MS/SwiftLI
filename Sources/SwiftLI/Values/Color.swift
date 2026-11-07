@@ -7,7 +7,7 @@
 
 /// A color value that can be applied to a view's foreground or background.
 ///
-/// Pass a `Color` to ``View/forgroundColor(_:)`` or ``View/background(_:)`` to
+/// Pass a `Color` to ``View/foregroundStyle(_:)`` or ``View/background(_:)`` to
 /// style a view with ANSI terminal colors. SwiftLI maps each value to the
 /// corresponding ANSI SGR (Select Graphic Rendition) color code.
 ///
@@ -18,22 +18,22 @@
 /// ## Named colors (ANSI 3-bit / 4-bit palette)
 ///
 /// ```swift
-/// Text("Error").forgroundColor(.red).render()
-/// Text("Success").forgroundColor(.green).render()
-/// Text("Info").forgroundColor(.cyan).render()
+/// Text("Error").foregroundStyle(.red).render()
+/// Text("Success").foregroundStyle(.green).render()
+/// Text("Info").foregroundStyle(.cyan).render()
 /// ```
 ///
 /// ## 256-color palette
 ///
 /// ```swift
 /// // Orange from the 256-color palette (index 202)
-/// Text("Orange").forgroundColor(.eight_bit(202)).render()
+/// Text("Orange").foregroundStyle(.eightBit(202)).render()
 /// ```
 ///
 /// ## True color (24-bit RGB)
 ///
 /// ```swift
-/// Text("Custom").forgroundColor(.rgb(r: 255, g: 165, b: 0)).render()
+/// Text("Custom").foregroundStyle(.rgb(r: 255, g: 165, b: 0)).render()
 /// ```
 ///
 /// ## Semantic and dynamic colors
@@ -44,8 +44,8 @@
 /// `.environment(\.colorScheme, ...)` overrides per subtree.
 ///
 /// ```swift
-/// Text("Caption").forgroundColor(.secondary)          // scheme-aware grey
-/// Text("Warn").forgroundColor(.dynamic(light: .red, dark: .yellow))
+/// Text("Caption").foregroundStyle(.secondary)          // scheme-aware grey
+/// Text("Warn").foregroundStyle(.dynamic(light: .red, dark: .yellow))
 /// ```
 ///
 /// The SwiftUI standard palette (``orange``, ``pink``, ``purple``, ``brown``,
@@ -114,7 +114,7 @@ public struct Color: Equatable, Sendable, CustomStringConvertible {
     /// A color from the terminal's 256-color palette.
     ///
     /// - Parameter bit: A palette index in the range `0–255`.
-    public static func eight_bit(_ bit: Int) -> Color {
+    public static func eightBit(_ bit: Int) -> Color {
         Color(.palette(bit))
     }
 
@@ -138,7 +138,7 @@ public struct Color: Equatable, Sendable, CustomStringConvertible {
     /// the color resolves inside that subtree.
     ///
     /// ```swift
-    /// Text("Warning").forgroundColor(.dynamic(light: .red, dark: .yellow))
+    /// Text("Warning").foregroundStyle(.dynamic(light: .red, dark: .yellow))
     /// ```
     public static func dynamic(light: Color, dark: Color) -> Color {
         Color(.dynamic(light: light, dark: dark))
@@ -146,37 +146,37 @@ public struct Color: Equatable, Sendable, CustomStringConvertible {
 
     /// A secondary, de-emphasised text color that adapts to the color scheme:
     /// a darker grey on light backgrounds, a lighter grey on dark ones.
-    public static let secondary = Color.dynamic(light: .eight_bit(240), dark: .eight_bit(245))
+    public static let secondary = Color.dynamic(light: .eightBit(240), dark: .eightBit(245))
 
     // MARK: - SwiftUI standard palette (closest 256-color entries)
 
     /// A gray color (256-color palette entry 245).
-    public static let gray = Color.eight_bit(245)
+    public static let gray = Color.eightBit(245)
 
     /// An orange color (256-color palette entry 208).
-    public static let orange = Color.eight_bit(208)
+    public static let orange = Color.eightBit(208)
 
     /// A pink color (256-color palette entry 205).
-    public static let pink = Color.eight_bit(205)
+    public static let pink = Color.eightBit(205)
 
     /// A purple color (256-color palette entry 135).
-    public static let purple = Color.eight_bit(135)
+    public static let purple = Color.eightBit(135)
 
     /// A brown color (256-color palette entry 130).
-    public static let brown = Color.eight_bit(130)
+    public static let brown = Color.eightBit(130)
 
     /// An indigo color (256-color palette entry 63).
-    public static let indigo = Color.eight_bit(63)
+    public static let indigo = Color.eightBit(63)
 
     /// A mint color (256-color palette entry 43).
-    public static let mint = Color.eight_bit(43)
+    public static let mint = Color.eightBit(43)
 
     /// A teal color (256-color palette entry 38).
-    public static let teal = Color.eight_bit(38)
+    public static let teal = Color.eightBit(38)
 
     // MARK: - ANSI lowering
 
-    /// A readable description (`.red`, `.eight_bit(202)`, …), since the
+    /// A readable description (`.red`, `.eightBit(202)`, …), since the
     /// storage itself is private.
     public var description: String {
         switch storage {
@@ -194,7 +194,7 @@ public struct Color: Equatable, Sendable, CustomStringConvertible {
             default:  ".named(\(code))"
             }
         case .palette(let bit):
-            ".eight_bit(\(bit))"
+            ".eightBit(\(bit))"
         case .rgb(let r, let g, let b):
             ".rgb(r: \(r), g: \(g), b: \(b))"
         case .dynamic(let light, let dark):
@@ -216,6 +216,12 @@ public struct Color: Equatable, Sendable, CustomStringConvertible {
             // `.environment(\.colorScheme, ...)` override is honoured.
             (EnvironmentStack.current.colorScheme == .dark ? dark : light).ansi
         }
+    }
+
+    /// Whether the color depends on the color scheme (a `.dynamic` pair).
+    internal var isDynamic: Bool {
+        if case .dynamic = storage { return true }
+        return false
     }
 
     /// Flattens any `.dynamic` layer to a concrete color for the given scheme.

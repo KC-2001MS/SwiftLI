@@ -179,7 +179,7 @@ struct FocusedValueWriter<Value>: View, @unchecked Sendable {
     let keyPath: WritableKeyPath<FocusedValues, Value?>
     let value: Value?
 
-    var body: some View { EmptyView() }
+    typealias Body = Never
 
     func applyingStyle(_ style: TextStyle) -> Self {
         FocusedValueWriter(content: content.applyingStyle(style), keyPath: keyPath, value: value)

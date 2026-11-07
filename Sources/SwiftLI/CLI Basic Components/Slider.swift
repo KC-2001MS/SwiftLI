@@ -95,16 +95,16 @@ public struct DefaultSliderStyle: SliderStyle {
             role: MouseTargetRegistry.trackRole,
             content: HStack(spacing: 0) {
                 if filled > 0 {
-                    Text(repeating: "━", count: filled).forgroundColor(fillColor)
+                    Text(repeating: "━", count: filled).foregroundStyle(fillColor)
                 }
-                Text(content: "●").forgroundColor(fillColor).bold(configuration.isFocused)
+                Text(content: "●").foregroundStyle(fillColor).bold(configuration.isFocused)
                 if empty > 0 {
-                    Text(repeating: "─", count: empty).forgroundColor(.eight_bit(240))
+                    Text(repeating: "─", count: empty).foregroundStyle(.eightBit(240))
                 }
             }
         )
         return HStack(spacing: 0) {
-            if configuration.isFocused { Text(content: "> ").forgroundColor(.cyan) }
+            if configuration.isFocused { Text(content: "> ").foregroundStyle(.cyan) }
             if let label = configuration.label {
                 label
                 Text(content: " ")
@@ -250,10 +250,37 @@ public struct Slider: View, @unchecked Sendable {
         self.style = style
     }
 
-    /// The rendered content of this slider; always empty because the slider
-    /// is drawn by ``makeNode()`` during the rendering pass.
+    /// The resolved ``SliderStyle``'s body for the slider's current value and
+    /// focus, hosted as a focusable control and carrying the slider's own
+    /// text style.
     public var body: some View {
-        EmptyView()
+        resolvedStyle.makeBody(configuration: configuration)
+    }
+
+    /// Nearest wins: instance style, then subtree environment, then default.
+    private var resolvedStyle: AnySliderStyle {
+        style ?? EnvironmentStack.current.sliderStyle ?? AnySliderStyle(DefaultSliderStyle())
+    }
+
+    /// The style configuration: the value clamped to the range and the track
+    /// auto-sized to the columns this slider is allotted, minus the style's
+    /// chrome and the label, following ``Gauge``.
+    private var configuration: SliderStyleConfiguration {
+        let resolvedStyle = self.resolvedStyle
+        let labelReserve = label.map { NodeLayout.measure($0.makeNode()).width + 1 } ?? 0
+        let available = EnvironmentStack.current.maxWidth
+        let resolvedWidth = width ?? Swift.max(1, available - resolvedStyle.reservedColumns - labelReserve)
+
+        let clamped = Swift.min(Swift.max(value.wrappedValue, range.lowerBound), range.upperBound)
+        var configuration = SliderStyleConfiguration(
+            label: label,
+            value: clamped,
+            range: range,
+            width: resolvedWidth,
+            isFocused: FocusCoordinator.shared.isFocused(id)
+        )
+        configuration._controlID = id
+        return configuration
     }
 
     @_spi(RenderingInternals)
@@ -268,30 +295,14 @@ public struct Slider: View, @unchecked Sendable {
         return span > 0 ? span / 20 : 1
     }
 
+    /// Registers the slider for keyboard handling, then lowers ``body`` with
+    /// the slider's own text style cascaded onto it as the slider's pointer
+    /// footprint.
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
         FocusCoordinator.shared.registerSlider(id: id, value: value, range: range, step: resolvedStep)
         KeyInputRouter.shared.ensureStarted()
-
-        // Nearest wins: instance style, then subtree environment, then default.
-        let resolvedStyle = style ?? EnvironmentStack.current.sliderStyle ?? AnySliderStyle(DefaultSliderStyle())
-
-        // Auto-size the track to the columns this slider is allotted, minus
-        // the style's chrome and the label, following ``Gauge``.
-        let labelReserve = label.map { NodeLayout.measure($0.makeNode()).width + 1 } ?? 0
-        let available = EnvironmentStack.current.maxWidth
-        let resolvedWidth = width ?? Swift.max(1, available - resolvedStyle.reservedColumns - labelReserve)
-
-        let clamped = Swift.min(Swift.max(value.wrappedValue, range.lowerBound), range.upperBound)
-        var configuration = SliderStyleConfiguration(
-            label: label,
-            value: clamped,
-            range: range,
-            width: resolvedWidth,
-            isFocused: FocusCoordinator.shared.isFocused(id)
-        )
-        configuration._controlID = id
-        let node = resolvedStyle.makeBody(configuration: configuration).makeNode()
+        let node = body.makeNode()
         return (textStyle.isPlain ? node : node.applyingStyle(textStyle)).asControl(id: id)
     }
 

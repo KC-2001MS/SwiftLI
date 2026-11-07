@@ -30,21 +30,21 @@ struct TupleViewCommand: InlineCommand {
     var body: some Scene {
         NavigationStack {
             Text("TupleView((repeat each Content))")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
                 .navigationTitle("TupleView")
 
             // Direct construction — normally a ViewBuilder makes this for you
             // whenever a closure contains more than one view statement.
             TupleView((
-                Text("First").forgroundColor(.red),
-                Text("Second").forgroundColor(.green),
-                Text("Third").forgroundColor(.blue)
+                Text("First").foregroundStyle(.red),
+                Text("Second").foregroundStyle(.green),
+                Text("Third").foregroundStyle(.blue)
             ))
 
             // A TupleView is transparent: inside an HStack its children join
             // the row individually, with the stack's own spacing.
             Text("Flattened into an HStack(spacing: 3):")
-                .forgroundColor(.eight_bit(245))
+                .foregroundStyle(.eightBit(245))
                 .padding(.top, 1)
 
             HStack(spacing: 3) {

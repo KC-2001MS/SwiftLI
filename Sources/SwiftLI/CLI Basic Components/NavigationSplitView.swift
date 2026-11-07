@@ -61,11 +61,12 @@ public struct NavigationSplitView: View {
         self.detail = AnyView(detail())
     }
 
-    /// The body of the view; returns an ``EmptyView`` because rendering is
-    /// handled by ``makeNode()``.
-    public var body: some View {
-        EmptyView()
-    }
+    /// The title bar above the columns: side by side in full-screen mode,
+    /// stacked (with pushed layers appended) inline.
+    /// A navigation container is a rendering root: it lowers its columns and
+    /// layers directly (inert ones with registration suppressed) and has no
+    /// body.
+    public typealias Body = Never
 
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
@@ -88,11 +89,11 @@ public struct NavigationSplitView: View {
             // in a vstack so multiple views in its builder stack vertically —
             // a bare `.group` would be flattened into the enclosing hstack
             // and lay them out side by side.
-            let sidebarNode = RenderNode.vstack(alignment: .leading, spacing: 0, children: [scoped(sidebar).makeNode()])
-            let detailNode = RenderNode.vstack(alignment: .leading, spacing: 0, children: [scoped(layers.last ?? detail).makeNode()])
+            let sidebarNode = RenderNode.vstack(alignment: .leading, spacing: 0, children: [scoped(sidebar).lowered(at: 0)])
+            let detailNode = RenderNode.vstack(alignment: .leading, spacing: 0, children: [scoped(layers.last ?? detail).lowered(at: 1 + layers.count)])
             let height = Swift.max(NodeLayout.measure(sidebarNode).height, NodeLayout.measure(detailNode).height)
             let rule = VStack(alignment: .leading, spacing: 0, children: (0..<height).map { _ in
-                Text(content: "│").forgroundColor(.eight_bit(240))
+                Text(content: "│").foregroundStyle(.eightBit(240))
             }).makeNode()
             content = .hstack(alignment: .top, spacing: 1, children: [sidebarNode, rule, detailNode])
         } else {
@@ -100,16 +101,16 @@ public struct NavigationSplitView: View {
             // accumulate below. Only the newest layer's controls stay live.
             var nodes: [RenderNode] = []
             if layers.isEmpty {
-                nodes.append(scoped(sidebar).makeNode())
-                nodes.append(scoped(detail).makeNode())
+                nodes.append(scoped(sidebar).lowered(at: 0))
+                nodes.append(scoped(detail).lowered(at: 1))
             } else {
-                nodes.append(FocusCoordinator.shared.withRegistrationSuppressed { scoped(sidebar).makeNode() })
-                nodes.append(FocusCoordinator.shared.withRegistrationSuppressed { scoped(detail).makeNode() })
+                nodes.append(FocusCoordinator.shared.withRegistrationSuppressed { scoped(sidebar).lowered(at: 0) })
+                nodes.append(FocusCoordinator.shared.withRegistrationSuppressed { scoped(detail).lowered(at: 1) })
                 for (index, layer) in layers.enumerated() {
                     if index == layers.count - 1 {
-                        nodes.append(scoped(layer).makeNode())
+                        nodes.append(scoped(layer).lowered(at: 2 + index))
                     } else {
-                        nodes.append(FocusCoordinator.shared.withRegistrationSuppressed { scoped(layer).makeNode() })
+                        nodes.append(FocusCoordinator.shared.withRegistrationSuppressed { scoped(layer).lowered(at: 2 + index) })
                     }
                 }
             }

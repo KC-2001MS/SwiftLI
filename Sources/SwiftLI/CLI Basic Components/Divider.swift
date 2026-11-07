@@ -15,9 +15,10 @@
 ///
 /// ## Width of a horizontal divider
 ///
-/// - `Divider()` (no count) fills the **full terminal width**, recomputed on
-///   every render — so it follows the window as it is resized.
-/// - `Divider(n)` inside a stack spans the stack; standalone it is `n` columns.
+/// Like SwiftUI's, `Divider()` fills the space it is given: standalone it
+/// spans the **full terminal width**, recomputed on every render so it
+/// follows the window as it is resized, and inside a ``VStack`` it spans the
+/// stack. Constrain it with ``View/frame(width:height:alignment:)``.
 ///
 /// ```swift
 /// // Full-width rule that tracks the terminal size:
@@ -30,10 +31,10 @@
 ///     Text("Right")
 /// }
 ///
-/// // Horizontal rule spanning a VStack:
+/// // Horizontal rule limited to nine columns:
 /// VStack {
 ///     Text("Section A")
-///     Divider(9)
+///     Divider().frame(width: 9)
 ///     Text("Section B")
 /// }
 /// ```
@@ -57,9 +58,11 @@ public struct Divider: View, Sendable, Equatable {
     /// count is given.
     public let fillsWidth: Bool
 
-    // MARK: - Public initialisers
+    // MARK: - Initialisers
 
-    /// Creates a divider that fills the full terminal width when horizontal.
+    /// Creates a divider, mirroring SwiftUI's `Divider()`.
+    ///
+    /// The divider fills the space it is given when horizontal.
     ///
     /// Inside an ``HStack`` it is a vertical bar as tall as the stack; anywhere
     /// else it is a horizontal line spanning every column of the terminal,
@@ -72,11 +75,12 @@ public struct Divider: View, Sendable, Equatable {
         self.fillsWidth = true
     }
 
-    /// Creates a fixed-width divider.
+    /// Creates a fixed-width divider. Internal: public code sizes a divider
+    /// with `.frame(width:)`, as in SwiftUI.
     ///
     /// - Parameter count: The number of columns for a horizontal divider. Inside
     ///   a ``VStack`` the divider instead spans the stack width.
-    public init(_ count: Int) {
+    init(_ count: Int) {
         self.style = .plain
         self.character = "-"
         self.verticalCharacter = "|"
@@ -85,12 +89,14 @@ public struct Divider: View, Sendable, Equatable {
     }
 
     /// Creates a divider with explicit horizontal and vertical characters.
+    /// Internal: SwiftUI's `Divider` has no glyph parameters; use
+    /// ``lineStyle(_:)`` from public code.
     ///
     /// - Parameters:
     ///   - character: The character drawn for a horizontal divider.
     ///   - verticalCharacter: The character drawn for a vertical divider inside ``HStack``.
     ///   - count: The number of columns for a fixed-width horizontal divider.
-    public init(character: Character, verticalCharacter: Character = "|", count: Int = 1) {
+    init(character: Character, verticalCharacter: Character = "|", count: Int = 1) {
         self.style = .plain
         self.character = character
         self.verticalCharacter = verticalCharacter
@@ -108,9 +114,9 @@ public struct Divider: View, Sendable, Equatable {
 
     // MARK: - View (horizontal / default context)
 
-    public var body: some View {
-        EmptyView()
-    }
+    /// `Divider` is a rendering leaf: it lowers directly via ``makeNode()``
+    /// and has no body.
+    public typealias Body = Never
 
     @_spi(RenderingInternals)
     public func applyingStyle(_ style: TextStyle) -> Self {
@@ -133,13 +139,13 @@ public struct Divider: View, Sendable, Equatable {
     ///
     /// - Parameter style: The desired ``LineStyle``.
     ///   - `.default`: uses `-` (horizontal) and `|` (vertical).
-    ///   - `.double_line`: uses `=` (horizontal) and `‖` (vertical).
+    ///   - `.doubleLine`: uses `=` (horizontal) and `‖` (vertical).
     /// - Returns: A new `Divider` with the updated characters.
     public func lineStyle(_ style: LineStyle) -> Divider {
         switch style {
         case .default:
             return .init(style: self.style, character: "-", verticalCharacter: "|", count: self.count, fillsWidth: self.fillsWidth)
-        case .double_line:
+        case .doubleLine:
             return .init(style: self.style, character: "=", verticalCharacter: "‖", count: self.count, fillsWidth: self.fillsWidth)
         }
     }

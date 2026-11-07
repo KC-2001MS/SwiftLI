@@ -66,7 +66,7 @@ struct DashboardCommand: FullScreenCommand {
             HStack(alignment: .top, spacing: 2) {
                 // Left: task list, each row a label + its own progress bar.
                 VStack(alignment: .leading) {
-                    Text("Tasks").bold().underline().forgroundColor(.cyan)
+                    Text("Tasks").bold().underline().foregroundStyle(.cyan)
                     ForEach(0..<tasks.count) { index in
                         HStack(spacing: 1) {
                             Text(pad(tasks[index], to: 9))
@@ -79,11 +79,11 @@ struct DashboardCommand: FullScreenCommand {
 
                 // Right: overall progress and live stats.
                 VStack(alignment: .leading) {
-                    Text("Overall").bold().underline().forgroundColor(.cyan)
+                    Text("Overall").bold().underline().foregroundStyle(.cyan)
                     Gauge(value: overall).frame(width: 24, alignment: .topLeading)
-                    Text("Completed : \(completed)/\(tasks.count)").forgroundColor(.green)
+                    Text("Completed : \(completed)/\(tasks.count)").foregroundStyle(.green)
                         .padding(.top, 1)
-                    Text("Remaining : \(tasks.count - completed)").forgroundColor(.yellow)
+                    Text("Remaining : \(tasks.count - completed)").foregroundStyle(.yellow)
                     Text("Tick      : \(tick)")
                     ProgressView(completed == tasks.count ? "Done" : "Working", phase: tick)
                         .padding(.top, 1)
@@ -101,7 +101,7 @@ struct DashboardCommand: FullScreenCommand {
             Divider()
                 .padding(.top, 1)
             Text("Ctrl+C to quit — resize the window to see the layout follow")
-                .forgroundColor(.eight_bit(240))
+                .foregroundStyle(.eightBit(240))
         }
     }
 }

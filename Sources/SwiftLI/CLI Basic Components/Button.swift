@@ -65,15 +65,15 @@ public struct DefaultButtonStyle: ButtonStyle {
     /// - Returns: An `HStack` wrapping the label with bracket decorations.
     public func makeBody(configuration: ButtonStyleConfiguration) -> some View {
         let destructive = configuration.role == .destructive
-        let bracket: Color = configuration.isFocused ? .cyan : .eight_bit(240)
+        let bracket: Color = configuration.isFocused ? .cyan : .eightBit(240)
         let labelColor: Color = destructive ? .red : (configuration.isFocused ? .cyan : .primary)
         HStack(spacing: 0) {
-            if configuration.isFocused { Text(content: "> ").forgroundColor(.cyan) }
-            Text(content: "[ ").forgroundColor(bracket)
+            if configuration.isFocused { Text(content: "> ").foregroundStyle(.cyan) }
+            Text(content: "[ ").foregroundStyle(bracket)
             configuration.label
                 .bold(configuration.isFocused)
-                .forgroundColor(labelColor)
-            Text(content: " ]").forgroundColor(bracket)
+                .foregroundStyle(labelColor)
+            Text(content: " ]").foregroundStyle(bracket)
         }
     }
 }
@@ -91,9 +91,9 @@ public struct BorderedButtonStyle: ButtonStyle {
         let destructive = configuration.role == .destructive
         configuration.label
             .bold(configuration.isFocused)
-            .forgroundColor(destructive ? .red : .primary)
+            .foregroundStyle(destructive ? .red : .primary)
             .padding(.horizontal, 1)
-            .border(.rounded, color: configuration.isFocused ? .cyan : .eight_bit(240))
+            .border(configuration.isFocused ? .cyan : .eightBit(240))
     }
 }
 
@@ -110,7 +110,7 @@ public struct PlainButtonStyle: ButtonStyle {
         let destructive = configuration.role == .destructive
         configuration.label
             .bold(configuration.isFocused)
-            .forgroundColor(destructive ? .red : (configuration.isFocused ? .cyan : .eight_bit(245)))
+            .foregroundStyle(destructive ? .red : (configuration.isFocused ? .cyan : .eightBit(245)))
     }
 }
 
@@ -235,9 +235,18 @@ public struct Button: View {
         self.style = style
     }
 
-    /// The button's view body; rendering is performed via ``makeNode()`` rather than this property.
+    /// The resolved ``ButtonStyle``'s body for the button's current focus.
     public var body: some View {
-        EmptyView()
+        resolvedStyle.makeBody(configuration: ButtonStyleConfiguration(
+            label: label,
+            role: role,
+            isFocused: FocusCoordinator.shared.isFocused(id)
+        ))
+    }
+
+    /// Nearest wins: instance style, then subtree environment, then default.
+    private var resolvedStyle: AnyButtonStyle {
+        style ?? EnvironmentStack.current.buttonStyle ?? AnyButtonStyle(DefaultButtonStyle())
     }
 
     @_spi(RenderingInternals)
@@ -245,19 +254,15 @@ public struct Button: View {
         Button(textStyle: textStyle.inheriting(style), id: id, label: label, role: role, action: action, style: self.style)
     }
 
+    /// Registers the button for keyboard handling (every pass, so the
+    /// coordinator has the latest action), then lowers ``body`` with the
+    /// button's own text style cascaded onto it as the button's pointer
+    /// footprint.
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
         FocusCoordinator.shared.registerButton(id: id, action: action)
         KeyInputRouter.shared.ensureStarted()
-
-        let configuration = ButtonStyleConfiguration(
-            label: label,
-            role: role,
-            isFocused: FocusCoordinator.shared.isFocused(id)
-        )
-        // Nearest wins: instance style, then subtree environment, then default.
-        let resolvedStyle = style ?? EnvironmentStack.current.buttonStyle ?? AnyButtonStyle(DefaultButtonStyle())
-        let node = resolvedStyle.makeBody(configuration: configuration).makeNode()
+        let node = body.makeNode()
         return (textStyle.isPlain ? node : node.applyingStyle(textStyle)).asControl(id: id)
     }
 

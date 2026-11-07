@@ -29,7 +29,7 @@ struct TextCommand: InlineCommand {
         NavigationStack {
             HStack(spacing: 1) {
                 Text("Text(_ content: String)")
-                    .forgroundColor(.cyan)
+                    .foregroundStyle(.cyan)
                 Spacer(minLength: 2)
                 Text("Hello, SwiftLI!")
                     .bold()
@@ -37,12 +37,12 @@ struct TextCommand: InlineCommand {
             .navigationTitle("Text")
 
             HStack(spacing: 1) {
-                Text("Text.forgroundColor(_ color: Color)")
-                    .forgroundColor(.red)
+                Text("Text.foregroundStyle(_ color: Color)")
+                    .foregroundStyle(.red)
                 Spacer(minLength: 2)
                 Text(".red")
                     .fontWeight(.thin)
-                    .forgroundColor(.red)
+                    .foregroundStyle(.red)
             }
 
             HStack(spacing: 1) {
@@ -51,7 +51,7 @@ struct TextCommand: InlineCommand {
                 Spacer(minLength: 2)
                 Text(".red")
                     .fontWeight(.thin)
-                    .forgroundColor(.red)
+                    .foregroundStyle(.red)
             }
 
             Text("Text.bold()")
@@ -63,7 +63,7 @@ struct TextCommand: InlineCommand {
                 Spacer(minLength: 2)
                 Text("false")
                     .fontWeight(.thin)
-                    .forgroundColor(.red)
+                    .foregroundStyle(.red)
             }
 
             HStack(spacing: 1) {
@@ -72,7 +72,7 @@ struct TextCommand: InlineCommand {
                 Spacer(minLength: 2)
                 Text(".thin")
                     .fontWeight(.thin)
-                    .forgroundColor(.red)
+                    .foregroundStyle(.red)
             }
 
             Text("Text.italic()")
@@ -84,7 +84,7 @@ struct TextCommand: InlineCommand {
                 Spacer(minLength: 2)
                 Text("false")
                     .fontWeight(.thin)
-                    .forgroundColor(.red)
+                    .foregroundStyle(.red)
             }
 
             Text("Text.underline()")
@@ -96,7 +96,7 @@ struct TextCommand: InlineCommand {
                 Spacer(minLength: 2)
                 Text("false")
                     .fontWeight(.thin)
-                    .forgroundColor(.red)
+                    .foregroundStyle(.red)
             }
 
             HStack(spacing: 1) {
@@ -105,7 +105,7 @@ struct TextCommand: InlineCommand {
                 Spacer(minLength: 2)
                 Text(".default")
                     .fontWeight(.thin)
-                    .forgroundColor(.red)
+                    .foregroundStyle(.red)
             }
 
             Text("Text.hidden()")
@@ -117,7 +117,7 @@ struct TextCommand: InlineCommand {
                 Spacer(minLength: 2)
                 Text("false")
                     .fontWeight(.thin)
-                    .forgroundColor(.red)
+                    .foregroundStyle(.red)
             }
 
             Text("Text.strikethrough()")
@@ -129,7 +129,7 @@ struct TextCommand: InlineCommand {
                 Spacer(minLength: 2)
                 Text("false")
                     .fontWeight(.thin)
-                    .forgroundColor(.red)
+                    .foregroundStyle(.red)
             }
         }
     }

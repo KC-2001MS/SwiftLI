@@ -16,7 +16,7 @@
 ///
 /// Apply a modifier with ``View/modifier(_:)``; the built-in modifiers
 /// (``View/padding(_:)``, ``View/frame(width:height:alignment:)``,
-/// ``View/border(_:color:fill:)``, …) are thin wrappers over it.
+/// ``View/border(_:style:)``, …) are thin wrappers over it.
 public protocol ViewModifier {
     /// Returns the node that replaces `content` (the modified view's node).
     func node(for content: RenderNode) -> RenderNode
@@ -40,17 +40,24 @@ public extension ViewModifier {
 struct ModifiedContent: View, @unchecked Sendable {
     let content: any View
     let modifier: any ViewModifier
+    /// Styles applied *after* the modifier (`.padding().background(.blue)`),
+    /// cascaded onto the lowered node so they cover the modifier's footprint
+    /// — padding cells, frame slack — as SwiftUI does.
+    var style: TextStyle = .plain
 
-    var body: some View {
-        EmptyView()
+    typealias Body = Never
+
+    func applyingStyle(_ style: TextStyle) -> ModifiedContent {
+        ModifiedContent(content: content, modifier: modifier, style: self.style.inheriting(style))
     }
 
     func makeNode() -> RenderNode {
         var values = EnvironmentStack.current
         modifier.adjustEnvironment(&values)
-        return EnvironmentStack.with(values) {
+        let node = EnvironmentStack.with(values) {
             modifier.node(for: content.makeNode())
         }
+        return style.isPlain ? node : node.applyingStyle(style)
     }
 }
 

@@ -29,7 +29,7 @@ struct GroupBoxCommand: InlineCommand {
     var body: some Scene {
         NavigationStack {
             Text("GroupBox(_ title: LocalizedStringKey?)")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
                 .navigationTitle("GroupBox")
 
             GroupBox("Network") {
@@ -38,7 +38,7 @@ struct GroupBoxCommand: InlineCommand {
             }
 
             Text("GroupBox { } — no title")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
                 .padding(.top, 1)
 
             GroupBox {
@@ -49,7 +49,7 @@ struct GroupBoxCommand: InlineCommand {
             // and content are composed. `.automatic` is the padded rounded
             // border; a custom GroupBoxStyle can drop the border entirely.
             Text("GroupBox.groupBoxStyle(_ newStyle: GroupBoxStyle)")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
                 .padding(.top, 1)
 
             GroupBox("Default (.automatic)") {

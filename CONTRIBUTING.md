@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Thank you for your interest in contributing to SwiftLI. SwiftLI provides an easy way to persist data without using Key Value and is designed to integrate seamlessly with SwiftUI.
+Thank you for your interest in contributing to SwiftLI. SwiftLI is a library for building command-line displays in Swift with a SwiftUI-like declarative API, and it is designed so that SwiftUI knowledge carries over directly.
 
 ## How to Contribute
 

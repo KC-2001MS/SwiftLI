@@ -32,21 +32,21 @@ struct LabelCommand: InlineCommand {
                     "init(_ title: String, unicodeImage: Int)",
                     unicodeImage: 0x2705
                 )
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
                 Spacer()
                 Text("0x2705 ✅")
                     .fontWeight(.thin)
-                    .forgroundColor(.green)
+                    .foregroundStyle(.green)
             }
             .navigationTitle("Label")
 
             HStack(spacing: 1) {
                 Label(image: "★", title: "init(image: String, title: String)")
-                    .forgroundColor(.cyan)
+                    .foregroundStyle(.cyan)
                 Spacer()
                 Text("★")
                     .fontWeight(.thin)
-                    .forgroundColor(.yellow)
+                    .foregroundStyle(.yellow)
             }
 
             HStack(spacing: 1) {
@@ -55,7 +55,7 @@ struct LabelCommand: InlineCommand {
                 Spacer()
                 Text("icon only")
                     .fontWeight(.thin)
-                    .forgroundColor(.red)
+                    .foregroundStyle(.red)
             }
 
             HStack(spacing: 1) {
@@ -64,7 +64,7 @@ struct LabelCommand: InlineCommand {
                 Spacer()
                 Text("title only")
                     .fontWeight(.thin)
-                    .forgroundColor(.red)
+                    .foregroundStyle(.red)
             }
         }
     }

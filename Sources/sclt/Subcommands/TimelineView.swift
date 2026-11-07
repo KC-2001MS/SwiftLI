@@ -51,7 +51,7 @@ struct TimelineViewCommand: FullScreenCommand {
     var body: some Scene {
         NavigationStack {
             // 1) A clock that ticks once per second.
-            Text("Clock — .periodic(by: 1)").forgroundColor(.cyan)
+            Text("Clock — .periodic(by: 1)").foregroundStyle(.cyan)
                 .navigationTitle("TimelineView")
                 .task {
                     // Stay alive for the demo, then dismiss. (Ctrl+C exits early.)
@@ -61,25 +61,25 @@ struct TimelineViewCommand: FullScreenCommand {
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 HStack(spacing: 1) {
                     Text("  \(Self.clock.string(from: context.date))").bold()
-                    Text("[\(cadenceName(context.cadence))]").forgroundColor(.eight_bit(240))
+                    Text("[\(cadenceName(context.cadence))]").foregroundStyle(.eightBit(240))
                 }
             }
 
             // 2) An animation-rate spinner (~30 fps) driven purely by the date.
                 .padding(.top, 1)
-            Text("Spinner — .animation").forgroundColor(.cyan)
+            Text("Spinner — .animation").foregroundStyle(.cyan)
             TimelineView(.animation) { context in
                 let frames = ProgressSpinner.frames
                 let index = Int(context.date.timeIntervalSinceReferenceDate * 12) % frames.count
                 HStack(spacing: 1) {
-                    Text("  \(frames[index])").forgroundColor(.green)
+                    Text("  \(frames[index])").foregroundStyle(.green)
                     Text("working...")
                 }
             }
 
             // 3) A seconds bar that sweeps 0…59 within each minute.
                 .padding(.top, 1)
-            Text("Seconds sweep — .periodic(by: 1)").forgroundColor(.cyan)
+            Text("Seconds sweep — .periodic(by: 1)").foregroundStyle(.cyan)
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 let second = Calendar.current.component(.second, from: context.date)
                 let filled = String(repeating: "█", count: second)
@@ -90,7 +90,7 @@ struct TimelineViewCommand: FullScreenCommand {
             Divider()
                 .padding(.top, 1)
             Text("Each row updates on its own cadence — Ctrl+C to quit")
-                .forgroundColor(.eight_bit(240))
+                .foregroundStyle(.eightBit(240))
         }
     }
 }

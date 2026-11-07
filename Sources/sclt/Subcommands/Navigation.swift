@@ -40,7 +40,7 @@ struct NavigationCommand: FullScreenCommand {
                         Text("Language: English")
                         Text("Time zone: UTC+9")
                         Text("(title bar: .navigationBarTitleDisplayMode(.inline))")
-                            .forgroundColor(.eight_bit(240))
+                            .foregroundStyle(.eightBit(240))
                     }
                         .navigationTitle("General")
                         .navigationSubtitle("compact bar")
@@ -52,7 +52,7 @@ struct NavigationCommand: FullScreenCommand {
                         Text("Status: Connected")
                         Text("Latency: 24 ms")
                         Text("(title bar: .toolbarBackground + .toolbarColorScheme + .toolbarRole(.editor))")
-                            .forgroundColor(.eight_bit(240))
+                            .foregroundStyle(.eightBit(240))
                     }
                         .navigationTitle("Network")
                         // A filled bar with a forced-dark (light text) scheme
@@ -64,7 +64,7 @@ struct NavigationCommand: FullScreenCommand {
             }
         } detail: {
             Text("Select a section with Return or Space.")
-                .forgroundColor(.eight_bit(240))
+                .foregroundStyle(.eightBit(240))
                 .navigationTitle("Navigation")
                 .navigationSubtitle("sclt sample")
                 // Toolbar items fill the title bar by segment: a principal
@@ -78,7 +78,7 @@ struct NavigationCommand: FullScreenCommand {
                     }
                 }
             Text("saves: \(saves)")
-                .forgroundColor(.yellow)
+                .foregroundStyle(.yellow)
                 .padding(.top, 1)
         }
     }

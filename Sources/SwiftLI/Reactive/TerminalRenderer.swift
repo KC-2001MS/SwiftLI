@@ -53,6 +53,10 @@ public final class TerminalRenderer: @unchecked Sendable {
 
     /// The most recently displayed frame, or `nil` before the first render.
     private var previousFrame: Frame?
+    /// What the session keeps between frames: unchanged subtrees, their
+    /// measurements, and child views' `@State`. Replaced when a session
+    /// starts so it never carries another session's state.
+    private(set) var retained = RetainedTree()
     /// The terminal width used for the previous frame, to detect a resize.
     private var previousColumns: Int?
     private let lock = NSLock()
@@ -74,6 +78,7 @@ public final class TerminalRenderer: @unchecked Sendable {
         lock.lock()
         previousFrame = nil
         previousColumns = nil
+        retained = RetainedTree()
         lock.unlock()
 
         TerminalOutput.write(ANSICode.enterAltScreen + ANSICode.hideCursor + ANSICode.clearScreen + ANSICode.cursorHome)
@@ -95,6 +100,7 @@ public final class TerminalRenderer: @unchecked Sendable {
     public func setup() {
         lock.lock()
         previousFrame = nil
+        retained = RetainedTree()
         lock.unlock()
 
         TerminalOutput.write(ANSICode.clearScreen + ANSICode.cursorHome)
@@ -107,21 +113,31 @@ public final class TerminalRenderer: @unchecked Sendable {
     /// 2. Lowers all views into a single ``RenderNode`` and lays it out.
     /// 3. Diffs the resulting ``Frame`` against the previous one and emits the
     ///    minimal escape sequence to reconcile them.
-    /// 4. Shows the cursor again.
+    /// 4. Repositions the real cursor over the focused control's own inline
+    ///    cursor glyph, without ever showing it — see the note on `output` below.
     ///
     /// - Parameter views: The array of views to render.
     public func renderFullScreen(_ views: [any View]) {
+        // One render pass: the terminal size is read once and container
+        // measurements are shared between lowering and layout.
+        RenderPassContext.withPass(retaining: retained) { renderFullScreenPass(views) }
+    }
+
+    private func renderFullScreenPass(_ views: [any View]) {
         // Bracket the pass so the coordinator knows which controls are in
         // this frame — the idle check keeps the session alive while any are.
         FocusCoordinator.shared.beginRenderPass()
-        defer { FocusCoordinator.shared.endRenderPass() }
         // Full-screen frames start at the terminal's first row, so mouse
         // coordinates address the frame directly.
         MouseTargetRegistry.shared.setFullScreenOrigin()
 
         // Wrap all views in an implicit root VStack so they stack vertically.
-        let root = RenderNode.vstack(alignment: .leading, spacing: 0, children: views.map { $0.makeNode() })
+        let root = RenderNode.vstack(alignment: .leading, spacing: 0, children: views.enumerated().map { $1.lowered(at: $0) })
         var frame = NodeLayout.frame(of: root)
+        // End the pass now (not deferred): this is what flips `MouseTargetRegistry`
+        // over to the regions just recorded above, which the cursor repositioning
+        // below needs to resolve against — not the previous frame's regions.
+        FocusCoordinator.shared.endRenderPass()
         // Clip every line to the terminal width so nothing wraps onto a second
         // physical row, and cap the number of lines to the terminal height so
         // the frame never overflows and scrolls. Both would break the
@@ -131,9 +147,33 @@ public final class TerminalRenderer: @unchecked Sendable {
         // Full-screen draws each line with absolute cursor positioning (no
         // trailing newline), so writing the final column can't trigger a wrap —
         // the whole width is usable. Empty area below simply stays blank.
-        frame.lines = frame.lines.map { TextMetrics.truncate($0, toColumns: columns) }
-        if frame.lines.count > size.rows {
-            frame.lines = Array(frame.lines.prefix(size.rows))
+        // Except the terminal's absolute bottom-right cell: filling *that*
+        // one is the classic VT100 "corner" ambiguity — unlike every other
+        // cell, there's no next row for a deferred auto-wrap to land on, and
+        // at least one terminal observed in testing responds by scrolling
+        // its whole screen up a line instead of deferring, which desyncs
+        // every following absolute-row write by one line until the next full
+        // repaint papers over it. Leave that single cell permanently blank.
+        if var rows = frame.rows {
+            // Clip the cells, then derive the lines from them, so the two
+            // views of the frame can never disagree.
+            rows = rows.map { FrameDiff.truncate($0, toColumns: columns) }
+            if rows.count > size.rows {
+                rows = Array(rows.prefix(size.rows))
+            }
+            if rows.count == size.rows, let last = rows.last {
+                rows[rows.count - 1] = FrameDiff.truncate(last, toColumns: Swift.max(0, columns - 1))
+            }
+            frame.rows = rows
+            frame.lines = rows.map { TerminalCanvas.emit($0[...]) }
+        } else {
+            frame.lines = frame.lines.map { TextMetrics.truncate($0, toColumns: columns) }
+            if frame.lines.count > size.rows {
+                frame.lines = Array(frame.lines.prefix(size.rows))
+            }
+            if frame.lines.count == size.rows, let last = frame.lines.last {
+                frame.lines[frame.lines.count - 1] = TextMetrics.truncate(last, toColumns: Swift.max(0, columns - 1))
+            }
         }
 
         // Hold the lock across the whole compute-and-write. The frame bookkeeping
@@ -148,14 +188,40 @@ public final class TerminalRenderer: @unchecked Sendable {
         // the previous frame and clear the screen before redrawing.
         let resized = previousColumns != nil && previousColumns != columns
         let baseline = resized ? nil : previousFrame
-        let diff = FrameDiff.fullScreenUpdate(from: baseline, to: frame)
+        // Diff cell by cell when both frames carry cells (every frame laid out
+        // by `NodeLayout` does); the line-based diff remains for string frames.
+        let diff: String
+        if let newRows = frame.rows, baseline == nil || baseline?.rows != nil {
+            diff = FrameDiff.fullScreenUpdate(fromRows: baseline?.rows, toRows: newRows, preamble: frame.preamble)
+        } else {
+            diff = FrameDiff.fullScreenUpdate(from: baseline, to: frame)
+        }
         previousFrame = frame
         previousColumns = columns
 
         // Emit the frame as a single write so it can't be split by another render.
+        // The real hardware cursor is NEVER shown (`?25l` only, never `?25h`):
+        // focusable controls (TextField, TextEditor) already draw their own
+        // reverse-video block cursor as part of the frame content, and visibly
+        // showing the real cursor too would draw two cursors on top of each other.
+        // But its *position* still matters even while invisible: terminals like
+        // Terminal.app/iTerm2 anchor an IME's composition-candidate popup to the
+        // real cursor's last position regardless of visibility, so if a focused
+        // text control reported where its own cursor glyph is this frame, move
+        // the real (still-hidden) cursor there — otherwise the popup appears
+        // wherever the diff-writing incidentally left the cursor (often far from
+        // the actual edit point, e.g. the last-updated status line, or clamped
+        // onto the last row when `FrameDiff.fullScreenUpdate`'s "park below the
+        // frame" position is out of range for a frame that fills the terminal).
         var output = ANSICode.hideCursor
         if resized { output += ANSICode.clearScreen }
-        output += ANSICode.cursorHome + diff + ANSICode.showCursor
+        output += ANSICode.cursorHome + diff
+        if let (regionID, offset) = FocusCoordinator.shared.consumeReportedCursor(),
+           let region = MouseTargetRegistry.shared.region(withID: regionID) {
+            let row = region.rect.origin.row + 1
+            let col = region.rect.origin.column + offset + 1
+            output += ANSICode.moveTo(row: row, col: col)
+        }
         TerminalOutput.write(output)
     }
 

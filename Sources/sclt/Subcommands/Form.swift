@@ -54,7 +54,7 @@ struct FormCommand: FullScreenCommand {
             Divider()
                 .padding(.top, 1)
             Text("name: \(name)   email: \(email)   notifications: \(notifies ? "on" : "off")")
-                .forgroundColor(.yellow)
+                .foregroundStyle(.yellow)
         }
     }
 }

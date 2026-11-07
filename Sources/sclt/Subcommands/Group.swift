@@ -28,7 +28,7 @@ struct GroupCommand: InlineCommand {
     var body: some Scene {
         NavigationStack {
             Text("Group(@ViewBuilder contents: () -> [View])")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
                 .navigationTitle("Group")
 
             Group {

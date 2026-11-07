@@ -46,7 +46,7 @@ struct ListCommand: FullScreenCommand {
             Divider()
                 .padding(.top, 1)
             Text("Selected: \(selection.map { items[$0] } ?? "none")   (rows styled by .listStyle(.plain))")
-                .forgroundColor(.yellow)
+                .foregroundStyle(.yellow)
         }
     }
 }

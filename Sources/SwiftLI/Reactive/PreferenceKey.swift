@@ -179,7 +179,7 @@ struct PreferenceWriter<K: PreferenceKey>: View, @unchecked Sendable {
     let content: any View
     let value: K.Value
 
-    var body: some View { EmptyView() }
+    typealias Body = Never
 
     func applyingStyle(_ style: TextStyle) -> Self {
         PreferenceWriter(content: content.applyingStyle(style), value: value)
@@ -202,7 +202,7 @@ struct PreferenceTransformer<K: PreferenceKey>: View, @unchecked Sendable {
     let content: any View
     let transform: (inout K.Value) -> Void
 
-    var body: some View { EmptyView() }
+    typealias Body = Never
 
     func applyingStyle(_ style: TextStyle) -> Self {
         PreferenceTransformer(content: content.applyingStyle(style), transform: transform)
@@ -227,7 +227,7 @@ struct PreferenceChangeObserver<K: PreferenceKey>: View, @unchecked Sendable whe
     let observerID: String
     let perform: @Sendable (K.Value) -> Void
 
-    var body: some View { EmptyView() }
+    typealias Body = Never
 
     func applyingStyle(_ style: TextStyle) -> Self {
         PreferenceChangeObserver(

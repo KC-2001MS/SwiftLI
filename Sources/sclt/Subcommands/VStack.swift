@@ -29,49 +29,49 @@ struct VStackCommand: InlineCommand {
         NavigationStack {
             // Basic VStack
             Text("VStack { ... }")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
                 .navigationTitle("VStack")
             VStack {
-                Text("Row 1").forgroundColor(.red)
-                Text("Row 2").forgroundColor(.green)
-                Text("Row 3").forgroundColor(.blue)
+                Text("Row 1").foregroundStyle(.red)
+                Text("Row 2").foregroundStyle(.green)
+                Text("Row 3").foregroundStyle(.blue)
             }
 
             // VStack alignment: leading vs trailing
                 .padding(.top, 1)
             Text("VStack(alignment: .leading):")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
             VStack(alignment: .leading) {
-                Text("Short").forgroundColor(.red)
-                Text("Much longer text").forgroundColor(.yellow)
-                Text("Med length").forgroundColor(.magenta)
+                Text("Short").foregroundStyle(.red)
+                Text("Much longer text").foregroundStyle(.yellow)
+                Text("Med length").foregroundStyle(.magenta)
             }
             Text("VStack(alignment: .trailing):")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
                 .padding(.top, 1)
             VStack(alignment: .trailing) {
-                Text("Short").forgroundColor(.red)
-                Text("Much longer text").forgroundColor(.yellow)
-                Text("Med length").forgroundColor(.magenta)
+                Text("Short").foregroundStyle(.red)
+                Text("Much longer text").foregroundStyle(.yellow)
+                Text("Med length").foregroundStyle(.magenta)
             }
 
             // Nested: VStack { HStack }
                 .padding(.top, 1)
             Text("VStack(spacing: 1) { HStack { ... } }:")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
             VStack(spacing: 1) {
                 HStack(spacing: 1) {
                     Text("[")
-                    Text("Top-Left").forgroundColor(.red)
+                    Text("Top-Left").foregroundStyle(.red)
                     Text("|")
-                    Text("Top-Right").forgroundColor(.blue)
+                    Text("Top-Right").foregroundStyle(.blue)
                     Text("]")
                 }
                 HStack(spacing: 1) {
                     Text("[")
-                    Text("Bottom-Left").forgroundColor(.green)
+                    Text("Bottom-Left").foregroundStyle(.green)
                     Text("|")
-                    Text("Bottom-Right").forgroundColor(.magenta)
+                    Text("Bottom-Right").foregroundStyle(.magenta)
                     Text("]")
                 }
             }

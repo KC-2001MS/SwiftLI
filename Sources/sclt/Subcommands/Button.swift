@@ -31,7 +31,7 @@ struct ButtonCommand: FullScreenCommand {
 
     var body: some Scene {
         NavigationStack {
-            Text("Default style:").forgroundColor(.cyan)
+            Text("Default style:").foregroundStyle(.cyan)
                 .navigationTitle("Button")
                 .navigationSubtitle("Tab: focus   Return/Space: press   Ctrl-C: quit")
             HStack(spacing: 2) {
@@ -45,7 +45,7 @@ struct ButtonCommand: FullScreenCommand {
                 }
             }
 
-            Text("Bordered / plain / custom label:").forgroundColor(.cyan)
+            Text("Bordered / plain / custom label:").foregroundStyle(.cyan)
                 .padding(.top, 1)
             HStack(alignment: .top, spacing: 2) {
                 Button("+10", id: "PlusTen") {
@@ -71,7 +71,7 @@ struct ButtonCommand: FullScreenCommand {
             Divider()
                 .padding(.top, 1)
             Text("count: \(count)   last pressed: \(lastPressed)")
-                .forgroundColor(.yellow)
+                .foregroundStyle(.yellow)
         }
     }
 }

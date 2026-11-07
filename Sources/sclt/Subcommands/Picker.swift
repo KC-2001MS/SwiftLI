@@ -48,7 +48,7 @@ struct PickerCommand: FullScreenCommand {
                     .pickerStyle(SegmentedPickerStyle())
             }
 
-            Text("List:").forgroundColor(.cyan)
+            Text("List:").foregroundStyle(.cyan)
                 .padding(.top, 1)
             Picker("Fruit", selection: $fruit, options: fruits)
                 .pickerStyle(ListPickerStyle())
@@ -56,7 +56,7 @@ struct PickerCommand: FullScreenCommand {
             Divider()
                 .padding(.top, 1)
             Text("color=\(colors[color])  size=\(sizes[size])  fruit=\(fruits[fruit])")
-                .forgroundColor(.yellow)
+                .foregroundStyle(.yellow)
         }
     }
 }

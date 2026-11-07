@@ -101,10 +101,10 @@ public struct DefaultTableStyle: TableStyle {
             return AnyView(erasing: configuration.row.bold())
         }
         if configuration.isSelected && configuration.isFocused {
-            return AnyView(erasing: configuration.row.forgroundColor(.cyan).bold())
+            return AnyView(erasing: configuration.row.foregroundStyle(.cyan).bold())
         }
         if configuration.isSelected {
-            return AnyView(erasing: configuration.row.forgroundColor(.eight_bit(245)))
+            return AnyView(erasing: configuration.row.foregroundStyle(.eightBit(245)))
         }
         return configuration.row
     }
@@ -213,9 +213,90 @@ public struct Table<Data: RandomAccessCollection>: View, @unchecked Sendable {
         self.style = style
     }
 
-    /// The view body; rendering is performed entirely inside ``makeNode()``.
+    /// The pinned header and rule above the body rows (scrolled when a height
+    /// bounds them), each decorated by the resolved ``TableStyle``, carrying
+    /// the table's own text style and — when selectable or scrolling — marked
+    /// as the table's pointer footprint. Evaluating it also registers the
+    /// table for keyboard handling.
     public var body: some View {
-        EmptyView()
+        if !columns.isEmpty {
+            let layout = self.layout
+            let isFocused = self.isFocused
+            VStack(alignment: .leading, spacing: 0) {
+                // Pinned header row (decorated by the style) and the rule
+                // beneath it.
+                header(layout: layout, isFocused: isFocused)
+                Text(repeating: "─", count: Swift.max(layout.totalWidth, 0))
+                    .foregroundStyle(.eightBit(240))
+                // Scroll only the body by composing a controlled
+                // ``ScrollView`` (which owns the .scroll IR and the scrollbar).
+                if scrolls {
+                    ScrollView(
+                        height: resolvedHeight,
+                        offset: selection != nil ? FocusCoordinator.shared.listOffset(for: id) : FocusCoordinator.shared.scrollOffset(for: id),
+                        focused: isFocused,
+                        content: bodyRows(layout: layout, isFocused: isFocused)
+                    )
+                } else {
+                    VStack(alignment: .leading, spacing: 0, children: bodyRows(layout: layout, isFocused: isFocused))
+                }
+            }
+        }
+    }
+
+    /// Whether the table is interactive: selectable, or scrolling its body.
+    private var isInteractive: Bool {
+        selection != nil || scrolls
+    }
+
+    private var isFocused: Bool {
+        isInteractive && FocusCoordinator.shared.isFocused(id)
+    }
+
+    /// The rows and the column widths resolved for them.
+    private struct Layout {
+        let rows: [Data.Element]
+        let widths: [Int]
+        let totalWidth: Int
+    }
+
+    private var layout: Layout {
+        let rows = Array(data)
+        let widths = resolvedWidths(rows: rows)
+        return Layout(rows: rows, widths: widths, totalWidth: widths.reduce(0, +) + Self.columnGap * (widths.count - 1))
+    }
+
+    /// `.frame(height:)` pins `maxHeight` to the table's total height; the
+    /// pinned header and rule take two of those rows, the body the rest.
+    private var resolvedHeight: Int {
+        Swift.max(1, EnvironmentStack.current.maxHeight - 2)
+    }
+
+    private var scrolls: Bool {
+        data.count > resolvedHeight
+    }
+
+    /// Nearest wins: instance style, then subtree environment, then default.
+    private var resolvedStyle: AnyTableStyle {
+        style ?? EnvironmentStack.current.tableStyle ?? AnyTableStyle(DefaultTableStyle())
+    }
+
+    private func header(layout: Layout, isFocused: Bool) -> AnyView {
+        resolvedStyle.makeBody(configuration: TableStyleConfiguration(
+            row: AnyView(erasing: row(cells: columns.map { $0.title }, widths: layout.widths, gap: Self.columnGap)),
+            isHeader: true, isSelected: false, isFocused: isFocused
+        ))
+    }
+
+    /// One row per element, each decorated by the style.
+    private func bodyRows(layout: Layout, isFocused: Bool) -> [any View] {
+        let selectedIndex = selection?.wrappedValue
+        return layout.rows.enumerated().map { index, element in
+            resolvedStyle.makeBody(configuration: TableStyleConfiguration(
+                row: AnyView(erasing: row(cells: columns.map { $0.value(element) }, widths: layout.widths, gap: Self.columnGap)),
+                isHeader: false, isSelected: index == selectedIndex, isFocused: isFocused
+            ))
+        }
     }
 
     @_spi(RenderingInternals)
@@ -223,66 +304,23 @@ public struct Table<Data: RandomAccessCollection>: View, @unchecked Sendable {
         Table(textStyle: textStyle.inheriting(style), id: id, data: data, columns: columns, selection: selection, style: self.style)
     }
 
+    /// Registers the table for keyboard handling — as a list when selectable,
+    /// as a scroll view when it merely scrolls — then lowers ``body`` with the
+    /// table's own text style cascaded onto it, as the table's pointer
+    /// footprint when interactive.
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
         guard !columns.isEmpty else { return .empty }
-
-        let rows = Array(data)
-        let widths = resolvedWidths(rows: rows)
-        let gap = Self.columnGap
-        let totalWidth = widths.reduce(0, +) + gap * (widths.count - 1)
-
-        // Register for input; decide focus + selection + scroll behaviour.
-        // `.frame(height:)` pins `maxHeight` to the table's total height; the
-        // pinned header and rule take two of those rows, the body the rest.
-        let resolvedHeight = Swift.max(1, EnvironmentStack.current.maxHeight - 2)
-        let scrolls = rows.count > resolvedHeight
-        var focused = false
-        var selectedIndex: Int? = nil
         if let selection {
-            FocusCoordinator.shared.registerList(id: id, selection: selection, count: rows.count, viewportRows: scrolls ? resolvedHeight : nil)
+            FocusCoordinator.shared.registerList(id: id, selection: selection, count: data.count, viewportRows: scrolls ? resolvedHeight : nil)
             KeyInputRouter.shared.ensureStarted()
-            focused = FocusCoordinator.shared.isFocused(id)
-            selectedIndex = selection.wrappedValue
         } else if scrolls {
-            FocusCoordinator.shared.registerScroll(id: id, viewportHeight: resolvedHeight, contentHeight: rows.count)
+            FocusCoordinator.shared.registerScroll(id: id, viewportHeight: resolvedHeight, contentHeight: data.count)
             KeyInputRouter.shared.ensureStarted()
-            focused = FocusCoordinator.shared.isFocused(id)
         }
-
-        // Nearest wins: instance style, then subtree environment, then default.
-        let resolvedStyle = style ?? EnvironmentStack.current.tableStyle ?? AnyTableStyle(DefaultTableStyle())
-
-        // Pinned header row (decorated by the style) and the rule beneath it.
-        let headerNode = resolvedStyle.makeBody(configuration: TableStyleConfiguration(
-            row: AnyView(erasing: row(cells: columns.map { $0.title }, widths: widths, gap: gap)),
-            isHeader: true, isSelected: false, isFocused: focused
-        )).makeNode()
-        let ruleNode = Text(repeating: "─", count: Swift.max(totalWidth, 0))
-            .forgroundColor(.eight_bit(240)).makeNode()
-
-        // Body: one row per element, each decorated by the style.
-        var bodyRows: [any View] = []
-        for (index, element) in rows.enumerated() {
-            bodyRows.append(resolvedStyle.makeBody(configuration: TableStyleConfiguration(
-                row: AnyView(erasing: row(cells: columns.map { $0.value(element) }, widths: widths, gap: gap)),
-                isHeader: false, isSelected: index == selectedIndex, isFocused: focused
-            )))
-        }
-        // Pin the header/rule; scroll only the body by composing a controlled
-        // ``ScrollView`` (which owns the .scroll IR and the scrollbar).
-        let bodyNode: RenderNode
-        if scrolls {
-            let offset = selection != nil ? FocusCoordinator.shared.listOffset(for: id) : FocusCoordinator.shared.scrollOffset(for: id)
-            bodyNode = ScrollView(height: resolvedHeight, offset: offset, focused: focused, showsIndicators: true, content: bodyRows).makeNode()
-        } else {
-            bodyNode = VStack(alignment: .leading, spacing: 0, children: bodyRows).makeNode()
-        }
-
-        let node = RenderNode.vstack(alignment: .leading, spacing: 0, children: [headerNode, ruleNode, bodyNode])
+        let node = body.makeNode()
         let styled = textStyle.isPlain ? node : node.applyingStyle(textStyle)
-        // Interactive only when it registered above (selectable or scrolling).
-        return (selection != nil || scrolls) ? styled.asControl(id: id) : styled
+        return isInteractive ? styled.asControl(id: id) : styled
     }
 
     /// Builds one undecorated table row: each cell clipped to its column width

@@ -280,8 +280,16 @@ final class KeyboardReader: @unchecked Sendable {
                     // main-queue task. This halves the async round-trips when
                     // the kernel queues multiple reports together (fast scroll
                     // or trackpad bursts), reducing dispatch overhead and lag.
+                    // It also suppresses the render each event would otherwise
+                    // trigger on its own — important for e.g. an IME committing
+                    // several characters at once, which all arrive in the same
+                    // read(): without this, they'd apply and redraw one at a
+                    // time, visibly stepping through partial states instead of
+                    // updating the screen atomically once all of them landed.
                     DispatchQueue.main.async {
-                        for event in events { cb(event) }
+                        StateObserverRegistry.shared.batch {
+                            for event in events { cb(event) }
+                        }
                     }
                 }
             } else if n < 0 {

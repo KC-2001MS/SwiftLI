@@ -7,11 +7,11 @@
 
 /// The colour palette of a scrollbar.
 ///
-/// The bar is drawn as one continuous solid strip — full blocks for the thumb
-/// and the track with no textured gaps. The thumb's ends land on half-cell
-/// boundaries: they use the half blocks (`▀`/`▄` vertically, `▌`/`▐`
-/// horizontally) with the thumb colour in the foreground and the track colour
-/// in the background, so a single cell shows both sides of the boundary.
+/// The bar is drawn as one continuous solid strip, each cell in the thumb or
+/// track colour. A vertical bar paints whole cells with a background colour,
+/// which also covers the line spacing a terminal adds between rows; a
+/// horizontal bar is a row of lower half blocks (`▄`), so it is about as
+/// thick as a vertical bar is wide.
 public struct ScrollBar: Equatable, Sendable {
     /// The colour of the thumb (the draggable indicator).
     public let thumb: Color
@@ -26,6 +26,31 @@ public struct ScrollBar: Equatable, Sendable {
     public init(thumb: Color, track: Color) {
         self.thumb = thumb
         self.track = track
+    }
+
+    /// The thumb's position along a `length`-cell track, in cells.
+    ///
+    /// Shared by the layout engine (to draw the bar) and the pointer handler
+    /// (to map a drag back to an offset), so both agree on where the thumb is.
+    static func thumb(length: Int, viewport: Int, content: Int, offset: Int) -> (start: Int, size: Int) {
+        guard length > 0, content > viewport, viewport > 0 else { return (0, Swift.max(0, length)) }
+        let size = Swift.min(length, Swift.max(1, length * viewport / content))
+        let travel = length - size
+        let maxOffset = content - viewport
+        let clamped = Swift.min(Swift.max(offset, 0), maxOffset)
+        return (clamped * travel / maxOffset, size)
+    }
+
+    /// The scroll offset that puts the thumb's leading edge at `thumbStart`
+    /// cells along a `length`-cell track — the inverse of
+    /// ``thumb(length:viewport:content:offset:)``, clamped to the valid range.
+    static func offset(forThumbStart thumbStart: Int, length: Int, viewport: Int, content: Int) -> Int {
+        let maxOffset = Swift.max(0, content - viewport)
+        let travel = length - thumb(length: length, viewport: viewport, content: content, offset: 0).size
+        guard travel > 0, maxOffset > 0 else { return 0 }
+        let start = Swift.min(Swift.max(thumbStart, 0), travel)
+        // Round to the nearest offset so each cell of travel lands evenly.
+        return Swift.min(maxOffset, (start * maxOffset * 2 + travel) / (travel * 2))
     }
 }
 
@@ -115,21 +140,33 @@ public indirect enum RenderNode: Equatable, Sendable {
     /// transparent.
     case border(style: TextStyle, fill: TextStyle, box: BorderStyle, child: RenderNode)
 
-    /// A drop shadow drawn along a child's right and bottom edges.
+    /// A drop shadow drawn behind a child.
     ///
-    /// The shadow adds one column and one row to the footprint, offset a single
-    /// cell down and to the right. `style` styles the shadow cells (typically a
-    /// background colour).
-    case shadow(style: TextStyle, child: RenderNode)
+    /// The shadow is the child's rectangle grown by `radius` cells on every
+    /// side and shifted `x` columns and `y` rows; only the part not covered by
+    /// the child is visible. The footprint grows to hold both the child and
+    /// the shadow. `style` styles the shadow cells (typically a background
+    /// colour).
+    case shadow(style: TextStyle, radius: Int, x: Int, y: Int, child: RenderNode)
+
+    /// A background painted over a child's whole footprint before the child
+    /// draws on top — the cells the child never writes (padding, frame slack,
+    /// stack spacing) take the colour too, as in SwiftUI's `background(_:)`.
+    ///
+    /// Produced by ``applyingStyle(_:)`` when a style carrying a background
+    /// reaches a layout node; leaves paint their own cells.
+    case background(style: TextStyle, child: RenderNode)
 
     /// A fixed-width viewport showing a horizontally scrolled window of a wider
     /// child.
     ///
     /// The child is laid out in full, then only the columns in
     /// `offset ..< offset + extent` of each row are drawn. `bar` colours the
-    /// scrollbar drawn on the row below the content, at the bottom edge of the
-    /// viewport; `nil` hides it.
-    case hscroll(offset: Int, extent: Int, bar: ScrollBar?, child: RenderNode)
+    /// scrollbar (`nil` hides it). Like the vertical viewport's bar, it is
+    /// pinned to the far edge of the space the viewport is allotted — the
+    /// bottom row of `height` — and never closer than the row after the
+    /// content; a `nil` height places it right below the content.
+    case hscroll(offset: Int, extent: Int, bar: ScrollBar?, height: Int?, child: RenderNode)
 
     /// Picks the first candidate whose natural size fits the available space.
     ///
@@ -162,6 +199,28 @@ public indirect enum RenderNode: Equatable, Sendable {
     /// the container's.
     public func applyingStyle(_ style: TextStyle) -> RenderNode {
         guard !style.isPlain else { return self }
+        let styled = inheriting(style)
+        // A background over a layout node covers the node's whole footprint,
+        // not just the cells its leaves write. Leaves and transparent groups
+        // have no footprint of their own; a border paints its box via `fill`.
+        guard let background = style.background, paintsFootprint else { return styled }
+        return .background(style: TextStyle(background: background), child: styled)
+    }
+
+    /// Whether the node is a layout node whose footprint a background should
+    /// cover as a whole.
+    private var paintsFootprint: Bool {
+        switch self {
+        case .hstack, .vstack, .padding, .frame, .lineLimit, .scroll, .hscroll, .shadow, .viewThatFits, .control:
+            return true
+        case .empty, .raw, .text, .spacer, .divider, .group, .border, .background:
+            return false
+        }
+    }
+
+    /// The recursive half of ``applyingStyle(_:)``: cascades `style` to the
+    /// leaves without wrapping intermediate nodes.
+    private func inheriting(_ style: TextStyle) -> RenderNode {
         switch self {
         case .empty, .raw:
             return self
@@ -172,30 +231,41 @@ public indirect enum RenderNode: Equatable, Sendable {
         case .divider(let s, let character, let verticalCharacter, let count, let fillsWidth):
             return .divider(style: s.inheriting(style).resolving(), character: character, verticalCharacter: verticalCharacter, count: count, fillsWidth: fillsWidth)
         case .group(let children):
-            return .group(children: children.map { $0.applyingStyle(style) })
+            return .group(children: children.map { $0.inheriting(style) })
         case .hstack(let alignment, let spacing, let children):
-            return .hstack(alignment: alignment, spacing: spacing, children: children.map { $0.applyingStyle(style) })
+            return .hstack(alignment: alignment, spacing: spacing, children: children.map { $0.inheriting(style) })
         case .vstack(let alignment, let spacing, let children):
-            return .vstack(alignment: alignment, spacing: spacing, children: children.map { $0.applyingStyle(style) })
+            return .vstack(alignment: alignment, spacing: spacing, children: children.map { $0.inheriting(style) })
         case .padding(let insets, let child):
-            return .padding(insets: insets, child: child.applyingStyle(style))
+            return .padding(insets: insets, child: child.inheriting(style))
         case .frame(let width, let height, let fillWidth, let fillHeight, let alignment, let child):
-            return .frame(width: width, height: height, fillWidth: fillWidth, fillHeight: fillHeight, alignment: alignment, child: child.applyingStyle(style))
+            return .frame(width: width, height: height, fillWidth: fillWidth, fillHeight: fillHeight, alignment: alignment, child: child.inheriting(style))
         case .lineLimit(let limit, let child):
-            return .lineLimit(limit, child: child.applyingStyle(style))
+            return .lineLimit(limit, child: child.inheriting(style))
         case .scroll(let offset, let height, let bar, let width, let child):
-            return .scroll(offset: offset, height: height, bar: bar, width: width, child: child.applyingStyle(style))
-        case .hscroll(let offset, let extent, let bar, let child):
-            return .hscroll(offset: offset, extent: extent, bar: bar, child: child.applyingStyle(style))
+            return .scroll(offset: offset, height: height, bar: bar, width: width, child: child.inheriting(style))
+        case .hscroll(let offset, let extent, let bar, let height, let child):
+            return .hscroll(offset: offset, extent: extent, bar: bar, height: height, child: child.inheriting(style))
         case .border(let s, let fill, let box, let child):
-            return .border(style: s.inheriting(style), fill: fill, box: box, child: child.applyingStyle(style))
-        case .shadow(let s, let child):
+            // A background applied over a bordered view paints the whole box
+            // — interior, padding and border cells — like SwiftUI painting
+            // behind a bordered view, so it becomes the box's fill.
+            var boxFill = fill
+            if let background = style.background, boxFill.background == nil {
+                boxFill.background = background
+            }
+            return .border(style: s.inheriting(style), fill: boxFill, box: box, child: child.inheriting(style))
+        case .shadow(let s, let radius, let x, let y, let child):
             // The shadow cell keeps its own style; only the content inherits.
-            return .shadow(style: s, child: child.applyingStyle(style))
+            return .shadow(style: s, radius: radius, x: x, y: y, child: child.inheriting(style))
+        case .background(let s, let child):
+            // An inner background wins over an outer one: only attributes the
+            // inner style leaves unset flow through.
+            return .background(style: s.inheriting(style), child: child.inheriting(style))
         case .viewThatFits(let cw, let ch, let candidates):
-            return .viewThatFits(checkWidth: cw, checkHeight: ch, candidates: candidates.map { $0.applyingStyle(style) })
+            return .viewThatFits(checkWidth: cw, checkHeight: ch, candidates: candidates.map { $0.inheriting(style) })
         case .control(let id, let child):
-            return .control(id: id, child: child.applyingStyle(style))
+            return .control(id: id, child: child.inheriting(style))
         }
     }
 

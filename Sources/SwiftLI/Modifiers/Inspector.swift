@@ -47,32 +47,35 @@ struct InspectorModifier: View, @unchecked Sendable {
     let inspector: AnyView
 
     public var body: some View {
-        EmptyView()
+        if isPresented.wrappedValue {
+            if isFullScreen {
+                // Trailing column, separated by a vertical rule that spans
+                // the taller of the two (a divider stretches to its row).
+                HStack(alignment: .top, spacing: 1) {
+                    content
+                    Divider(character: "-", verticalCharacter: "│").foregroundStyle(.eightBit(240))
+                    inspector
+                }
+            } else {
+                // Below the content, separated by a horizontal rule.
+                VStack(alignment: .leading, spacing: 0) {
+                    content
+                    Text(repeating: "─", count: Swift.max(0, EnvironmentStack.current.maxWidth))
+                        .foregroundStyle(.eightBit(240))
+                    inspector
+                }
+            }
+        } else {
+            content
+        }
+    }
+
+    private var isFullScreen: Bool {
+        BodyRenderingStore.shared.fullScreenActive
     }
 
     @_spi(RenderingInternals)
     public func applyingStyle(_ style: TextStyle) -> Self {
         InspectorModifier(content: content.applyingStyle(style), isPresented: isPresented, inspector: inspector)
-    }
-
-    @_spi(RenderingInternals)
-    public func makeNode() -> RenderNode {
-        let base = content.makeNode()
-        guard isPresented.wrappedValue else { return base }
-
-        let pane = inspector.makeNode()
-        if BodyRenderingStore.shared.fullScreenActive {
-            // Trailing column, separated by a vertical rule.
-            let height = Swift.max(NodeLayout.measure(base).height, NodeLayout.measure(pane).height)
-            let rule = VStack(alignment: .leading, spacing: 0, children: (0..<height).map { _ in
-                Text(content: "│").forgroundColor(.eight_bit(240))
-            }).makeNode()
-            return .hstack(alignment: .top, spacing: 1, children: [base, rule, pane])
-        } else {
-            // Below the content, separated by a horizontal rule.
-            let rule = Text(repeating: "─", count: Swift.max(0, EnvironmentStack.current.maxWidth))
-                .forgroundColor(.eight_bit(240)).makeNode()
-            return .vstack(alignment: .leading, spacing: 0, children: [base, rule, pane])
-        }
     }
 }

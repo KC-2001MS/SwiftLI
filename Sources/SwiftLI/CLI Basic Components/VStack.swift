@@ -12,8 +12,8 @@
 ///
 /// ```swift
 /// VStack {
-///     Text("Line 1").forgroundColor(.red)
-///     Text("Line 2").forgroundColor(.blue)
+///     Text("Line 1").foregroundStyle(.red)
+///     Text("Line 2").foregroundStyle(.blue)
 ///     Text("Line 3").bold()
 /// }
 /// .render()
@@ -70,10 +70,9 @@ public struct VStack: View, @unchecked Sendable {
         self.style = style
     }
 
-    /// The content of this view; rendering is delegated to ``makeNode()``.
-    public var body: some View {
-        EmptyView()
-    }
+    /// `VStack` is a layout primitive: it lowers directly via ``makeNode()``
+    /// and has no body.
+    public typealias Body = Never
 
     @_spi(RenderingInternals)
     public func applyingStyle(_ style: TextStyle) -> VStack {
@@ -90,7 +89,7 @@ public struct VStack: View, @unchecked Sendable {
         let node = RenderNode.vstack(
             alignment: alignment,
             spacing: spacing,
-            children: children.map { $0.makeNode() }
+            children: children.enumerated().map { $1.lowered(at: $0) }
         )
         return style.isPlain ? node : node.applyingStyle(style)
     }

@@ -38,11 +38,11 @@ struct AnyViewCommand: InlineCommand {
     var body: some Scene {
         NavigationStack {
             Text("AnyView(_ view: some View)")
-                .forgroundColor(.cyan)
+                .foregroundStyle(.cyan)
                 .navigationTitle("AnyView")
 
             Text("A [AnyView] array holding a Text, a Label and a Gauge:")
-                .forgroundColor(.eight_bit(245))
+                .foregroundStyle(.eightBit(245))
 
             ForEach(mixed) { view in
                 view
@@ -51,7 +51,7 @@ struct AnyViewCommand: InlineCommand {
             // Both branches erase to the same type, so a function can return
             // either — the classic AnyView use case.
             Text("Erasing branches of different types:")
-                .forgroundColor(.eight_bit(245))
+                .foregroundStyle(.eightBit(245))
                 .padding(.top, 1)
 
             HStack(spacing: 1) {
@@ -63,9 +63,9 @@ struct AnyViewCommand: InlineCommand {
 
     private func badge(ok: Bool) -> AnyView {
         if ok {
-            AnyView(Text("PASS").forgroundColor(.green).bold())
+            AnyView(Text("PASS").foregroundStyle(.green).bold())
         } else {
-            AnyView(Text("FAIL").forgroundColor(.red).bold())
+            AnyView(Text("FAIL").foregroundStyle(.red).bold())
         }
     }
 }

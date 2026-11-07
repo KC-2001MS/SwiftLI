@@ -116,14 +116,10 @@ public struct Label: View {
         .init(textStyle: textStyle.inheriting(style), title: self.title, image: self.image, style: self.style)
     }
 
-    /// Lowers the label by building its style body, then cascading the label's
-    /// own text style onto the resulting node.
+    /// Lowers ``body`` with the label's own text style cascaded onto it.
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
-        let node = resolvedStyle.makeBody(configuration: LabelStyleConfiguration(
-            icon: AnyView(Text(content: image)),
-            title: AnyView(Text(content: title))
-        )).makeNode()
+        let node = body.makeNode()
         return textStyle.isPlain ? node : node.applyingStyle(textStyle)
     }
 

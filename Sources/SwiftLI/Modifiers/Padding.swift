@@ -28,24 +28,32 @@ struct PaddingModifier: ViewModifier {
 
 public extension View {
 
-    /// Adds equal padding to all edges of this view.
+    /// Adds equal padding to all edges of this view, mirroring SwiftUI's
+    /// `padding(_:)`.
     ///
     /// - Parameter length: The number of space characters to add on each edge.
-    ///   Defaults to `1`.
     /// - Returns: A view with padding applied.
-    func padding(_ length: Int = 1) -> some View {
+    func padding(_ length: Int) -> some View {
         modifier(PaddingModifier(insets: EdgeInsets(edges: .all, length: length)))
     }
 
-    /// Adds padding to the specified edges of this view.
+    /// Adds padding to the specified edges of this view, mirroring SwiftUI's
+    /// `padding(_:_:)`.
+    ///
+    /// ```swift
+    /// Text("Report").padding()              // one cell on every edge
+    /// Text("Report").padding(.horizontal)   // one cell left and right
+    /// Text("Report").padding(.leading, 4)   // four cells on the leading edge
+    /// ```
     ///
     /// - Parameters:
     ///   - edges: The edges to pad. Use ``Edge/Set`` values such as `.leading`,
-    ///     `.horizontal`, or `.all`.
-    ///   - length: The number of space characters to add. Defaults to `1`.
+    ///     `.horizontal`, or `.all`. Defaults to `.all`.
+    ///   - length: The number of space characters to add, or `nil` for the
+    ///     default of one cell.
     /// - Returns: A view with padding applied.
-    func padding(_ edges: Edge.Set, _ length: Int = 1) -> some View {
-        modifier(PaddingModifier(insets: EdgeInsets(edges: edges, length: length)))
+    func padding(_ edges: Edge.Set = .all, _ length: Int? = nil) -> some View {
+        modifier(PaddingModifier(insets: EdgeInsets(edges: edges, length: length ?? 1)))
     }
 
     /// Adds a different amount of padding to each edge of this view.

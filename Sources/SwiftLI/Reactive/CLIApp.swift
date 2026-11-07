@@ -38,7 +38,7 @@
 ///         Text("Count: \(count)").newLine()
 ///
 ///         if count >= 5 {
-///             Text("Reached 5!").forgroundColor(.green).bold().newLine()
+///             Text("Reached 5!").foregroundStyle(.green).bold().newLine()
 ///         }
 ///     }
 ///

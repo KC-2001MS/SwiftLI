@@ -61,7 +61,7 @@ struct MenuCommand: FullScreenCommand {
             Divider()
                 .padding(.top, 1)
             Text("last action: \(lastAction)   deleted: \(deleted ? "yes" : "no")")
-                .forgroundColor(.yellow)
+                .foregroundStyle(.yellow)
         }
     }
 }

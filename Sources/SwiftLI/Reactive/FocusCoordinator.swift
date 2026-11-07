@@ -52,12 +52,32 @@ final class FocusCoordinator: @unchecked Sendable {
     private var listCounts: [String: Int] = [:]
     private var listViewports: [String: Int] = [:]
     private var listOffsets: [String: Int] = [:]
-    // Multi-line editors (``TextEditor``) remember a vertical scroll offset so the
-    // view follows the cursor line minimally, keyed by editor id.
-    private var editorOffsets: [String: Int] = [:]
     // Multi-line editors also remember a horizontal scroll offset: long lines
     // are never wrapped — the window slides to keep the cursor column visible.
     private var editorHOffsets: [String: Int] = [:]
+    // A multi-line editor's *vertical* scroll instead shares the generic
+    // `scrollOffsets`/`scrollViewportHeights`/`scrollContentHeights` storage
+    // above (see `editorScrollOffset`) — it composes an actual ``ScrollView``
+    // internally, so it should get that ScrollView's mouse-wheel and momentum
+    // handling for free instead of needing its own parallel copy that
+    // `wheelScroll`/`launchMomentum` don't know about.
+    // The cursor's (line, column) the last time `editorScrollOffset` ran, so
+    // it can tell an actual cursor move (which should snap the viewport back
+    // to it) apart from an unrelated re-render (which should leave a
+    // wheel-scrolled offset alone). Column is tracked too, not just line, so
+    // typing more characters on an already-scrolled-away line still counts
+    // as movement — only the line changing would miss that.
+    private var editorLastCursorLine: [String: Int] = [:]
+    private var editorLastCursorColumn: [String: Int] = [:]
+    // The on-screen cursor position most recently reported by the focused
+    // text control (TextEditor/TextField): a region id (resolvable to an
+    // absolute rect via `MouseTargetRegistry`) plus the column offset of the
+    // cursor within that region. Consumed once per render pass so the real
+    // (always-invisible, `?25l`) terminal cursor can be repositioned there —
+    // needed only so an IME's composition candidates, which the terminal
+    // anchors to the real cursor's *position* regardless of its visibility,
+    // appear at the right place instead of wherever it was last left.
+    private var reportedCursor: (id: String, regionID: String, offset: Int)?
     // Action controls (``Button``): the closure fired on Return/Space, keyed by id.
     private var buttonActions: [String: () -> Void] = [:]
     private var focusedID: String?
@@ -90,6 +110,12 @@ final class FocusCoordinator: @unchecked Sendable {
     // report re-maps the pointer's column onto the track, so the thumb
     // follows the pointer. Cleared on release (or a press elsewhere).
     private var mouseDragSliderID: String?
+
+    // The scroll view whose scrollbar a left press captured, and where along
+    // the thumb (in cells from its leading edge) the pointer grabbed it:
+    // while held, every drag report keeps that point of the thumb under the
+    // pointer. Cleared on release (or a press elsewhere).
+    private var mouseDragScroll: (id: String, grab: Int)?
 
     // Momentum scrolling: a repeating timer that continues advancing the
     // scroll offset after the pointing device gesture ends. The timer fires
@@ -368,15 +394,31 @@ final class FocusCoordinator: @unchecked Sendable {
     /// `cursorLine` inside a `viewport`-row window. The offset is remembered per
     /// id, so the view scrolls minimally — only when the cursor would leave the
     /// window — rather than re-centring on every keystroke.
-    func editorScrollOffset(id: String, cursorLine: Int, viewport: Int, totalLines: Int) -> Int {
+    func editorScrollOffset(id: String, cursorLine: Int, cursorColumn: Int, viewport: Int, totalLines: Int) -> Int {
         lock.lock(); defer { lock.unlock() }
+        // Share the generic scroll-view storage (and so its mouse-wheel and
+        // momentum handling) instead of keeping a parallel copy just for
+        // editors — a multi-line editor already composes an actual
+        // ``ScrollView`` internally, so it should ride the same rails as
+        // every other one.
+        scrollViewportHeights[id] = viewport
+        scrollContentHeights[id] = totalLines
         guard viewport > 0 else { return 0 }
-        var offset = editorOffsets[id] ?? 0
-        if cursorLine < offset { offset = cursorLine }
-        else if cursorLine >= offset + viewport { offset = cursorLine - viewport + 1 }
-        let maxOffset = Swift.max(0, totalLines - viewport)
-        offset = Swift.min(Swift.max(offset, 0), maxOffset)
-        editorOffsets[id] = offset
+        var offset = scrollOffsets[id] ?? 0
+        // Only snap the viewport to the cursor when the cursor actually moved
+        // since the last render. Without this check, a mouse-wheel scroll
+        // (which changes `scrollOffsets` between renders while the cursor
+        // stays put) would be immediately overridden right back to the
+        // cursor's edge on the very next render — making wheel-scrolling a
+        // no-op whenever nothing was being typed.
+        if editorLastCursorLine[id] != cursorLine || editorLastCursorColumn[id] != cursorColumn {
+            editorLastCursorLine[id] = cursorLine
+            editorLastCursorColumn[id] = cursorColumn
+            if cursorLine < offset { offset = cursorLine }
+            else if cursorLine >= offset + viewport { offset = cursorLine - viewport + 1 }
+        }
+        offset = clampScroll(offset, id: id)
+        scrollOffsets[id] = offset
         return offset
     }
 
@@ -486,6 +528,25 @@ final class FocusCoordinator: @unchecked Sendable {
         return focusedID
     }
 
+    /// Called by a focused text control while rendering to report the
+    /// on-screen position of its own inline cursor glyph — a region id
+    /// (resolvable to an absolute rect via `MouseTargetRegistry`) plus the
+    /// cursor's column offset within that region.
+    func reportCursor(id: String, regionID: String, offset: Int) {
+        lock.lock(); defer { lock.unlock() }
+        reportedCursor = (id, regionID, offset)
+    }
+
+    /// The most recently reported cursor position, if its control is still
+    /// the focused one — consumed (cleared) so a report from a control that
+    /// lost focus since never lingers into the next frame.
+    func consumeReportedCursor() -> (regionID: String, offset: Int)? {
+        lock.lock(); defer { lock.unlock() }
+        defer { reportedCursor = nil }
+        guard let reportedCursor, reportedCursor.id == focusedID else { return nil }
+        return (reportedCursor.regionID, reportedCursor.offset)
+    }
+
     // MARK: - Input handling (called from the runtime, main thread)
 
     /// Applies a key event to the focused field.
@@ -543,12 +604,18 @@ final class FocusCoordinator: @unchecked Sendable {
                 return false
             case let command:
                 let result = TextFieldEditor.apply(command, to: binding.wrappedValue, cursor: currentCursor)
-                // Writing the binding schedules a re-render via @State's setter;
-                // skip the write for pure cursor moves that don't change the text.
+                // Update the cursor *before* writing the binding: writing it
+                // schedules a re-render via @State's setter, synchronously, on
+                // this same call stack — if the cursor were updated after,
+                // that render would briefly see the new text paired with the
+                // old cursor position (e.g. still on the line above a newline
+                // that was just inserted), flashing wrong content for a frame
+                // before a second render corrected it.
+                lock.lock(); cursors[id] = result.cursor; lock.unlock()
+                // Skip the write for pure cursor moves that don't change the text.
                 if result.text != binding.wrappedValue {
                     binding.wrappedValue = result.text
                 }
-                lock.lock(); cursors[id] = result.cursor; lock.unlock()
                 return true
             }
         }
@@ -609,13 +676,15 @@ final class FocusCoordinator: @unchecked Sendable {
         switch event.kind {
         case .scrollUp, .scrollDown:
             // Vertical wheel: step 3 cells per tick for a comfortable feel.
-            // Routes to any scroll view under the pointer regardless of axis,
-            // so vertical scroll also drives horizontal viewports on terminals
-            // that do not forward horizontal swipe events.
+            // As in SwiftUI, it moves vertical content only: a horizontal
+            // viewport under the pointer is passed over, so the vertical
+            // component of a sideways swipe never jolts it. Horizontal
+            // viewports follow horizontal wheel events and Shift + wheel.
             let delta = event.kind == .scrollUp ? -3 : 3
             for region in MouseTargetRegistry.shared.hits(atColumn: column, row: row) {
                 let (id, role) = MouseTargetRegistry.parseRegionID(region.id)
                 guard role == nil else { continue }
+                if isHorizontalScroll(id: id) { continue }
                 if wheelScroll(id: id, by: delta) {
                     launchMomentum(id: id, velocity: Double(delta))
                     return true
@@ -623,10 +692,17 @@ final class FocusCoordinator: @unchecked Sendable {
             }
             return false
         case .scrollLeft, .scrollRight:
-            // Horizontal swipe: step 3 columns per tick, routed only to
-            // horizontal scroll views. Works on terminals that send button
-            // codes 66/67 (iTerm2, kitty, WezTerm, etc.).
-            let delta = event.kind == .scrollLeft ? 3 : -3
+            // Horizontal wheel/swipe (button codes 66/67 on iTerm2, kitty,
+            // WezTerm, …) or Shift + vertical wheel (the decoder turns it
+            // sideways; the only pointer gesture for this on Terminal.app,
+            // which reports no horizontal wheel): step 3 columns per tick,
+            // routed only to horizontal scroll views. The direction mirrors
+            // the vertical wheel's: "left" reveals what lies to the left (the
+            // offset shrinks, the content slides right), "right" reveals what
+            // lies to the right. The terminal has already applied the
+            // system's natural/legacy scrolling preference to the event it
+            // reports, so no setting is consulted here.
+            let delta = event.kind == .scrollLeft ? -3 : 3
             for region in MouseTargetRegistry.shared.hits(atColumn: column, row: row) {
                 let (id, role) = MouseTargetRegistry.parseRegionID(region.id)
                 guard role == nil else { continue }
@@ -639,10 +715,16 @@ final class FocusCoordinator: @unchecked Sendable {
         case .press(.left):
             // A new press supersedes any capture still held from a previous
             // one (its release may have been lost to a dropped report).
-            lock.lock(); mouseDragSliderID = nil; lock.unlock()
+            lock.lock(); mouseDragSliderID = nil; mouseDragScroll = nil; lock.unlock()
             for region in MouseTargetRegistry.shared.hits(atColumn: column, row: row) {
                 let (id, role) = MouseTargetRegistry.parseRegionID(region.id)
-                if let role {
+                if role == MouseTargetRegistry.scrollbarRole {
+                    // A scrollbar that isn't a scroll view's own (a List's)
+                    // falls through to the control's whole footprint.
+                    if beginScrollBarDrag(id: id, barRect: region.rect, column: column, row: row) {
+                        return true
+                    }
+                } else if let role {
                     if activatePart(of: id, role: role, rect: region.rect, column: column, row: row) {
                         return true
                     }
@@ -657,7 +739,15 @@ final class FocusCoordinator: @unchecked Sendable {
             // A drag captured by a slider's track: keep the thumb on the
             // pointer's column, tracking the control's *current* rectangle
             // (gaining focus on the press may have shifted it).
-            lock.lock(); let dragID = mouseDragSliderID; lock.unlock()
+            lock.lock(); let dragID = mouseDragSliderID; let scrollDrag = mouseDragScroll; lock.unlock()
+            if let scrollDrag {
+                // A drag captured by a scrollbar: follow the bar's *current*
+                // rectangle, which may have moved since the press.
+                guard let bar = MouseTargetRegistry.shared.region(
+                    withID: MouseTargetRegistry.regionID(control: scrollDrag.id, role: MouseTargetRegistry.scrollbarRole))
+                else { return false }
+                return dragScrollBar(id: scrollDrag.id, grab: scrollDrag.grab, barRect: bar.rect, column: column, row: row)
+            }
             guard let dragID,
                   let track = MouseTargetRegistry.shared.region(
                       withID: MouseTargetRegistry.regionID(control: dragID, role: MouseTargetRegistry.trackRole))
@@ -665,7 +755,7 @@ final class FocusCoordinator: @unchecked Sendable {
             return setSliderValue(id: dragID, trackRect: track.rect, column: column)
         case .release:
             // The button came up: end any capture. Nothing changed on screen.
-            lock.lock(); mouseDragSliderID = nil; lock.unlock()
+            lock.lock(); mouseDragSliderID = nil; mouseDragScroll = nil; lock.unlock()
             return false
         case .press, .drag, .move:
             return false
@@ -674,8 +764,8 @@ final class FocusCoordinator: @unchecked Sendable {
 
     /// Scrolls any wheel-scrollable control (``ScrollView`` or scrolling
     /// ``List``) by `delta` cells, clamped. Returns `false` when `id` doesn't
-    /// scroll. Used for vertical wheel events, which drive any scroll view
-    /// regardless of axis.
+    /// scroll. Used for vertical wheel events (the caller skips horizontal
+    /// viewports).
     private func wheelScroll(id: String, by delta: Int) -> Bool {
         lock.lock(); defer { lock.unlock() }
         if scrollViewportHeights[id] != nil {
@@ -689,6 +779,55 @@ final class FocusCoordinator: @unchecked Sendable {
             return true
         }
         return false
+    }
+
+    /// Handles a left press on the scrollbar of ``ScrollView`` `id`: focuses
+    /// it and captures the pointer for dragging. A press on the thumb grabs
+    /// it where it was pressed; a press on the track first jumps the thumb so
+    /// its middle sits under the pointer. Returns `false` when `id` is not a
+    /// scroll view (a ``List``'s bar), leaving the press to the control.
+    private func beginScrollBarDrag(id: String, barRect: Rect, column: Int, row: Int) -> Bool {
+        lock.lock()
+        guard order.contains(id), let viewport = scrollViewportHeights[id] else { lock.unlock(); return false }
+        setFocus(to: id)
+        // A grab stops any momentum still coasting from a wheel gesture.
+        momentumTimer?.cancel()
+        momentumTimer = nil
+        momentumScrollID = nil
+        let isHorizontal = scrollIsHorizontal[id] == true
+        let length = isHorizontal ? barRect.size.width : barRect.size.height
+        let position = isHorizontal ? column - barRect.minColumn : row - barRect.minRow
+        let thumb = ScrollBar.thumb(
+            length: length, viewport: viewport,
+            content: scrollContentHeights[id] ?? 0, offset: clampScroll(scrollOffsets[id] ?? 0, id: id))
+        let onThumb = position >= thumb.start && position < thumb.start + thumb.size
+        let grab = onThumb ? position - thumb.start : thumb.size / 2
+        mouseDragScroll = (id, grab)
+        lock.unlock()
+        if !onThumb {
+            _ = dragScrollBar(id: id, grab: grab, barRect: barRect, column: column, row: row)
+        }
+        return true
+    }
+
+    /// Moves ``ScrollView`` `id` so the grabbed point of its thumb sits under
+    /// the pointer.
+    private func dragScrollBar(id: String, grab: Int, barRect: Rect, column: Int, row: Int) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard let viewport = scrollViewportHeights[id] else { return false }
+        let isHorizontal = scrollIsHorizontal[id] == true
+        let length = isHorizontal ? barRect.size.width : barRect.size.height
+        let position = isHorizontal ? column - barRect.minColumn : row - barRect.minRow
+        scrollOffsets[id] = ScrollBar.offset(
+            forThumbStart: position - grab, length: length,
+            viewport: viewport, content: scrollContentHeights[id] ?? 0)
+        return true
+    }
+
+    /// Whether `id` is a horizontal ``ScrollView``.
+    private func isHorizontalScroll(id: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return scrollIsHorizontal[id] == true
     }
 
     /// Scrolls a horizontal ``ScrollView`` by `delta` columns, clamped.
@@ -1076,8 +1215,10 @@ final class FocusCoordinator: @unchecked Sendable {
         listCounts.removeAll()
         listViewports.removeAll()
         listOffsets.removeAll()
-        editorOffsets.removeAll()
         editorHOffsets.removeAll()
+        editorLastCursorLine.removeAll()
+        editorLastCursorColumn.removeAll()
+        reportedCursor = nil
         buttonActions.removeAll()
         pendingFocus.removeAll()
         focusOnFocus.removeAll()
@@ -1088,6 +1229,7 @@ final class FocusCoordinator: @unchecked Sendable {
         pendingRefocusID = nil
         passDepth = 0
         mouseDragSliderID = nil
+        mouseDragScroll = nil
         momentumTimer?.cancel()
         momentumTimer = nil
         momentumScrollID = nil
