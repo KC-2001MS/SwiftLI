@@ -23,7 +23,7 @@ public struct AnyView: View {
 
     @_spi(RenderingInternals)
     public func applyingStyle(_ style: TextStyle) -> Self {
-        AnyView(erasing: content.applyingStyle(style))
+        AnyView(erasing: content.styled(style))
     }
 
     init(erasing content: any View) {

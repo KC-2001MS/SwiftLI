@@ -46,12 +46,22 @@ final class FocusCoordinator: @unchecked Sendable {
     private var scrollViewportHeights: [String: Int] = [:]
     private var scrollContentHeights: [String: Int] = [:]
     private var scrollIsHorizontal: [String: Bool] = [:]
+    /// The focused control each scroll view last brought into view.
+    private var scrollLastFocused: [String: String] = [:]
     // Selectable lists (``List``): a selected-row binding, the row count, and —
     // when the list scrolls — the viewport height and current row offset.
     private var listSelections: [String: Binding<Int?>] = [:]
     private var listCounts: [String: Int] = [:]
     private var listViewports: [String: Int] = [:]
     private var listOffsets: [String: Int] = [:]
+    // Multi-line rows: the first line of each row within the list's content
+    // (`nil` when every row is one line), the rows one Page Up/Down moves,
+    // the selection the list last followed, and its submit action (Return).
+    private var listRowStarts: [String: [Int]] = [:]
+    private var listPageSizes: [String: Int] = [:]
+    private var listLastSelections: [String: Int?] = [:]
+    private var listSubmits: [String: () -> Void] = [:]
+    private var listReachEndCounts: [String: Int] = [:]
     // Multi-line editors also remember a horizontal scroll offset: long lines
     // are never wrapped — the window slides to keep the cursor column visible.
     private var editorHOffsets: [String: Int] = [:]
@@ -97,6 +107,9 @@ final class FocusCoordinator: @unchecked Sendable {
     // user still has something to do, so the session stays alive.
     private var currentPassIDs: Set<String>?
     private var visibleIDs: Set<String> = []
+    /// The controls registered by the pass in progress, in tree order — the
+    /// focus ring the frame ends with.
+    private var passOrder: [String] = []
     // Render passes can nest (a one-shot `renderString()` lowered inside a
     // session render); only the outermost bracket owns the pass.
     private var passDepth = 0
@@ -161,8 +174,13 @@ final class FocusCoordinator: @unchecked Sendable {
         let outermost = passDepth == 1
         if outermost { currentPassIDs = [] }
         lock.unlock()
-        // The hit-region registry double-buffers per pass in lockstep.
-        if outermost { MouseTargetRegistry.shared.beginPass() }
+        // The hit-region and key-press registries double-buffer per pass in
+        // lockstep.
+        if outermost {
+            MouseTargetRegistry.shared.beginPass()
+            KeyPressRegistry.shared.beginPass()
+            SessionLifecycle.shared.beginPass()
+        }
         // Clear focused values so stale entries from removed views don't persist.
         if outermost { FocusedValuesStore.shared.clear() }
     }
@@ -173,8 +191,26 @@ final class FocusCoordinator: @unchecked Sendable {
         passDepth = Swift.max(0, passDepth - 1)
         guard passDepth == 0 else { lock.unlock(); return }
         MouseTargetRegistry.shared.endPass()
+        KeyPressRegistry.shared.endPass()
+        SessionLifecycle.shared.endPass()
         visibleIDs = currentPassIDs ?? []
         currentPassIDs = nil
+        // The focus ring is rebuilt from the controls this frame actually
+        // registered, in tree order: a control that left the frame (a
+        // switched `if` branch, a hidden tab, a popped layer) leaves the
+        // ring, so a key can never reach a control that is not on screen.
+        order = passOrder
+        passOrder = []
+        if let focusedID, !visibleIDs.contains(focusedID), pendingRefocusID == nil {
+            // The focused control vanished: release it and move focus to
+            // the first control still on screen.
+            focusOnUnfocus[focusedID]?()
+            self.focusedID = nil
+            if let first = order.first {
+                hasAutoFocused = true
+                setFocus(to: first, writeback: false)
+            }
+        }
         // A sticky refocus that no registration claimed: the control focused
         // before the navigation push is gone from the new frame. Fire its
         // unfocus hook and fall back to the new layer's first control.
@@ -200,6 +236,10 @@ final class FocusCoordinator: @unchecked Sendable {
     /// `lock` held.
     private func noteVisible(_ id: String) {
         currentPassIDs?.insert(id)
+        if currentPassIDs != nil, !passOrder.contains(id) { passOrder.append(id) }
+        // Remember which `onKeyPress` handlers enclose the control, so keys it
+        // leaves unhandled reach those first.
+        KeyPressRegistry.shared.noteControl(id)
     }
 
     // MARK: - Navigation layer support
@@ -240,6 +280,19 @@ final class FocusCoordinator: @unchecked Sendable {
     func prepareForNewLayer() {
         lock.lock(); defer { lock.unlock() }
         pendingRefocusID = focusedID
+        focusedID = nil
+        order.removeAll()
+        hasAutoFocused = false
+    }
+
+    /// Clears the focus ring for a screen switch (a ``TabView`` changing
+    /// tabs) and asks for `id` — the control that had focus the last time
+    /// the new screen was shown — to take focus again if it re-registers.
+    /// Falls back to the new screen's first control.
+    func prepareForNewLayer(refocusing id: String?) {
+        lock.lock(); defer { lock.unlock() }
+        if let old = focusedID { focusOnUnfocus[old]?() }
+        pendingRefocusID = id
         focusedID = nil
         order.removeAll()
         hasAutoFocused = false
@@ -372,22 +425,70 @@ final class FocusCoordinator: @unchecked Sendable {
     ///   - count: The number of rows.
     ///   - viewportRows: The visible-row count when the list scrolls, or `nil`
     ///     when the whole list is shown at once.
-    func registerList(id: String, selection: Binding<Int?>, count: Int, viewportRows: Int?) {
+    func registerList(id: String, selection: Binding<Int?>, count: Int, viewportRows: Int?, rowStarts: [Int]? = nil, pageSize: Int? = nil, onSubmit: (() -> Void)? = nil) {
         lock.lock(); defer { lock.unlock() }
         guard !isSuppressed else { return }
         listSelections[id] = selection
         listCounts[id] = count
-        if let viewportRows { listViewports[id] = viewportRows }
+        if let viewportRows { listViewports[id] = viewportRows } else { listViewports[id] = nil }
+        listRowStarts[id] = rowStarts
+        listPageSizes[id] = pageSize
+        listSubmits[id] = onSubmit
         if listOffsets[id] == nil { listOffsets[id] = 0 }
         noteVisible(id)
         if !order.contains(id) { order.append(id) }
         linkFocus(id: id)
     }
 
-    /// The current scroll offset (in rows) for a scrolling list.
+    /// The current scroll offset (in lines) for a scrolling list.
     func listOffset(for id: String) -> Int {
         lock.lock(); defer { lock.unlock() }
         return listOffsets[id] ?? 0
+    }
+
+    /// Stores the line offset a list resolved for this frame.
+    func setListOffset(_ offset: Int, for id: String) {
+        lock.lock(); defer { lock.unlock() }
+        listOffsets[id] = offset
+    }
+
+    /// Records the selection a list is about to follow and reports whether
+    /// it differs from the one it followed last frame — the list snaps its
+    /// viewport to the selection only then, so a wheel scroll is not undone
+    /// by the next unrelated redraw.
+    func listSelectionChanged(_ selection: Int?, for id: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        let previous = listLastSelections[id]
+        listLastSelections[id] = .some(selection)
+        guard let previous else { return true }
+        return previous != selection
+    }
+
+    /// Whether a list's selection reaching its end should fire `onReachEnd`
+    /// for a collection of `count` rows — once per count, so the action
+    /// fires again only after more rows were loaded.
+    func listShouldFireReachEnd(count: Int, for id: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard listReachEndCounts[id] != count else { return false }
+        listReachEndCounts[id] = count
+        return true
+    }
+
+    /// Stores the offset a scroll view resolved for this frame (a
+    /// `scrollTo(_:)` or a focused child brought into view).
+    func setScrollOffset(_ offset: Int, for id: String) {
+        lock.lock(); defer { lock.unlock() }
+        scrollOffsets[id] = clampScroll(offset, id: id)
+    }
+
+    /// Records the focused control a scroll view saw this frame and reports
+    /// whether it differs from last frame's — the viewport follows focus
+    /// only when focus actually moved.
+    func scrollFocusChanged(_ focused: String, for id: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        let previous = scrollLastFocused[id]
+        scrollLastFocused[id] = focused
+        return previous != focused
     }
 
     /// The vertical scroll offset for a multi-line editor, adjusted to keep
@@ -899,6 +1000,7 @@ final class FocusCoordinator: @unchecked Sendable {
         let listCount = listCounts[id] ?? 0
         let listViewport = listViewports[id]
         let listOffset = listOffsets[id] ?? 0
+        let rowStarts = listRowStarts[id]
         lock.unlock()
 
         // Act outside the lock: actions and binding setters run user code
@@ -918,6 +1020,15 @@ final class FocusCoordinator: @unchecked Sendable {
             return true
         }
         if let listBinding, listCount > 0 {
+            if let rowStarts {
+                // Rows of measured heights: the clicked line, in content
+                // coordinates, falls in the row whose range contains it.
+                let line = row - rect.minRow + (listViewport != nil ? listOffset : 0)
+                if let index = rowStarts.lastIndex(where: { $0 <= line }), index < listCount {
+                    listBinding.wrappedValue = index
+                }
+                return true
+            }
             // Map the clicked row to a list row — only when every row occupies
             // exactly one line, which is when the control's height matches the
             // rows on screen (styles that add chrome rows opt out naturally).
@@ -1035,20 +1146,34 @@ final class FocusCoordinator: @unchecked Sendable {
         let count = listCounts[id] ?? 0
         let binding = listSelections[id]
         let current = binding?.wrappedValue ?? -1
+        let page = Swift.max(1, listPageSizes[id] ?? listViewports[id] ?? 1)
+        let submit = listSubmits[id]
+        let measuredRows = listRowStarts[id] != nil
         lock.unlock()
 
+        if key == .enter {
+            // Return submits the selection (`onSubmit`); without a handler the
+            // key propagates to the `onKeyPress` handlers.
+            guard let submit else { return false }
+            submit()
+            return true
+        }
         guard count > 0 else { return false }
         let target: Int
         switch key {
-        case .up:    target = current < 0 ? 0 : Swift.max(0, current - 1)
-        case .down:  target = current < 0 ? 0 : Swift.min(count - 1, current + 1)
-        case .home:  target = 0
-        case .end:   target = count - 1
-        default:     return false
+        case .up:       target = current < 0 ? 0 : Swift.max(0, current - 1)
+        case .down:     target = current < 0 ? 0 : Swift.min(count - 1, current + 1)
+        case .pageUp:   target = current < 0 ? 0 : Swift.max(0, current - page)
+        case .pageDown: target = current < 0 ? Swift.min(count - 1, page) : Swift.min(count - 1, current + page)
+        case .home:     target = 0
+        case .end:      target = count - 1
+        default:        return false
         }
         binding?.wrappedValue = target
 
-        // Keep the selection within the viewport for a scrolling list.
+        // A list that measured its rows follows the selection when it next
+        // lowers; a one-line-per-row control (``Table``) is followed here.
+        guard !measuredRows else { return true }
         lock.lock()
         if let viewport = listViewports[id], viewport > 0 {
             var offset = listOffsets[id] ?? 0
@@ -1074,7 +1199,8 @@ final class FocusCoordinator: @unchecked Sendable {
         // drives both a vertical viewport (↑/↓) and a horizontal one (←/→).
         case .up, .left:           target = current - 1
         case .down, .right:        target = current + 1
-        case .character(" "):      target = current + viewport
+        case .character(" "), .pageDown: target = current + viewport
+        case .pageUp:              target = current - viewport
         case .home:                target = 0
         case .end:                 target = maxOffset
         default:                   return false
@@ -1193,9 +1319,11 @@ final class FocusCoordinator: @unchecked Sendable {
     /// Clears all focus/cursor state (called when the runtime tears down).
     func reset() {
         MouseTargetRegistry.shared.reset()
+        KeyPressRegistry.shared.reset()
         lock.lock(); defer { lock.unlock() }
         currentPassIDs = nil
         visibleIDs.removeAll()
+        passOrder.removeAll()
         order.removeAll()
         cursors.removeAll()
         bindings.removeAll()
@@ -1211,10 +1339,16 @@ final class FocusCoordinator: @unchecked Sendable {
         scrollViewportHeights.removeAll()
         scrollContentHeights.removeAll()
         scrollIsHorizontal.removeAll()
+        scrollLastFocused.removeAll()
         listSelections.removeAll()
         listCounts.removeAll()
         listViewports.removeAll()
         listOffsets.removeAll()
+        listRowStarts.removeAll()
+        listPageSizes.removeAll()
+        listLastSelections.removeAll()
+        listSubmits.removeAll()
+        listReachEndCounts.removeAll()
         editorHOffsets.removeAll()
         editorLastCursorLine.removeAll()
         editorLastCursorColumn.removeAll()

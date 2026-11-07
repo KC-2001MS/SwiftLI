@@ -264,11 +264,22 @@ final class StateObserverRegistry: @unchecked Sendable {
     private let lock = NSLock()
     private var observer: (() -> Void)?
     // While > 0, `notifyChange()` records that a render is owed instead of
-    // firing immediately — see `batch(_:)`.
+    // scheduling one — see `batch(_:)`.
     private var batchDepth = 0
     private var missedChangeWhileBatching = false
+    // A render is queued on the main queue but has not run yet. Further
+    // changes until it runs are folded into it.
+    private var renderPending = false
 
     private init() {}
+
+    /// Whether a render is queued but not yet performed. The idle check
+    /// consults it so a session is never torn down between a state write
+    /// and the frame that shows it.
+    var hasPendingRender: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return renderPending
+    }
 
     /// Registers a callback to be invoked on every state change.
     func register(_ callback: @escaping () -> Void) {
@@ -284,9 +295,15 @@ final class StateObserverRegistry: @unchecked Sendable {
         lock.unlock()
     }
 
-    /// Invokes the registered callback, if any — immediately, unless a
-    /// `batch(_:)` is in progress, in which case the render is deferred to
-    /// its end.
+    /// Schedules the registered callback, if any, for the next turn of the
+    /// main queue — unless a `batch(_:)` is in progress, in which case the
+    /// render is deferred to its end.
+    ///
+    /// Renders are coalesced per turn: every `@State` / `Binding` /
+    /// `@Observable` write made before the queued render runs lands in that
+    /// one frame — a key handler that updates three values draws once, as in
+    /// SwiftUI — and a write made *during* a render (from `onAppear`, say)
+    /// queues the next frame instead of re-entering the one being drawn.
     func notifyChange() {
         lock.lock()
         guard batchDepth == 0 else {
@@ -294,23 +311,27 @@ final class StateObserverRegistry: @unchecked Sendable {
             lock.unlock()
             return
         }
-        let cb = observer
+        guard observer != nil, !renderPending else {
+            lock.unlock()
+            return
+        }
+        renderPending = true
         lock.unlock()
-        cb?()
+        DispatchQueue.main.async { [self] in
+            lock.lock()
+            renderPending = false
+            let cb = observer
+            lock.unlock()
+            cb?()
+        }
     }
 
-    /// Runs `body` with rendering suppressed, then renders at most once
-    /// afterward if any change occurred during it.
+    /// Runs `body` with rendering suppressed, then schedules at most one
+    /// render afterward if any change occurred during it.
     ///
-    /// `FullScreenCommand`'s render-on-change is synchronous and uncoalesced
-    /// (unlike `AppRuntime`'s, which already debounces via
-    /// `DispatchQueue.main.async`): every `@State`/`Binding` write renders
-    /// immediately. A burst of key events decoded from one `read()` — e.g.
-    /// every character an IME committed at once — would otherwise apply and
-    /// redraw one character at a time, visibly stepping through partial
-    /// states instead of updating atomically. Wrapping such a burst in
-    /// `batch` lets every event's state change land before the one render
-    /// that shows all of them together.
+    /// A burst of key events decoded from one `read()` — e.g. every
+    /// character an IME committed at once — is applied inside one batch so
+    /// the frame shows all of them together.
     func batch(_ body: () -> Void) {
         lock.lock()
         batchDepth += 1
@@ -322,8 +343,7 @@ final class StateObserverRegistry: @unchecked Sendable {
         batchDepth -= 1
         let shouldRender = batchDepth == 0 && missedChangeWhileBatching
         if shouldRender { missedChangeWhileBatching = false }
-        let cb = observer
         lock.unlock()
-        if shouldRender { cb?() }
+        if shouldRender { notifyChange() }
     }
 }

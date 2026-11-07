@@ -72,6 +72,9 @@ public final class AppRuntime: @unchecked Sendable {
 
         setupSignalHandlers()
         renderer.setup()
+        // Read the keyboard for the whole run, so `onKeyPress` handlers and
+        // Ctrl-C work even on a screen without interactive controls.
+        KeyInputRouter.shared.ensureStarted()
         // Start with clean lifecycle state so `onAppear`/`task` modifiers in
         // the app's body fire for this run.
         SessionLifecycle.shared.reset()

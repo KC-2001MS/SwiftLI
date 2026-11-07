@@ -109,7 +109,7 @@ public extension View {
     /// }
     /// ```
     func navigationBarTitleDisplayMode(_ displayMode: NavigationBarItem.TitleDisplayMode) -> some View {
-        NavigationBarConfigWriter(content: AnyView(self)) { $0.titleDisplayMode = displayMode }
+        modifier(NavigationBarConfigModifier { $0.titleDisplayMode = displayMode })
     }
 
     /// Sets the background colour of the enclosing navigation container's
@@ -128,7 +128,7 @@ public extension View {
     /// }
     /// ```
     func toolbarBackground(_ color: Color, for bars: ToolbarPlacement...) -> some View {
-        NavigationBarConfigWriter(content: AnyView(self)) { $0.background = color }
+        modifier(NavigationBarConfigModifier { $0.background = color })
     }
 
     /// Forces a colour scheme for the enclosing navigation container's title
@@ -149,7 +149,7 @@ public extension View {
     /// }
     /// ```
     func toolbarColorScheme(_ colorScheme: ColorScheme?, for bars: ToolbarPlacement...) -> some View {
-        NavigationBarConfigWriter(content: AnyView(self)) { $0.colorScheme = colorScheme }
+        modifier(NavigationBarConfigModifier { $0.colorScheme = colorScheme })
     }
 
     /// Sets the purpose of the enclosing navigation container's title bar,
@@ -166,32 +166,27 @@ public extension View {
     /// }
     /// ```
     func toolbarRole(_ role: ToolbarRole) -> some View {
-        NavigationBarConfigWriter(content: AnyView(self)) { $0.role = role }
+        modifier(NavigationBarConfigModifier { $0.role = role })
     }
 }
 
-// MARK: - NavigationBarConfigWriter
+// MARK: - NavigationBarConfigModifier
 
 /// Registers a title-bar setting with the enclosing navigation container
 /// while its content lowers, then lowers the content unchanged — the same
-/// preference-like flow as ``NavigationTitleWriter``.
-struct NavigationBarConfigWriter: View {
-    let content: AnyView
+/// preference-like flow as ``NavigationTitleModifier``.
+struct NavigationBarConfigModifier: ViewModifier {
     let update: (inout NavigationBarConfig) -> Void
 
-    public typealias Body = Never
-
-    @_spi(RenderingInternals)
-    public func applyingStyle(_ style: TextStyle) -> Self {
-        NavigationBarConfigWriter(content: content.applyingStyle(style), update: update)
+    func node(for content: RenderNode) -> RenderNode {
+        content
     }
 
-    @_spi(RenderingInternals)
-    public func makeNode() -> RenderNode {
+    func node(lowering content: () -> RenderNode) -> RenderNode {
         if let container = EnvironmentStack.current.navigationContainerID {
             NavigationCoordinator.shared.updateBarConfig(for: container, update)
         }
-        return content.makeNode()
+        return content()
     }
 }
 
@@ -209,6 +204,7 @@ public struct ToolbarItemPlacement: Equatable, Sendable {
         case leading
         case center
         case trailing
+        case bottom
     }
 
     let segment: Segment
@@ -246,9 +242,9 @@ public struct ToolbarItemPlacement: Equatable, Sendable {
     /// An action with destructive consequences, in the trailing segment.
     public static let destructiveAction = ToolbarItemPlacement(segment: .trailing)
 
-    /// The bottom bar — the terminal has none, so it resolves to the
-    /// trailing segment of the title bar.
-    public static let bottomBar = ToolbarItemPlacement(segment: .trailing)
+    /// The bottom bar: a row pinned to the last line of the container, below
+    /// its content — the place for a key-hint line in a full-screen app.
+    public static let bottomBar = ToolbarItemPlacement(segment: .bottom)
 
     /// The keyboard accessory bar — the terminal has none, so it resolves to
     /// the trailing segment of the title bar.
@@ -428,6 +424,6 @@ public extension View {
     /// ```
     func toolbar(@ToolbarContentBuilder content: () -> some ToolbarContent) -> some View {
         let items = resolveToolbarItems(content())
-        return NavigationBarConfigWriter(content: AnyView(self)) { $0.toolbarItems += items }
+        return modifier(NavigationBarConfigModifier { $0.toolbarItems += items })
     }
 }

@@ -171,23 +171,20 @@ public struct FocusedValue<Value> {
 
 // MARK: - .focusedValue(_:_:) modifier
 
-/// The view produced by ``View/focusedValue(_:_:)``: writes the given value
+/// The modifier behind ``View/focusedValue(_:_:)``: writes the given value
 /// into ``FocusedValuesStore`` while its content is lowered, then lowers the
 /// content unchanged.
-struct FocusedValueWriter<Value>: View, @unchecked Sendable {
-    let content: any View
+struct FocusedValueModifier<Value>: ViewModifier {
     let keyPath: WritableKeyPath<FocusedValues, Value?>
     let value: Value?
 
-    typealias Body = Never
-
-    func applyingStyle(_ style: TextStyle) -> Self {
-        FocusedValueWriter(content: content.applyingStyle(style), keyPath: keyPath, value: value)
+    func node(for content: RenderNode) -> RenderNode {
+        content
     }
 
-    func makeNode() -> RenderNode {
+    func node(lowering content: () -> RenderNode) -> RenderNode {
         FocusedValuesStore.shared.update { $0[keyPath: keyPath] = value }
-        return content.makeNode()
+        return content()
     }
 }
 
@@ -210,7 +207,7 @@ public extension View {
     ///     .focusedValue(\.selectedDocument, isEditing ? doc : nil)
     /// ```
     func focusedValue<Value>(_ keyPath: WritableKeyPath<FocusedValues, Value?>, _ value: Value?) -> some View {
-        FocusedValueWriter(content: self, keyPath: keyPath, value: value)
+        modifier(FocusedValueModifier(keyPath: keyPath, value: value))
     }
 }
 

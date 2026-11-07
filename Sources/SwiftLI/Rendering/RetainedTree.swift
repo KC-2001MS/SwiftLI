@@ -85,6 +85,19 @@ final class RetainedTree {
         return h ^ (h >> 31)
     }
 
+    /// The identity of the child of `parent` identified by `key` (an element
+    /// id in a `ForEach`, or an explicit `.id(_:)`), rather than by position.
+    static func identity(parent: UInt64, key: AnyHashable, type: Any.Type) -> UInt64 {
+        var hasher = Hasher()
+        hasher.combine(key)
+        var h = parent &+ 0x9E37_79B9_7F4A_7C15
+        h ^= UInt64(bitPattern: Int64(hasher.finalize())) &* 0x94D0_49BB_1331_11EB
+        h ^= UInt64(UInt(bitPattern: ObjectIdentifier(type)))
+        h = (h ^ (h >> 30)) &* 0xBF58_476D_1CE4_E5B9
+        h = (h ^ (h >> 27)) &* 0x94D0_49BB_1331_11EB
+        return h ^ (h >> 31)
+    }
+
     /// Records `node` as the lowering of the view with `identity` for this
     /// frame and returns the node to use: the previous frame's node when the
     /// two are equal (so its storage is shared), otherwise `node`.
@@ -150,7 +163,29 @@ extension View {
     func lowered(at index: Int) -> RenderNode {
         guard let pass = RenderPassContext.current, let tree = pass.retained else { return makeNode() }
         let parent = pass.identity
+        // A view carrying an explicit identity (a `ForEach` row flattened
+        // into a container, a tuple slot, a `.id(_:)`) is keyed by it, not
+        // by its position among its siblings.
+        if let identified = self as? IdentifiedView {
+            let identity = RetainedTree.identity(parent: parent, key: AnyHashable([identified.id, AnyHashable(identified.index)]), type: IdentifiedView.self)
+            return lowered(as: identity, in: pass, tree: tree)
+        }
         let identity = RetainedTree.identity(parent: parent, index: index, type: type(of: self))
+        return lowered(as: identity, in: pass, tree: tree)
+    }
+
+    /// Lowers this view as the child of the current view identified by `id`
+    /// — a `ForEach` element's id or an explicit `.id(_:)` — so its state
+    /// follows the id rather than the position.
+    func lowered(id: AnyHashable) -> RenderNode {
+        guard let pass = RenderPassContext.current, let tree = pass.retained else { return makeNode() }
+        let parent = pass.identity
+        let identity = RetainedTree.identity(parent: parent, key: id, type: type(of: self))
+        return lowered(as: identity, in: pass, tree: tree)
+    }
+
+    private func lowered(as identity: UInt64, in pass: RenderPassContext, tree: RetainedTree) -> RenderNode {
+        let parent = pass.identity
         pass.identity = identity
         defer { pass.identity = parent }
         let node = makeNode()
@@ -159,6 +194,83 @@ extension View {
             return node
         }
         return tree.reconcile(node, at: identity)
+    }
+}
+
+// MARK: - Explicit identity
+
+/// A view lowered under an explicit identity key — a `ForEach` row that
+/// was flattened into a container, or a view given `.id(_:)`.
+///
+/// Identity-transparent otherwise: it lowers its content under
+/// `(parent, id, index)` and, when the id is a scroll target, wraps it in a
+/// marker so ``ScrollViewReader`` can locate it.
+struct IdentifiedView: View, @unchecked Sendable {
+    let id: AnyHashable
+    /// Distinguishes several flattened children of one identified row.
+    var index: Int = 0
+    let content: any View
+    /// Whether the node is marked as a scroll target for `scrollTo(_:)`.
+    var marksScrollTarget = false
+
+    typealias Body = Never
+
+    func applyingStyle(_ style: TextStyle) -> IdentifiedView {
+        IdentifiedView(id: id, index: index, content: content.styled(style), marksScrollTarget: marksScrollTarget)
+    }
+
+    func makeNode() -> RenderNode {
+        // Lowered through `lowered(at:)`, the pass identity is already the
+        // keyed one; the content hangs beneath it.
+        let node = content.lowered(at: index)
+        guard marksScrollTarget else { return node }
+        return .control(id: ScrollTargetRegistry.markerID(for: id), child: node)
+    }
+
+    func _flattenedChildren() -> [any View] {
+        marksScrollTarget ? [self] : content._flattenedChildren().enumerated().map { IdentifiedView(id: id, index: $0.offset, content: $0.element) }
+    }
+}
+
+extension View {
+    /// The view beneath any identity wrappers — for containers that inspect
+    /// their children's types (a ``TabView`` looking for ``Tab``s).
+    var unwrappingIdentity: any View {
+        var view: any View = self
+        while let identified = view as? IdentifiedView, !identified.marksScrollTarget { view = identified.content }
+        return view
+    }
+}
+
+extension IdentifiedView: _StyleCarryingView {}
+
+public extension View {
+    /// Binds this view's identity to `id`, mirroring SwiftUI's `id(_:)`.
+    ///
+    /// Two effects, as in SwiftUI: the view's `@State` and lifecycle belong
+    /// to the id (so a different id gives a fresh view), and the view becomes
+    /// a target for ``ScrollViewProxy/scrollTo(_:anchor:)`` inside a
+    /// ``ScrollViewReader``.
+    func id<ID: Hashable>(_ id: ID) -> some View {
+        IdentifiedView(id: AnyHashable(id), content: self, marksScrollTarget: true)
+    }
+}
+
+// MARK: - Control identity
+
+/// Resolves the identity a control registers under.
+///
+/// A control's default identity is its label — convenient, but two buttons
+/// titled "Delete" would then share one entry in the focus ring. Inside a
+/// session that tracks structural identities, a defaulted id is made unique
+/// by appending the control's position in the tree; an explicit `id:` is
+/// always used as given, and a one-shot render (no session) keeps the plain
+/// label, so tests and static output address controls by their labels.
+enum ControlIdentity {
+    static func resolve(_ explicit: String?, default label: String) -> String {
+        if let explicit { return explicit }
+        guard let pass = RenderPassContext.current, pass.retained != nil, pass.identity != RetainedTree.rootIdentity else { return label }
+        return label + "#" + String(pass.identity, radix: 36)
     }
 }
 
@@ -209,6 +321,10 @@ extension RenderNode {
             return i1 == i2 && c1.isEquivalent(to: c2)
         case (.background(let s1, let c1), .background(let s2, let c2)):
             return s1 == s2 && c1.isEquivalent(to: c2)
+        case (.zstack(let a1, let a), .zstack(let a2, let b)):
+            return a1 == a2 && Self.equivalentChildren(a, b)
+        case (.overlay(let a1, let b1, let l1, let h1), .overlay(let a2, let b2, let l2, let h2)):
+            return a1 == a2 && h1 == h2 && b1.isEquivalent(to: b2) && l1.isEquivalent(to: l2)
         default:
             // Leaves without arrays (and mismatched cases).
             return self == other

@@ -172,74 +172,51 @@ final class PreferenceObserverRegistry: @unchecked Sendable {
 
 // MARK: - .preference(key:value:)
 
-/// The view produced by ``View/preference(key:value:)``: writes `value`
-/// into the preference store after its content lowers, then lowers the
-/// content unchanged.
-struct PreferenceWriter<K: PreferenceKey>: View, @unchecked Sendable {
-    let content: any View
+/// The modifier behind ``View/preference(key:value:)``: writes `value` into
+/// the preference store after its content lowers.
+struct PreferenceWriterModifier<K: PreferenceKey>: ViewModifier {
     let value: K.Value
 
-    typealias Body = Never
-
-    func applyingStyle(_ style: TextStyle) -> Self {
-        PreferenceWriter(content: content.applyingStyle(style), value: value)
-    }
-
-    func makeNode() -> RenderNode {
-        // Lower content first so any deeper preferences accumulate before ours.
-        let node = content.makeNode()
+    /// Runs after the content lowered, so any deeper preferences accumulate
+    /// before this one.
+    func node(for content: RenderNode) -> RenderNode {
         PreferenceCollector.write(K.self, value: value)
-        return node
+        return content
     }
 }
 
 // MARK: - .transformPreference(_:_:)
 
-/// The view produced by ``View/transformPreference(_:_:)``: applies a
+/// The modifier behind ``View/transformPreference(_:_:)``: applies a
 /// transform to the innermost scope's accumulated value after its content
 /// lowers.
-struct PreferenceTransformer<K: PreferenceKey>: View, @unchecked Sendable {
-    let content: any View
+struct PreferenceTransformModifier<K: PreferenceKey>: ViewModifier {
     let transform: (inout K.Value) -> Void
 
-    typealias Body = Never
-
-    func applyingStyle(_ style: TextStyle) -> Self {
-        PreferenceTransformer(content: content.applyingStyle(style), transform: transform)
-    }
-
-    func makeNode() -> RenderNode {
-        let node = content.makeNode()
+    func node(for content: RenderNode) -> RenderNode {
         var value = PreferenceCollector.readTop(K.self)
         transform(&value)
         PreferenceCollector.setTop(K.self, value)
-        return node
+        return content
     }
 }
 
 // MARK: - .onPreferenceChange(_:perform:)
 
-/// The view produced by ``View/onPreferenceChange(_:perform:)``: captures
+/// The modifier behind ``View/onPreferenceChange(_:perform:)``: captures
 /// preferences from its subtree and calls `perform` (deferred) when the
 /// value changes.
-struct PreferenceChangeObserver<K: PreferenceKey>: View, @unchecked Sendable where K.Value: Equatable & Sendable {
-    let content: any View
+struct PreferenceChangeModifier<K: PreferenceKey>: ViewModifier where K.Value: Equatable & Sendable {
     let observerID: String
     let perform: @Sendable (K.Value) -> Void
 
-    typealias Body = Never
-
-    func applyingStyle(_ style: TextStyle) -> Self {
-        PreferenceChangeObserver(
-            content: content.applyingStyle(style),
-            observerID: observerID,
-            perform: perform
-        )
+    func node(for content: RenderNode) -> RenderNode {
+        content
     }
 
-    func makeNode() -> RenderNode {
+    func node(lowering content: () -> RenderNode) -> RenderNode {
         let (node, values) = PreferenceCollector.capturing {
-            content.makeNode()
+            content()
         }
         let value = PreferenceCollector.read(K.self, from: values)
         // Only fire when the value actually changes to avoid infinite re-render loops.
@@ -280,7 +257,7 @@ public extension View {
     /// }
     /// ```
     func preference<K: PreferenceKey>(key: K.Type, value: K.Value) -> some View {
-        PreferenceWriter<K>(content: self, value: value)
+        modifier(PreferenceWriterModifier<K>(value: value))
     }
 
     /// Modifies the accumulated preference for `key` in place, mirroring
@@ -297,7 +274,7 @@ public extension View {
         _ key: K.Type,
         _ transform: @escaping (inout K.Value) -> Void
     ) -> some View {
-        PreferenceTransformer<K>(content: self, transform: transform)
+        modifier(PreferenceTransformModifier<K>(transform: transform))
     }
 
     /// Calls `perform` when a child view's accumulated preference for `key`
@@ -333,10 +310,9 @@ public extension View {
         line: Int = #line,
         column: Int = #column
     ) -> some View where K.Value: Equatable & Sendable {
-        PreferenceChangeObserver<K>(
-            content: self,
+        modifier(PreferenceChangeModifier<K>(
             observerID: "\(fileID):\(line):\(column):\(String(reflecting: K.self))",
             perform: perform
-        )
+        ))
     }
 }

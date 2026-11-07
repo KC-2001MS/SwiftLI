@@ -45,6 +45,12 @@ public struct Text: View, Sendable, Equatable {
 
     let contents: Array<String>
 
+    /// The individually styled pieces of a multi-style text — one made from
+    /// an `AttributedString` or by concatenating texts with `+` — or `nil`
+    /// for a text with a single style. When present, `contents` is derived
+    /// from the runs at lowering time.
+    let runs: [TextRun]?
+
     /// Creates a localized text view.
     ///
     /// The string is resolved through Foundation's `String(localized:)` API using
@@ -63,6 +69,7 @@ public struct Text: View, Sendable, Equatable {
     ) {
         self.style = .plain
         self.contents = [key.resolve(table: tableName, bundle: bundle, comment: comment)]
+        self.runs = nil
     }
 
     /// Creates a text view that displays a string exactly as given, without localization.
@@ -71,6 +78,7 @@ public struct Text: View, Sendable, Equatable {
     public init(verbatim content: String) {
         self.style = .plain
         self.contents = [content]
+        self.runs = nil
     }
 
     /// Creates a text view from any `StringProtocol` value.
@@ -79,6 +87,60 @@ public struct Text: View, Sendable, Equatable {
     public init<S>(_ content: S) where S : StringProtocol {
         self.style = .plain
         self.contents = [String(content)]
+        self.runs = nil
+    }
+
+    /// Creates a text view whose pieces carry their own styles, mirroring
+    /// SwiftUI's `Text(_ attributedContent: AttributedString)`.
+    ///
+    /// Each run of the attributed string becomes a styled piece: the SwiftLI
+    /// attributes (`foregroundColor`, `backgroundColor`, `fontWeight`,
+    /// `underline`, `italic`, `strikethrough` — see
+    /// `AttributeScopes.SwiftLIAttributes`) and Foundation's
+    /// `inlinePresentationIntent` and `link` are honoured. The text wraps to
+    /// the available width like any other, and a style applied to the whole
+    /// view fills in whatever the runs leave unspecified.
+    ///
+    /// ```swift
+    /// var summary = AttributedString("Build passed in 42s")
+    /// if let range = summary.range(of: "passed") {
+    ///     summary[range].foregroundColor = .green
+    /// }
+    /// Text(summary)
+    /// ```
+    public init(_ attributedContent: AttributedString) {
+        let runs = attributedContent.runs.map { TextRun($0, in: attributedContent) }
+        self.style = .plain
+        self.contents = runs.map(\.text)
+        self.runs = runs
+    }
+
+    /// Creates a text view showing a date in one of SwiftUI's `Text.DateStyle`s.
+    ///
+    /// `.relative`, `.offset` and `.timer` describe the interval to *now*;
+    /// inside a reactive session the text refreshes itself (every minute,
+    /// or every second for `.timer`) so it stays current.
+    public init(_ date: Date, style: Text.DateStyle) {
+        if let interval = style.refreshInterval,
+           BodyRenderingStore.shared.sessionActive || AppRuntime.shared != nil {
+            TimelineCoordinator.shared.arm(key: "Text.DateStyle.\(interval)", fireAt: Date().addingTimeInterval(interval))
+        }
+        self.style = .plain
+        self.contents = [style.format(date)]
+        self.runs = nil
+    }
+
+    /// Creates a text view from a value and a Foundation `FormatStyle`,
+    /// mirroring SwiftUI's `Text(_:format:)`:
+    ///
+    /// ```swift
+    /// Text(stars, format: .number.notation(.compactName))   // 12K
+    /// Text(updatedAt, format: .dateTime.hour().minute())
+    /// ```
+    public init<F: FormatStyle>(_ input: F.FormatInput, format: F) where F.FormatOutput == String {
+        self.style = .plain
+        self.contents = [format.format(input)]
+        self.runs = nil
     }
 
     /// Creates a text view that repeats a single character.
@@ -98,6 +160,7 @@ public struct Text: View, Sendable, Equatable {
     ) {
         self.style = .plain
         self.contents = [String(repeating: repeating, count: count)]
+        self.runs = nil
     }
 
     init(
@@ -107,6 +170,7 @@ public struct Text: View, Sendable, Equatable {
     ) {
         self.style = style
         self.contents = [String(repeating: repeating, count: count)]
+        self.runs = nil
     }
 
     init(
@@ -115,6 +179,7 @@ public struct Text: View, Sendable, Equatable {
     ) {
         self.style = style
         self.contents = contents
+        self.runs = nil
     }
 
     init(
@@ -123,6 +188,13 @@ public struct Text: View, Sendable, Equatable {
     ) {
         self.style = style
         self.contents = [content]
+        self.runs = nil
+    }
+
+    init(style: TextStyle, runs: [TextRun]) {
+        self.style = style
+        self.contents = runs.map(\.text)
+        self.runs = runs
     }
 
     /// `Text` is a rendering leaf: it lowers directly via ``makeNode()`` and
@@ -131,6 +203,7 @@ public struct Text: View, Sendable, Equatable {
 
     @_spi(RenderingInternals)
     public func applyingStyle(_ style: TextStyle) -> Self {
+        if let runs { return Text(style: self.style.inheriting(style), runs: runs) }
         return Text(style: self.style.inheriting(style), contents: contents)
     }
 
@@ -139,28 +212,41 @@ public struct Text: View, Sendable, Equatable {
     /// Instead of touching stdout directly, `Text` emits a ``RenderNode/text``
     /// leaf that the layout engine measures, positions, and later diffs
     /// against previous frames.
+    ///
+    /// A multi-style text lowers to a single run whose pieces carry their
+    /// own escape sequences: each piece resets, then opens its style
+    /// resolved against the text's overall style. The layout engine wraps
+    /// such runs escape-aware, re-opening the active style on every
+    /// continuation line.
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
-        .text(style: style.resolving(), contents: contents)
+        let resolved = style.resolving()
+        guard let runs else { return .text(style: resolved, contents: contents) }
+        var composed = ""
+        for run in runs {
+            let runStyle = run.style.inheriting(style).resolving()
+            composed += TextMetrics.reset + runStyle.ansiPrefix + run.text
+        }
+        return .text(style: resolved, contents: [composed])
     }
 
-    /// Concatenates two text views into a single run.
+    /// The pieces of this text, each with its style, for concatenation.
+    private var pieces: [TextRun] {
+        runs ?? contents.map { TextRun(style: style, text: $0) }
+    }
+
+    /// Concatenates two text views, keeping each side's own style — the
+    /// SwiftUI way to compose a line from differently styled pieces:
     ///
-    /// - Warning: Deprecated. Place adjacent text views inside an ``HStack``
-    ///   — which defaults to zero spacing — instead:
-    ///   ```swift
-    ///   HStack {
-    ///       Text("Hello, ")
-    ///       Text("SwiftLI").foregroundStyle(.orange)
-    ///   }
-    ///   ```
-    @available(*, deprecated, message: "Compose adjacent Text views inside an HStack (which defaults to spacing: 0) instead.")
-    static func +(left: Self, right: Self) -> Self {
-        // Each side's style is baked into its runs (lowered through the same
-        // single point as the renderer) so the merged view keeps both styles.
-        let leftContents = left.contents.map({ left.style.ansiPrefix + $0 })
-        let rightContents = right.contents.map({ right.style.ansiPrefix + $0 })
-        return Text(style: .plain, contents: leftContents + rightContents)
+    /// ```swift
+    /// Text("★ ").foregroundStyle(.yellow) + Text("\(stars)").bold()
+    /// ```
+    ///
+    /// The result is one ``Text``: it wraps to the available width as a
+    /// whole (a styled word keeps its look when it moves to the next row),
+    /// and a modifier applied to it fills in what the pieces leave unset.
+    public static func + (left: Text, right: Text) -> Text {
+        Text(style: .plain, runs: left.pieces + right.pieces)
     }
 }
 
@@ -304,9 +390,16 @@ public extension View {
     func _flattenedChildren() -> [any View] {
         [self]
     }
+}
 
-    // MARK: - Style modifiers
+// MARK: - Style modifiers (primitives)
 
+// The rendering primitives and built-in controls (``_StyleCarryingView``)
+// store a style and resolve it themselves, so their modifiers return `Self`
+// (`Text("a").bold()` is still a `Text`). A composite view gets the same
+// modifiers from the unconstrained extension in StyledView.swift, which
+// wraps it so the style reaches its lowered content.
+public extension View where Self: _StyleCarryingView {
     /// Sets the foreground color of every character in the view, mirroring
     /// SwiftUI's `foregroundStyle(_:)`.
     ///

@@ -7,17 +7,24 @@
 
 import Foundation
 
-/// Bridges raw keyboard input to the focused ``TextField`` and the render loop.
+/// Bridges raw keyboard input to the focused control, the `onKeyPress`
+/// handlers, and the render loop.
 ///
-/// The router owns the process's single ``KeyboardReader``. It is started
-/// lazily — only once a ``TextField`` registers with ``FocusCoordinator`` — so
-/// commands without any text input never switch the terminal into raw mode and
-/// keep their normal Ctrl-C behaviour. Once started, every decoded
-/// ``KeyEvent`` is:
+/// The router owns the process's single ``KeyboardReader``. A full-screen
+/// session starts it up front (``Command/_startBodyRendering(fullScreen:)``,
+/// ``AppRuntime/run()``) so keys are read even on a screen without any
+/// interactive control — a `.task`-only loading view still quits on Ctrl-C
+/// and still feeds its ``View/onKeyPress(action:)`` handlers.
+/// An inline session starts it on demand — controls and `onKeyPress`
+/// handlers call ``ensureStarted()`` as they are lowered — so a static
+/// inline body never switches the terminal into raw mode. Once started,
+/// every decoded ``KeyEvent`` is:
 ///
 /// - `.interrupt` (Ctrl-C): request the active runtime to exit.
 /// - anything else: handed to ``FocusCoordinator`` (which edits the focused
-///   field or moves focus), then a redraw is requested.
+///   control or moves focus); a key the focused control does not use is then
+///   offered to the ``KeyPressRegistry`` handlers. A redraw is requested
+///   either way.
 ///
 /// Redraws and exits are routed to **both** runtimes — the full-screen
 /// ``CLIApp`` (`AppRuntime`) and any inline/full-screen ``InlineCommand``/``FullScreenCommand`` —
@@ -45,8 +52,15 @@ final class KeyInputRouter: @unchecked Sendable {
         let r = KeyboardReader(enableMouse: true) { key in
             switch key {
             case .interrupt:
-                AppRuntime.shared?.stop()
-                BodyRenderingStore.shared.requestExit()
+                // Ctrl-C reaches the `onKeyPress` handlers first (as `"c"`
+                // with `.control`); only an unhandled one ends the session.
+                if KeyPressRegistry.shared.dispatch(key, focusedControl: FocusCoordinator.shared.focused) {
+                    AppRuntime.shared?.scheduleRender()
+                    StateObserverRegistry.shared.notifyChange()
+                } else {
+                    AppRuntime.shared?.stop()
+                    BodyRenderingStore.shared.requestExit()
+                }
             case .mouse(let event):
                 // Only redraw when something reacted — motion reports would
                 // otherwise schedule render after render.
@@ -59,7 +73,12 @@ final class KeyInputRouter: @unchecked Sendable {
                 // bookkeeping, never a reason to redraw.
                 MouseTargetRegistry.shared.resolveInlineOrigin(parkedRow: row)
             default:
-                _ = FocusCoordinator.shared.handle(key)
+                let focus = FocusCoordinator.shared
+                if !focus.handle(key) {
+                    // The focused control (if any) left the key alone: offer
+                    // it to the `onKeyPress` handlers on screen.
+                    KeyPressRegistry.shared.dispatch(key, focusedControl: focus.focused)
+                }
                 // Redraw so focus/cursor moves show even without a text change.
                 AppRuntime.shared?.scheduleRender()
                 StateObserverRegistry.shared.notifyChange()

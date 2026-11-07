@@ -63,6 +63,10 @@ public struct ForEach<Data: RandomAccessCollection, Content: View>: View {
 
     /// Lowers every element's view, in order — see ``Specialised``.
     private let lowerChildren: (Data, (Data.Element) -> Content) -> [RenderNode]
+    /// The stable identity of an element, when the data is identified by an
+    /// id rather than by position: a row's `@State` and lifecycle then follow
+    /// the element as rows are inserted or removed around it.
+    private let identity: ((Data.Element) -> AnyHashable)?
     /// Flattens every element's view into the enclosing container's children.
     private let flattenChildren: (Data, (Data.Element) -> Content) -> [any View]
 
@@ -103,6 +107,12 @@ public struct ForEach<Data: RandomAccessCollection, Content: View>: View {
 
     /// Creates a view that generates one child per element of `data`.
     ///
+    /// Rows are identified by position. For data whose elements are
+    /// `Identifiable`, the ``init(_:content:)`` overload constrained to
+    /// `Identifiable` elements — or ``init(_:id:content:)`` — identifies
+    /// rows by id instead, so a row's `@State` and `task` follow the element
+    /// when the collection changes.
+    ///
     /// - Parameters:
     ///   - data: The collection to iterate over. The number of generated views
     ///     equals the number of elements.
@@ -118,7 +128,51 @@ public struct ForEach<Data: RandomAccessCollection, Content: View>: View {
             data: data,
             content: content,
             lowerChildren: Specialised.lower,
-            flattenChildren: Specialised.flatten
+            flattenChildren: Specialised.flatten,
+            identity: nil
+        )
+    }
+
+    /// Creates a view that generates one child per element of `data`,
+    /// identifying rows by the element's `id` — SwiftUI's
+    /// `ForEach(_:content:)` for `Identifiable` data.
+    ///
+    /// Identity by id is what lets a row keep its `@State`, its running
+    /// `task`, and its focus when rows are inserted or removed before it.
+    public init(
+        _ data: Data,
+        @ViewBuilder content: @escaping (Data.Element) -> Content
+    ) where Data.Element: Identifiable {
+        self.init(data, id: \.id, content: content)
+    }
+
+    /// Creates a view that generates one child per element of `data`,
+    /// identifying rows by the value at `id`, mirroring SwiftUI's
+    /// `ForEach(_:id:content:)`.
+    ///
+    /// ```swift
+    /// ForEach(names, id: \.self) { name in Text(name) }
+    /// ```
+    public init<ID: Hashable>(
+        _ data: Data,
+        id: KeyPath<Data.Element, ID>,
+        @ViewBuilder content: @escaping (Data.Element) -> Content
+    ) {
+        let identity: (Data.Element) -> AnyHashable = { AnyHashable($0[keyPath: id]) }
+        self.init(
+            style: .plain,
+            data: data,
+            content: content,
+            lowerChildren: { data, content in
+                var children: [RenderNode] = []
+                children.reserveCapacity(data.count)
+                for element in data {
+                    children.append(content(element).lowered(id: identity(element)))
+                }
+                return children
+            },
+            flattenChildren: Specialised.flatten,
+            identity: identity
         )
     }
 
@@ -128,13 +182,15 @@ public struct ForEach<Data: RandomAccessCollection, Content: View>: View {
         data: Data,
         content: @escaping (Data.Element) -> Content,
         lowerChildren: @escaping (Data, (Data.Element) -> Content) -> [RenderNode],
-        flattenChildren: @escaping (Data, (Data.Element) -> Content) -> [any View]
+        flattenChildren: @escaping (Data, (Data.Element) -> Content) -> [any View],
+        identity: ((Data.Element) -> AnyHashable)?
     ) {
         self.style = style
         self.data = data
         self.content = content
         self.lowerChildren = lowerChildren
         self.flattenChildren = flattenChildren
+        self.identity = identity
     }
 
     /// `ForEach` is a structural primitive: it lowers its generated children
@@ -143,7 +199,7 @@ public struct ForEach<Data: RandomAccessCollection, Content: View>: View {
 
     @_spi(RenderingInternals)
     public func applyingStyle(_ style: TextStyle) -> Self {
-        ForEach(style: self.style.inheriting(style), data: data, content: content, lowerChildren: lowerChildren, flattenChildren: flattenChildren)
+        ForEach(style: self.style.inheriting(style), data: data, content: content, lowerChildren: lowerChildren, flattenChildren: flattenChildren, identity: identity)
     }
 
     /// Lowers the iteration into a transparent ``RenderNode/group`` node whose
@@ -163,7 +219,23 @@ public struct ForEach<Data: RandomAccessCollection, Content: View>: View {
     /// cascaded onto each.
     @_spi(RenderingInternals)
     public func _flattenedChildren() -> [any View] {
-        let views = flattenChildren(data, content)
-        return style.isPlain ? views : views.map { $0.applyingStyle(style) }
+        var views = flattenChildren(data, content)
+        if let identity {
+            // Flattened into a container, each row still carries its id so
+            // the container lowers it under that identity.
+            var identified: [any View] = []
+            identified.reserveCapacity(views.count)
+            var index = 0
+            for element in data {
+                let count = content(element).flattenedChildren().count
+                let id = identity(element)
+                for offset in 0..<count where index + offset < views.count {
+                    identified.append(IdentifiedView(id: id, index: offset, content: views[index + offset]))
+                }
+                index += count
+            }
+            views = identified
+        }
+        return style.isPlain ? views : views.map { $0.styled(style) }
     }
 }

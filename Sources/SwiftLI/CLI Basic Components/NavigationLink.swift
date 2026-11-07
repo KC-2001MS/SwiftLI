@@ -36,9 +36,22 @@
 /// > share the same label.
 public struct NavigationLink: View {
     let style: TextStyle
-    let id: String
+    /// An identity given explicitly, or `nil` to derive one from the label.
+    let explicitID: String?
+    /// The identity used when none is given — the label, made unique per
+    /// position inside a session (see ``ControlIdentity``).
+    let fallbackID: String
+    /// The identity the control registers under.
+    var id: String { ControlIdentity.resolve(explicitID, default: fallbackID) }
     let label: AnyView
-    let destination: () -> AnyView
+    /// What activating the link pushes: a destination view built on
+    /// activation, or a value the enclosing stack resolves through its
+    /// `navigationDestination(for:)`. A `nil` value disables the link.
+    enum Target {
+        case destination(() -> AnyView)
+        case value(AnyHashable?)
+    }
+    let target: Target
 
     /// Creates a navigation link with a text label.
     ///
@@ -54,9 +67,44 @@ public struct NavigationLink: View {
     ) {
         let resolved = title.resolve()
         self.style = .plain
-        self.id = id ?? (resolved.isEmpty ? "NavigationLink" : resolved)
+        self.explicitID = id
+        self.fallbackID = resolved.isEmpty ? "NavigationLink" : resolved
         self.label = AnyView(Text(content: resolved))
-        self.destination = { AnyView(destination()) }
+        self.target = .destination { AnyView(destination()) }
+    }
+
+    /// Creates a navigation link that pushes `value` onto the enclosing
+    /// stack's path, mirroring SwiftUI's `NavigationLink(_:value:)`.
+    ///
+    /// The stack shows the view its `navigationDestination(for:)` builds
+    /// for the value's type; with a `path:` binding the value is appended to
+    /// the app's own path. A `nil` value renders the link disabled.
+    public init<P: Hashable>(
+        _ title: LocalizedStringKey,
+        value: P?,
+        id: String? = nil
+    ) {
+        let resolved = title.resolve()
+        self.style = .plain
+        self.explicitID = id
+        self.fallbackID = resolved.isEmpty ? "NavigationLink" : resolved
+        self.label = AnyView(Text(content: resolved))
+        self.target = .value(value.map { AnyHashable($0) })
+    }
+
+    /// Creates a navigation link with a custom label that pushes `value`
+    /// onto the enclosing stack's path, mirroring SwiftUI's
+    /// `NavigationLink(value:label:)`.
+    public init<P: Hashable, Label: View>(
+        value: P?,
+        id: String? = nil,
+        @ViewBuilder label: () -> Label
+    ) {
+        self.style = .plain
+        self.explicitID = id
+        self.fallbackID = "NavigationLink"
+        self.label = AnyView(label())
+        self.target = .value(value.map { AnyHashable($0) })
     }
 
     /// Creates a navigation link with a custom label view.
@@ -69,21 +117,29 @@ public struct NavigationLink: View {
     ///     activation. Built lazily, each time the link is activated.
     ///   - label: A ``ViewBuilder`` producing the link's label.
     public init<Destination: View, Label: View>(
-        id: String = "NavigationLink",
+        id: String? = nil,
         @ViewBuilder destination: @escaping () -> Destination,
         @ViewBuilder label: () -> Label
     ) {
         self.style = .plain
-        self.id = id
+        self.explicitID = id
+        self.fallbackID = "NavigationLink"
         self.label = AnyView(label())
-        self.destination = { AnyView(destination()) }
+        self.target = .destination { AnyView(destination()) }
     }
 
-    init(style: TextStyle, id: String, label: AnyView, destination: @escaping () -> AnyView) {
+    init(style: TextStyle, explicitID: String?, fallbackID: String, label: AnyView, target: Target) {
         self.style = style
-        self.id = id
+        self.explicitID = explicitID
+        self.fallbackID = fallbackID
         self.label = label
-        self.destination = destination
+        self.target = target
+    }
+
+    /// Whether the link can push anything (a `value:` link with `nil` can't).
+    private var isEnabled: Bool {
+        if case .value(nil) = target { return false }
+        return true
     }
 
     /// The link's row — `  label ›`, filled with the selection colours while
@@ -116,7 +172,7 @@ public struct NavigationLink: View {
 
     @_spi(RenderingInternals)
     public func applyingStyle(_ style: TextStyle) -> Self {
-        NavigationLink(style: self.style.inheriting(style), id: id, label: label, destination: destination)
+        NavigationLink(style: self.style.inheriting(style), explicitID: explicitID, fallbackID: fallbackID, label: label, target: target)
     }
 
     /// Registers the link in the focus ring — the enclosing container is read
@@ -126,10 +182,17 @@ public struct NavigationLink: View {
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
         let container = EnvironmentStack.current.navigationContainerID
-        let destination = destination
-        FocusCoordinator.shared.registerButton(id: id) {
-            guard let container else { return }
-            NavigationCoordinator.shared.push(destination(), onto: container)
+        let target = target
+        if isEnabled {
+            FocusCoordinator.shared.registerButton(id: id) {
+                guard let container else { return }
+                switch target {
+                case .destination(let destination):
+                    NavigationCoordinator.shared.push(destination(), onto: container)
+                case .value(let value):
+                    if let value { NavigationCoordinator.shared.push(value: value, onto: container) }
+                }
+            }
         }
         KeyInputRouter.shared.ensureStarted()
         let node = body.makeNode()

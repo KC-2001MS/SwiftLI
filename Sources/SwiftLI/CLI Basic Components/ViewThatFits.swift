@@ -57,8 +57,19 @@ public struct ViewThatFits: View {
     /// ``makeNode()`` and has no body.
     public typealias Body = Never
 
+    /// A style applied to the whole view, cascaded onto the lowered content.
+    var style: TextStyle = .plain
+
+    @_spi(RenderingInternals)
+    public func applyingStyle(_ style: TextStyle) -> Self {
+        var copy = self
+        copy.style = self.style.inheriting(style)
+        return copy
+    }
+
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
-        .viewThatFits(checkWidth: checkWidth, checkHeight: checkHeight, candidates: candidates.enumerated().map { $1.lowered(at: $0) })
+        let node = RenderNode.viewThatFits(checkWidth: checkWidth, checkHeight: checkHeight, candidates: candidates.enumerated().map { $1.lowered(at: $0) })
+        return style.isPlain ? node : node.applyingStyle(style)
     }
 }

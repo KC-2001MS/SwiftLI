@@ -92,6 +92,9 @@ public struct _ConditionalContent<TrueContent: View, FalseContent: View>: View {
     }
 
     let storage: Storage
+    /// A style applied to the conditional as a whole, cascaded onto the
+    /// active branch when it lowers.
+    var style: TextStyle = .plain
 
     /// A structural primitive: the active branch lowers directly, so there is
     /// no body.
@@ -99,30 +102,35 @@ public struct _ConditionalContent<TrueContent: View, FalseContent: View>: View {
 
     @_spi(RenderingInternals)
     public func applyingStyle(_ style: TextStyle) -> Self {
-        switch storage {
-        case .trueContent(let content):
-            return .init(storage: .trueContent(content.applyingStyle(style)))
-        case .falseContent(let content):
-            return .init(storage: .falseContent(content.applyingStyle(style)))
-        }
+        var copy = self
+        copy.style = self.style.inheriting(style)
+        return copy
     }
 
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
+        let node: RenderNode
         switch storage {
         // The branches get distinct identities so a `@State` inside one is
         // never handed to the other.
-        case .trueContent(let content): return content.lowered(at: 0)
-        case .falseContent(let content): return content.lowered(at: 1)
+        case .trueContent(let content): node = content.lowered(at: 0)
+        case .falseContent(let content): node = content.lowered(at: 1)
         }
+        return style.isPlain ? node : node.applyingStyle(style)
     }
 
+    /// The branches' children are keyed by branch, so state in one branch is
+    /// never handed to the other when the condition flips.
     @_spi(RenderingInternals)
     public func _flattenedChildren() -> [any View] {
+        let children: [any View]
         switch storage {
-        case .trueContent(let content): return content._flattenedChildren()
-        case .falseContent(let content): return content._flattenedChildren()
+        case .trueContent(let content):
+            children = content._flattenedChildren().enumerated().map { IdentifiedView(id: AnyHashable("true"), index: $0.offset, content: $0.element) }
+        case .falseContent(let content):
+            children = content._flattenedChildren().enumerated().map { IdentifiedView(id: AnyHashable("false"), index: $0.offset, content: $0.element) }
         }
+        return style.isPlain ? children : children.map { $0.styled(style) }
     }
 }
 
@@ -147,6 +155,7 @@ extension Optional: View where Wrapped: View {
     public func makeNode() -> RenderNode {
         self?.makeNode() ?? .empty
     }
+
 
     @_spi(RenderingInternals)
     public func _flattenedChildren() -> [any View] {

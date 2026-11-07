@@ -28,7 +28,13 @@
 /// ```
 public struct Stepper: View {
     let style: TextStyle
-    let id: String
+    /// An identity given explicitly, or `nil` to derive one from the label.
+    let explicitID: String?
+    /// The identity used when none is given — the label, made unique per
+    /// position inside a session (see ``ControlIdentity``).
+    let fallbackID: String
+    /// The identity the control registers under.
+    var id: String { ControlIdentity.resolve(explicitID, default: fallbackID) }
     let label: AnyView?
     /// Reads the current value's display text lazily, so a `Binding`-backed
     /// stepper always shows the latest value on re-render. `nil` shows none.
@@ -50,7 +56,8 @@ public struct Stepper: View {
     ) {
         let resolved = title.resolve()
         self.style = .plain
-        self.id = id ?? (resolved.isEmpty ? "Stepper" : resolved)
+        self.explicitID = id
+        self.fallbackID = resolved.isEmpty ? "Stepper" : resolved
         self.label = resolved.isEmpty ? nil : AnyView(Text(content: resolved))
         self.valueText = { nil }
         self.onIncrement = onIncrement
@@ -73,7 +80,8 @@ public struct Stepper: View {
     ) {
         let resolved = title.resolve()
         self.style = .plain
-        self.id = id ?? (resolved.isEmpty ? "Stepper" : resolved)
+        self.explicitID = id
+        self.fallbackID = resolved.isEmpty ? "Stepper" : resolved
         self.label = resolved.isEmpty ? nil : AnyView(Text(content: resolved))
         self.valueText = { value.wrappedValue.description }
 
@@ -85,9 +93,10 @@ public struct Stepper: View {
         self.onDecrement = { value.wrappedValue = clamped(value.wrappedValue.advanced(by: -step)) }
     }
 
-    init(style: TextStyle, id: String, label: AnyView?, valueText: @escaping () -> String?, onIncrement: @escaping () -> Void, onDecrement: @escaping () -> Void) {
+    init(style: TextStyle, explicitID: String?, fallbackID: String, label: AnyView?, valueText: @escaping () -> String?, onIncrement: @escaping () -> Void, onDecrement: @escaping () -> Void) {
         self.style = style
-        self.id = id
+        self.explicitID = explicitID
+        self.fallbackID = fallbackID
         self.label = label
         self.valueText = valueText
         self.onIncrement = onIncrement
@@ -113,7 +122,7 @@ public struct Stepper: View {
 
     @_spi(RenderingInternals)
     public func applyingStyle(_ style: TextStyle) -> Self {
-        Stepper(style: self.style.inheriting(style), id: id, label: label, valueText: valueText, onIncrement: onIncrement, onDecrement: onDecrement)
+        Stepper(style: self.style.inheriting(style), explicitID: explicitID, fallbackID: fallbackID, label: label, valueText: valueText, onIncrement: onIncrement, onDecrement: onDecrement)
     }
 
     /// Lowers ``body`` with the stepper's own text style cascaded onto it.

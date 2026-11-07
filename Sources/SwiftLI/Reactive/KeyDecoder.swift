@@ -13,6 +13,11 @@
 /// incomplete tail between calls to ``feed(_:)``, so callers can hand it
 /// whatever `read()` returned without worrying about sequence boundaries.
 ///
+/// A lone `ESC` is ambiguous — the Escape key, or the first byte of a
+/// sequence whose remainder is still in flight — so it is held until the
+/// next byte arrives or the caller signals a pause in input with
+/// ``flush()``, which resolves it as the Escape key.
+///
 /// It is a pure state machine (no I/O), which makes the entire input-parsing
 /// layer unit-testable.
 public struct KeyDecoder: Sendable {
@@ -65,7 +70,13 @@ public struct KeyDecoder: Sendable {
 
             default:
                 if b < 0x20 {
-                    // Other control byte — ignore.
+                    // Other control byte. Ctrl-A … Ctrl-Z chords without an
+                    // editing meaning are reported as `.control(letter)` so
+                    // the UI can bind them; the rest (NUL, Ctrl-\, …) are
+                    // dropped.
+                    if (0x01...0x1A).contains(b) {
+                        events.append(.control(Character(UnicodeScalar(b + 0x60))))
+                    }
                     i += 1
                 } else {
                     // Printable: decode one (possibly multi-byte) UTF-8 scalar.
@@ -84,6 +95,30 @@ public struct KeyDecoder: Sendable {
         return events
     }
 
+    /// Resolves input held back as a possible sequence prefix, after a pause
+    /// in input has shown that nothing more is coming.
+    ///
+    /// Call it when a timed `read()` returns no data: a lone `ESC` held since
+    /// the last ``feed(_:)`` is the Escape key, so it becomes ``KeyEvent/escape``
+    /// and any bytes queued behind it are decoded on their own. An incomplete
+    /// UTF-8 scalar that never finished is dropped.
+    public mutating func flush() -> [KeyEvent] {
+        var events: [KeyEvent] = []
+        while let first = pending.first {
+            guard first == 0x1B else {
+                pending.removeAll(keepingCapacity: true)
+                break
+            }
+            let rest = Array(pending.dropFirst())
+            pending.removeAll(keepingCapacity: true)
+            events.append(.escape)
+            // Whatever followed the ESC was not a sequence; decode it as
+            // ordinary input (it may itself end in another held ESC).
+            if !rest.isEmpty { events.append(contentsOf: feed(rest)) }
+        }
+        return events
+    }
+
     // MARK: - Escape sequences
 
     /// Parses an escape sequence beginning at `start` (which must be `ESC`).
@@ -92,8 +127,9 @@ public struct KeyDecoder: Sendable {
     ///   consumed, and `needMore` when the buffer does not yet contain the
     ///   whole sequence.
     private static func parseEscape(_ buf: [UInt8], from start: Int) -> (event: KeyEvent?, consumed: Int, needMore: Bool) {
-        // Lone ESC at the very end: wait one more byte to disambiguate a real
-        // Escape key press from the start of an arrow-key sequence.
+        // Lone ESC at the very end: wait for one more byte — or for
+        // ``flush()`` after a pause — to disambiguate a real Escape key press
+        // from the start of an arrow-key sequence.
         guard start + 1 < buf.count else { return (nil, 0, true) }
 
         let second = buf[start + 1]
@@ -172,6 +208,8 @@ public struct KeyDecoder: Sendable {
             case "1", "7": return .home
             case "4", "8": return .end
             case "3":      return .delete
+            case "5":      return .pageUp
+            case "6":      return .pageDown
             default:       return nil
             }
         default:

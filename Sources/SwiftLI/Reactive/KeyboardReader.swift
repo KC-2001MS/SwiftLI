@@ -22,17 +22,28 @@ import WinSDK
 /// Plays the same role as the Unix `termios`-based guard: ensures the console
 /// is returned to its original mode even when the process exits via `exit()`,
 /// a crash, or a fatal signal.
-private enum TerminalRestoreGuard {
+enum TerminalRestoreGuard {
     nonisolated(unsafe) private static var savedMode: DWORD = 0
     nonisolated(unsafe) private static var hasSaved = false
     nonisolated(unsafe) private static var installed = false
     nonisolated(unsafe) private static var mouseEnabled = false
+    nonisolated(unsafe) private static var alternateScreen = false
     private static let disableMouseBytes = Array(MouseReporting.disableSequence.utf8)
+    private static let leaveScreenBytes = Array("\u{001B}[0m\u{001B}[?25h\u{001B}[?1049l".utf8)
+
+    static func setAlternateScreen(_ active: Bool) {
+        alternateScreen = active
+        if active { installHooks() }
+    }
 
     static func arm(original: DWORD, mouseEnabled: Bool) {
         savedMode = original
         hasSaved = true
         self.mouseEnabled = mouseEnabled
+        installHooks()
+    }
+
+    private static func installHooks() {
         guard !installed else { return }
         installed = true
         atexit { TerminalRestoreGuard.restore() }
@@ -46,6 +57,13 @@ private enum TerminalRestoreGuard {
     static func disarm() { hasSaved = false }
 
     static func restore() {
+        if alternateScreen {
+            alternateScreen = false
+            leaveScreenBytes.withUnsafeBufferPointer { buf in
+                guard let base = buf.baseAddress else { return }
+                _ = _write(1, base, UInt32(buf.count))
+            }
+        }
         guard hasSaved else { return }
         hasSaved = false
         if mouseEnabled {
@@ -68,20 +86,37 @@ private enum TerminalRestoreGuard {
 /// (`\n` without a carriage return, because `OPOST` is still off). This guard
 /// saves the pre-raw termios and restores it from an `atexit` hook and
 /// fatal-signal handlers.
-private enum TerminalRestoreGuard {
+enum TerminalRestoreGuard {
     nonisolated(unsafe) private static var saved = termios()
     nonisolated(unsafe) private static var hasSaved = false
     nonisolated(unsafe) private static var installed = false
     nonisolated(unsafe) private static var mouseEnabled = false
+    /// Whether a full-screen session is on the alternate screen. Restored
+    /// too, so a process that dies mid-session leaves the user's normal
+    /// screen and cursor behind rather than a blank alternate buffer.
+    nonisolated(unsafe) private static var alternateScreen = false
     /// The mouse-reporting disable sequence as raw bytes, precomputed so the
     /// signal-handler path never allocates.
     private static let disableMouseBytes = Array(MouseReporting.disableSequence.utf8)
+    /// Reset attributes, show the cursor, leave the alternate screen.
+    private static let leaveScreenBytes = Array("\u{001B}[0m\u{001B}[?25h\u{001B}[?1049l".utf8)
+
+    /// Records whether the alternate screen is active, installing the exit
+    /// hooks the first time it is entered.
+    static func setAlternateScreen(_ active: Bool) {
+        alternateScreen = active
+        if active { installHooks() }
+    }
 
     /// Records the pre-raw settings and installs the exit hooks (once).
     static func arm(original: termios, mouseEnabled: Bool) {
         saved = original
         hasSaved = true
         self.mouseEnabled = mouseEnabled
+        installHooks()
+    }
+
+    private static func installHooks() {
         guard !installed else { return }
         installed = true
         atexit { TerminalRestoreGuard.restore() }
@@ -106,6 +141,12 @@ private enum TerminalRestoreGuard {
     /// Restores the saved settings. Async-signal-safe: no locks, no
     /// allocation — it may run inside a signal handler.
     static func restore() {
+        if alternateScreen {
+            alternateScreen = false
+            leaveScreenBytes.withUnsafeBufferPointer { buffer in
+                _ = write(STDOUT_FILENO, buffer.baseAddress, buffer.count)
+            }
+        }
         guard hasSaved else { return }
         hasSaved = false
         if mouseEnabled {
@@ -265,6 +306,25 @@ final class KeyboardReader: @unchecked Sendable {
         // kernel queues several events between loop iterations (rapid scroll).
         let bufSize = 256
         var buf = [UInt8](repeating: 0, count: bufSize)
+        let cb = onEvent
+
+        // Batch all events decoded from one read() into a single main-queue
+        // task. This halves the async round-trips when the kernel queues
+        // multiple reports together (fast scroll or trackpad bursts),
+        // reducing dispatch overhead and lag. It also suppresses the render
+        // each event would otherwise trigger on its own — important for e.g.
+        // an IME committing several characters at once, which all arrive in
+        // the same read(): without this, they'd apply and redraw one at a
+        // time, visibly stepping through partial states instead of updating
+        // the screen atomically once all of them landed.
+        func deliver(_ events: [KeyEvent]) {
+            guard !events.isEmpty else { return }
+            DispatchQueue.main.async {
+                StateObserverRegistry.shared.batch {
+                    for event in events { cb(event) }
+                }
+            }
+        }
 
         while running {
             #if os(Windows)
@@ -273,31 +333,18 @@ final class KeyboardReader: @unchecked Sendable {
             let n = read(STDIN_FILENO, &buf, bufSize)
             #endif
             if n > 0 {
-                let events = decoder.feed(Array(buf[0..<n]))
-                if !events.isEmpty {
-                    let cb = onEvent
-                    // Batch all events decoded from one read() into a single
-                    // main-queue task. This halves the async round-trips when
-                    // the kernel queues multiple reports together (fast scroll
-                    // or trackpad bursts), reducing dispatch overhead and lag.
-                    // It also suppresses the render each event would otherwise
-                    // trigger on its own — important for e.g. an IME committing
-                    // several characters at once, which all arrive in the same
-                    // read(): without this, they'd apply and redraw one at a
-                    // time, visibly stepping through partial states instead of
-                    // updating the screen atomically once all of them landed.
-                    DispatchQueue.main.async {
-                        StateObserverRegistry.shared.batch {
-                            for event in events { cb(event) }
-                        }
-                    }
-                }
+                deliver(decoder.feed(Array(buf[0..<n])))
             } else if n < 0 {
                 // Read error; yield briefly and retry.
                 Thread.sleep(forTimeInterval: 0.005)
+            } else {
+                // The timed read returned no data (VTIME elapsed on Unix, or
+                // a zero-byte read on Windows): input paused. A lone ESC the
+                // decoder is holding cannot be the start of a sequence any
+                // more — it is the Escape key, delivered now rather than on
+                // the next keystroke.
+                deliver(decoder.flush())
             }
-            // n == 0: the timed read returned no data (VTIME elapsed on Unix,
-            // or a zero-byte read on Windows). Loop back to re-check `running`.
         }
     }
 }

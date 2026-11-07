@@ -82,11 +82,15 @@ public final class TerminalRenderer: @unchecked Sendable {
         lock.unlock()
 
         TerminalOutput.write(ANSICode.enterAltScreen + ANSICode.hideCursor + ANSICode.clearScreen + ANSICode.cursorHome)
+        // Whatever ends the process from here on — `exit()`, a crash, a
+        // fatal signal — leaves the alternate screen and shows the cursor.
+        TerminalRestoreGuard.setAlternateScreen(true)
     }
 
     /// Leaves the alternate screen buffer, restoring the screen that was visible
     /// before ``beginAlternateScreen()`` and showing the cursor again.
     public func endAlternateScreen() {
+        TerminalRestoreGuard.setAlternateScreen(false)
         TerminalOutput.write(ANSICode.reset + ANSICode.showCursor + ANSICode.leaveAltScreen)
     }
 
@@ -133,7 +137,9 @@ public final class TerminalRenderer: @unchecked Sendable {
 
         // Wrap all views in an implicit root VStack so they stack vertically.
         let root = RenderNode.vstack(alignment: .leading, spacing: 0, children: views.enumerated().map { $1.lowered(at: $0) })
-        var frame = NodeLayout.frame(of: root)
+        // Propose the terminal width to the root so text wraps to the
+        // screen, as SwiftUI proposes the window's width to the root view.
+        var frame = NodeLayout.frame(of: root, proposedWidth: TerminalSize.current.columns)
         // End the pass now (not deferred): this is what flips `MouseTargetRegistry`
         // over to the regions just recorded above, which the cursor repositioning
         // below needs to resolve against — not the previous frame's regions.

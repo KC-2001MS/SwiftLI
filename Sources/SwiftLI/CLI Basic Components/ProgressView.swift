@@ -146,28 +146,46 @@ struct AnyProgressViewStyle: ProgressViewStyle, @unchecked Sendable {
 public struct ProgressView: View, Sendable {
     /// A text label shown after the spinner glyph. Empty when there is none.
     public let label: String
-    /// The animation phase; each value selects a spinner frame.
-    public let phase: Int
+    /// The animation phase given explicitly, or `nil` to animate by itself.
+    let explicitPhase: Int?
     /// The explicitly applied style, or `nil` to resolve from the environment.
     let style: AnyProgressViewStyle?
 
+    /// How often the self-driven spinner advances a frame.
+    static let frameInterval: TimeInterval = 0.08
+
+    /// The animation phase; each value selects a spinner frame.
+    ///
+    /// The phase given at creation, or — when none was — one derived from
+    /// the clock, so the spinner turns on its own inside a reactive session
+    /// (`0`, the first frame, in a one-shot render).
+    public var phase: Int {
+        if let explicitPhase { return explicitPhase }
+        guard BodyRenderingStore.shared.sessionActive || AppRuntime.shared != nil else { return 0 }
+        return Int(Date().timeIntervalSinceReferenceDate / Self.frameInterval)
+    }
+
     /// Creates an indeterminate progress indicator.
+    ///
+    /// Without a `phase` the spinner animates by itself while a reactive
+    /// session is running — a loading screen needs no timer of its own.
     ///
     /// - Parameters:
     ///   - label: A localized description shown after the spinner (e.g.
     ///     `"Loading"`). Defaults to no label.
-    ///   - phase: The animation phase selecting the spinner frame. Advance it
-    ///     over time to animate; defaults to `0` (a static first frame).
-    public init(_ label: LocalizedStringKey = "", phase: Int = 0) {
+    ///   - phase: An explicit animation phase selecting the spinner frame,
+    ///     for a spinner driven by the app's own state. `nil` (the default)
+    ///     animates automatically.
+    public init(_ label: LocalizedStringKey = "", phase: Int? = nil) {
         self.label = label.resolve()
-        self.phase = phase
+        self.explicitPhase = phase
         self.style = nil
     }
 
     // Internal init for style-header chaining.
-    init(label: String, phase: Int, style: AnyProgressViewStyle? = nil) {
+    init(label: String, phase: Int?, style: AnyProgressViewStyle? = nil) {
         self.label = label
-        self.phase = phase
+        self.explicitPhase = phase
         self.style = style
     }
 
@@ -175,16 +193,25 @@ public struct ProgressView: View, Sendable {
     public var body: some View {
         // Nearest wins: instance style, then subtree environment, then default.
         let resolvedStyle = style ?? EnvironmentStack.current.progressViewStyle ?? AnyProgressViewStyle(DefaultProgressViewStyle())
+        // A self-driven spinner arms the next frame; one timer serves every
+        // spinner on screen.
+        let _ = armNextFrame()
         resolvedStyle.makeBody(configuration: ProgressViewStyleConfiguration(
             label: label.isEmpty ? nil : AnyView(Text(content: label)),
             phase: phase
         ))
     }
 
+    private func armNextFrame() -> Bool {
+        guard explicitPhase == nil, BodyRenderingStore.shared.sessionActive || AppRuntime.shared != nil else { return false }
+        TimelineCoordinator.shared.arm(key: "ProgressView.spinner", fireAt: Date().addingTimeInterval(Self.frameInterval))
+        return true
+    }
+
     /// Sets the style used to compose this progress view.
     ///
     /// - Parameter newStyle: A value conforming to ``ProgressViewStyle``.
     public func progressViewStyle(_ newStyle: some ProgressViewStyle) -> Self {
-        Self(label: label, phase: phase, style: AnyProgressViewStyle(newStyle))
+        Self(label: label, phase: explicitPhase, style: AnyProgressViewStyle(newStyle))
     }
 }

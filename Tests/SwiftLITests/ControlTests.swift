@@ -1369,4 +1369,287 @@ private enum SessionPrintCaptureTestsSupport {
     }
 }
 
+// MARK: - onKeyPress routing
+
+/// Collects the handlers that saw a key, in order.
+final class KeyLog: @unchecked Sendable {
+    var hits: [String] = []
+}
+
+/// Captures the `\.dismiss` action in effect where it renders.
+final class DismissBox: @unchecked Sendable {
+    var action: DismissAction?
+}
+
+private struct DismissCapture: View {
+    @Environment(\.dismiss) private var dismiss
+    let box: DismissBox
+    var body: some View {
+        box.action = dismiss
+        return Text("destination-content")
+    }
+}
+
+/// A pushed page that pops itself on Escape — reading `dismiss` lazily,
+/// inside the handler, the way application code naturally writes it.
+private struct EscapePopsView: View {
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        Text("destination-content")
+            .onKeyPress(.escape) { dismiss(); return .handled }
+    }
+}
+
+extension ControlSingletonTests {
+@Suite("Key Press Testing", .serialized)
+struct KeyPressTests {
+    /// Routes a key the way `KeyInputRouter` does: focused control first,
+    /// then the `onKeyPress` handlers.
+    private func press(_ key: KeyEvent) -> Bool {
+        let focus = FocusCoordinator.shared
+        if focus.handle(key) { return true }
+        return KeyPressRegistry.shared.dispatch(key, focusedControl: focus.focused)
+    }
+
+    @Test("Decoded key events map to SwiftUI-shaped key presses")
+    func keyPressMapping() {
+        #expect(KeyPress(.character("q"))?.key == "q")
+        #expect(KeyPress(.character("q"))?.modifiers == [])
+        #expect(KeyPress(.character("Q"))?.modifiers == [.shift])
+        #expect(KeyPress(.control("s"))?.key == "s")
+        #expect(KeyPress(.control("s"))?.modifiers == [.control])
+        #expect(KeyPress(.deleteToEnd)?.key == "k")
+        #expect(KeyPress(.deleteToEnd)?.modifiers == [.control])
+        #expect(KeyPress(.up)?.key == .upArrow)
+        #expect(KeyPress(.enter)?.key == .return)
+        #expect(KeyPress(.backspace)?.key == .delete)
+        #expect(KeyPress(.delete)?.key == .deleteForward)
+        #expect(KeyPress(.backTab)?.key == .tab)
+        #expect(KeyPress(.backTab)?.modifiers == [.shift])
+        #expect(KeyPress(.escape)?.phase == .down)
+        #expect(KeyPress(.cursorPosition(row: 0, column: 0)) == nil)
+    }
+
+    @Test("Unhandled keys reach handlers innermost first and stop at .handled")
+    func innerToOuter() {
+        let coord = FocusCoordinator.shared
+        coord.reset(); defer { coord.reset() }
+        let log = KeyLog()
+
+        let view = VStack {
+            Text("static")
+                .onKeyPress { _ in log.hits.append("inner"); return .ignored }
+        }
+        .onKeyPress { _ in log.hits.append("middle"); return .handled }
+        .onKeyPress { _ in log.hits.append("outer"); return .handled }
+
+        _ = view.renderString()
+        #expect(KeyPressRegistry.shared.hasHandlers)
+        #expect(press(.character("x")))
+        #expect(log.hits == ["inner", "middle"])
+    }
+
+    @Test("The focused control's enclosing handlers come before its siblings'")
+    func focusedAncestorsFirst() {
+        let coord = FocusCoordinator.shared
+        coord.reset(); defer { coord.reset() }
+        let log = KeyLog()
+
+        let view = VStack {
+            Button("a") {}.onKeyPress { _ in log.hits.append("a"); return .ignored }
+            Button("b") {}.onKeyPress { _ in log.hits.append("b"); return .ignored }
+        }
+        .onKeyPress { _ in log.hits.append("root"); return .ignored }
+
+        _ = view.renderString()
+        _ = coord.handle(.tab)               // focus moves a → b
+        #expect(coord.isFocused("b"))
+        // A letter is not a button key, so it propagates.
+        #expect(!press(.character("x")))
+        #expect(log.hits == ["b", "root", "a"])
+        // Return activates the focused button and never reaches a handler.
+        log.hits = []
+        #expect(press(.enter))
+        #expect(log.hits.isEmpty)
+    }
+
+    @Test("The single-key overload fires only for its key")
+    func specificKey() {
+        let coord = FocusCoordinator.shared
+        coord.reset(); defer { coord.reset() }
+        let log = KeyLog()
+
+        let view = Text("quit with q")
+            .onKeyPress("q") { log.hits.append("q"); return .handled }
+        _ = view.renderString()
+
+        #expect(!press(.character("x")))
+        #expect(press(.character("q")))
+        #expect(log.hits == ["q"])
+    }
+
+    @Test("keys: and characters: filter the presses a handler receives")
+    func keySets() {
+        let coord = FocusCoordinator.shared
+        coord.reset(); defer { coord.reset() }
+        let log = KeyLog()
+
+        let view = Text("vim keys and digits")
+            .onKeyPress(keys: [.upArrow, "k"]) { press in log.hits.append("up:\(press.characters)"); return .handled }
+            .onKeyPress(characters: .decimalDigits) { press in log.hits.append("digit:\(press.characters)"); return .handled }
+        _ = view.renderString()
+
+        #expect(press(.up))
+        #expect(press(.character("k")))
+        #expect(press(.character("7")))
+        #expect(!press(.character("x")))
+        #expect(!press(.down))
+        #expect(log.hits == ["up:\u{F700}", "up:k", "digit:7"])
+    }
+
+    @Test("Control chords reach handlers as the letter with the .control modifier")
+    func controlChords() {
+        let coord = FocusCoordinator.shared
+        coord.reset(); defer { coord.reset() }
+        let log = KeyLog()
+
+        let view = Text("save with Ctrl-S")
+            .onKeyPress { press in
+                guard press.modifiers.contains(.control) else { return .ignored }
+                log.hits.append("ctrl-\(press.key.character)")
+                return .handled
+            }
+        _ = view.renderString()
+
+        #expect(press(.control("s")))
+        #expect(!press(.character("s")))
+        #expect(log.hits == ["ctrl-s"])
+    }
+
+    @Test("A text field consumes what it edits; the keys it ignores reach handlers")
+    func textFieldPassThrough() {
+        let coord = FocusCoordinator.shared
+        coord.reset(); defer { coord.reset() }
+        let log = KeyLog()
+        let box = StringBox("")
+
+        let view = VStack {
+            TextField("name", text: Binding(get: { box.value }, set: { box.value = $0 }))
+        }
+        .onKeyPress { press in log.hits.append(press.characters); return .handled }
+
+        _ = view.renderString()
+        // Letters are inserted by the focused field, never offered on.
+        #expect(press(.character("a")))
+        #expect(box.value == "a")
+        #expect(log.hits.isEmpty)
+        // Up is ignored by a single-line field, so the handler sees it.
+        #expect(press(.up))
+        #expect(log.hits == ["\u{F700}"])
+    }
+
+    @Test("Handlers in an inert navigation layer are silent until it is popped")
+    func navigationLayers() {
+        let coord = FocusCoordinator.shared
+        coord.reset(); NavigationCoordinator.shared.reset()
+        defer { coord.reset(); NavigationCoordinator.shared.reset() }
+        let log = KeyLog()
+
+        let stack = NavigationStack(id: "nav-keys") {
+            Text("root").onKeyPress { _ in log.hits.append("root"); return .handled }
+            NavigationLink("Open") {
+                Text("dest").onKeyPress { _ in log.hits.append("dest"); return .handled }
+            }
+        }
+
+        _ = stack.renderString()
+        _ = coord.handle(.enter)             // push
+        _ = stack.renderString()
+        #expect(press(.character("x")))
+        #expect(log.hits == ["dest"])
+
+        NavigationCoordinator.shared.pop(from: "nav-keys")
+        _ = stack.renderString()
+        log.hits = []
+        #expect(press(.character("x")))
+        #expect(log.hits == ["root"])
+    }
+
+    @Test("A frame with only a key handler is not idle; one without is")
+    func handlersKeepSessionAlive() {
+        let coord = FocusCoordinator.shared
+        coord.reset(); defer { coord.reset() }
+
+        _ = Text("plain").renderString()
+        #expect(!KeyPressRegistry.shared.hasHandlers)
+        _ = Text("keyed").onKeyPress { _ in .ignored }.renderString()
+        #expect(KeyPressRegistry.shared.hasHandlers)
+        _ = Text("plain").renderString()
+        #expect(!KeyPressRegistry.shared.hasHandlers)
+    }
+}
+}
+
+extension ControlSingletonTests {
+@Suite("Navigation Dismiss Testing", .serialized)
+struct NavigationDismissTests {
+    @Test("dismiss() inside a pushed destination pops it; at the root it does not")
+    func dismissPops() {
+        let coord = FocusCoordinator.shared
+        coord.reset(); NavigationCoordinator.shared.reset()
+        BodyRenderingStore.shared.resetExit()
+        defer { coord.reset(); NavigationCoordinator.shared.reset(); BodyRenderingStore.shared.resetExit() }
+        let box = DismissBox()
+
+        let stack = NavigationStack(id: "nav-dismiss") {
+            Text("root-content")
+            NavigationLink("Open") { DismissCapture(box: box) }
+        }
+
+        _ = stack.renderString()
+        _ = coord.handle(.enter)
+        let pushed = TextMetrics.stripANSI(stack.renderString())
+        #expect(pushed.contains("destination-content"))
+        #expect(NavigationCoordinator.shared.path(for: "nav-dismiss").count == 1)
+
+        box.action?()
+        #expect(NavigationCoordinator.shared.path(for: "nav-dismiss").isEmpty)
+        #expect(!BodyRenderingStore.shared.exitRequested)
+        let popped = TextMetrics.stripANSI(stack.renderString())
+        #expect(!popped.contains("destination-content"))
+        #expect(coord.isFocused("Open"))
+    }
+
+    @Test("An onKeyPress handler sees its view's environment: dismiss inside it pops")
+    func handlerEnvironment() {
+        let coord = FocusCoordinator.shared
+        coord.reset(); NavigationCoordinator.shared.reset()
+        BodyRenderingStore.shared.resetExit()
+        BodyRenderingStore.shared.fullScreenActive = true
+        defer {
+            BodyRenderingStore.shared.fullScreenActive = false
+            coord.reset(); NavigationCoordinator.shared.reset(); BodyRenderingStore.shared.resetExit()
+        }
+
+        let stack = NavigationStack(id: "nav-esc") {
+            Text("root-content")
+            NavigationLink("Open") { EscapePopsView() }
+        }
+
+        _ = stack.renderString()
+        _ = coord.handle(.enter)
+        #expect(TextMetrics.stripANSI(stack.renderString()).contains("destination-content"))
+        #expect(coord.focused == nil)
+
+        // Nothing is focused on the pushed page, so Escape goes straight to
+        // the handler — which must pop the page, not end the session.
+        #expect(!coord.handle(.escape))
+        #expect(KeyPressRegistry.shared.dispatch(.escape, focusedControl: nil))
+        #expect(NavigationCoordinator.shared.path(for: "nav-esc").isEmpty)
+        #expect(!BodyRenderingStore.shared.exitRequested)
+        #expect(TextMetrics.stripANSI(stack.renderString()).contains("root-content"))
+    }
+}
+}
+
 #endif

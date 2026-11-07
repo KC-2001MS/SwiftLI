@@ -54,12 +54,12 @@
 ///
 /// > Note: 256-color and true-color support depends on the terminal emulator.
 /// > Standard named colors (`.black` through `.white`) are universally supported.
-public struct Color: Equatable, Sendable, CustomStringConvertible {
+public struct Color: Equatable, Hashable, Sendable, CustomStringConvertible {
 
     /// The private representation — deliberately not exposed, so user code
     /// cannot exhaustively switch over colors and new colors remain
     /// source-compatible additions.
-    private indirect enum Storage: Equatable, Sendable {
+    private indirect enum Storage: Equatable, Hashable, Sendable {
         /// A named ANSI color: the final digit of the SGR code (`"0"`–`"7"`,
         /// or `"9"` for the terminal default).
         case named(String)

@@ -173,7 +173,13 @@ public struct Table<Data: RandomAccessCollection>: View, @unchecked Sendable {
     private static var columnGap: Int { 2 }
 
     private let textStyle: TextStyle
-    private let id: String
+    /// An identity given explicitly, or `nil` to derive one from the label.
+    let explicitID: String?
+    /// The identity used when none is given — the label, made unique per
+    /// position inside a session (see ``ControlIdentity``).
+    let fallbackID: String
+    /// The identity the control registers under.
+    var id: String { ControlIdentity.resolve(explicitID, default: fallbackID) }
     private let data: Data
     private let columns: [TableColumn<Data.Element>]
     private let selection: Binding<Int?>?
@@ -193,20 +199,22 @@ public struct Table<Data: RandomAccessCollection>: View, @unchecked Sendable {
     public init(
         _ data: Data,
         selection: Binding<Int?>? = nil,
-        id: String = "Table",
+        id: String? = nil,
         @TableColumnBuilder<Data.Element> columns: () -> [TableColumn<Data.Element>]
     ) {
         self.textStyle = .plain
-        self.id = id
+        self.explicitID = id
+        self.fallbackID = "Table"
         self.data = data
         self.columns = columns()
         self.selection = selection
         self.style = nil
     }
 
-    init(textStyle: TextStyle, id: String, data: Data, columns: [TableColumn<Data.Element>], selection: Binding<Int?>?, style: AnyTableStyle? = nil) {
+    init(textStyle: TextStyle, explicitID: String?, fallbackID: String, data: Data, columns: [TableColumn<Data.Element>], selection: Binding<Int?>?, style: AnyTableStyle? = nil) {
         self.textStyle = textStyle
-        self.id = id
+        self.explicitID = explicitID
+        self.fallbackID = fallbackID
         self.data = data
         self.columns = columns
         self.selection = selection
@@ -301,7 +309,7 @@ public struct Table<Data: RandomAccessCollection>: View, @unchecked Sendable {
 
     @_spi(RenderingInternals)
     public func applyingStyle(_ style: TextStyle) -> Self {
-        Table(textStyle: textStyle.inheriting(style), id: id, data: data, columns: columns, selection: selection, style: self.style)
+        Table(textStyle: textStyle.inheriting(style), explicitID: explicitID, fallbackID: fallbackID, data: data, columns: columns, selection: selection, style: self.style)
     }
 
     /// Registers the table for keyboard handling — as a list when selectable,
@@ -312,7 +320,7 @@ public struct Table<Data: RandomAccessCollection>: View, @unchecked Sendable {
     public func makeNode() -> RenderNode {
         guard !columns.isEmpty else { return .empty }
         if let selection {
-            FocusCoordinator.shared.registerList(id: id, selection: selection, count: data.count, viewportRows: scrolls ? resolvedHeight : nil)
+            FocusCoordinator.shared.registerList(id: id, selection: selection, count: data.count, viewportRows: scrolls ? resolvedHeight : nil, onSubmit: EnvironmentStack.current.submitAction)
             KeyInputRouter.shared.ensureStarted()
         } else if scrolls {
             FocusCoordinator.shared.registerScroll(id: id, viewportHeight: resolvedHeight, contentHeight: data.count)
@@ -341,7 +349,7 @@ public struct Table<Data: RandomAccessCollection>: View, @unchecked Sendable {
     ///
     /// - Parameter newStyle: A value conforming to ``TableStyle``.
     public func tableStyle(_ newStyle: some TableStyle) -> Self {
-        Table(textStyle: textStyle, id: id, data: data, columns: columns, selection: selection, style: AnyTableStyle(newStyle))
+        Table(textStyle: textStyle, explicitID: explicitID, fallbackID: fallbackID, data: data, columns: columns, selection: selection, style: AnyTableStyle(newStyle))
     }
 
     /// Resolves each column's width so the row fills the terminal: flexible

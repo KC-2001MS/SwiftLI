@@ -37,18 +37,44 @@ final class NavigationCoordinator: @unchecked Sendable {
     /// The process-wide coordinator used by the navigation views.
     static let shared = NavigationCoordinator()
 
+    /// One pushed layer of a container's path: a view built by a
+    /// ``NavigationLink`` destination closure, or a value a
+    /// `navigationDestination(for:)` resolves when the container lowers.
+    enum Layer {
+        case view(AnyView)
+        case value(AnyHashable)
+    }
+
+    /// The hooks a ``NavigationStack`` created with a `path:` binding
+    /// registers, so pushes and pops go through the app's own array.
+    struct PathBinding {
+        let count: () -> Int
+        let append: (AnyHashable) -> Bool
+        let removeLast: () -> Void
+    }
+
     private let lock = NSLock()
-    private var paths: [String: [AnyView]] = [:]
+    private var paths: [String: [Layer]] = [:]
     private var titles: [String: String] = [:]
     private var subtitles: [String: String] = [:]
     private var barConfigs: [String: NavigationBarConfig] = [:]
+    /// The typed path bindings of the stacks created with `path:`.
+    private var pathBindings: [String: PathBinding] = [:]
+    /// The `navigationDestination(for:)` builders collected while each
+    /// container's content lowered, keyed by the data type's identity.
+    private var destinations: [String: [ObjectIdentifier: (AnyHashable) -> AnyView]] = [:]
+    /// The number of layers each container showed in its last frame, so a
+    /// path that changed programmatically (an `append` from a key handler)
+    /// rebuilds the focus ring exactly as a link activation does.
+    private var observedCounts: [String: Int] = [:]
 
     private init() {}
 
     /// Pushes `destination` onto `container`'s path and schedules a redraw.
     func push(_ destination: AnyView, onto container: String) {
         lock.lock()
-        paths[container, default: []].append(destination)
+        paths[container, default: []].append(.view(destination))
+        observedCounts[container] = (observedCounts[container] ?? 0) + 1
         lock.unlock()
         // The focus ring is rebuilt from the next pass. The activated link
         // keeps focus when it is still in the new frame (a split view's
@@ -58,19 +84,95 @@ final class NavigationCoordinator: @unchecked Sendable {
         StateObserverRegistry.shared.notifyChange()
     }
 
-    /// Pops the newest destination off `container`'s path (no-op when empty).
-    func pop(from container: String) {
+    /// Pushes `value` onto `container`'s path — through the stack's `path:`
+    /// binding when it has one, otherwise onto the internal path — and
+    /// schedules a redraw. The value is resolved to a view by the matching
+    /// `navigationDestination(for:)` when the container next lowers.
+    func push(value: AnyHashable, onto container: String) {
         lock.lock()
-        if paths[container]?.isEmpty == false { paths[container]?.removeLast() }
+        let binding = pathBindings[container]
+        if binding == nil {
+            paths[container, default: []].append(.value(value))
+            observedCounts[container] = (observedCounts[container] ?? 0) + 1
+        }
         lock.unlock()
+        if let binding {
+            // The binding's own state write schedules the redraw; the
+            // container notices the new count when it lowers.
+            _ = binding.append(value)
+            return
+        }
         FocusCoordinator.shared.prepareForNewLayer()
         StateObserverRegistry.shared.notifyChange()
     }
 
-    /// The destinations pushed onto `container`, oldest first.
+    /// Pops the newest destination off `container`'s path (no-op when empty).
+    func pop(from container: String) {
+        lock.lock()
+        let binding = pathBindings[container]
+        if binding == nil, paths[container]?.isEmpty == false {
+            paths[container]?.removeLast()
+            observedCounts[container] = Swift.max(0, (observedCounts[container] ?? 1) - 1)
+        }
+        lock.unlock()
+        if let binding {
+            if binding.count() > 0 { binding.removeLast() }
+            return
+        }
+        FocusCoordinator.shared.prepareForNewLayer()
+        StateObserverRegistry.shared.notifyChange()
+    }
+
+    /// The destinations pushed onto `container`, oldest first, resolved to
+    /// views (a value without a matching destination shows a placeholder).
     func path(for container: String) -> [AnyView] {
+        layers(for: container).map { resolve($0, in: container) }
+    }
+
+    /// The layers of `container`'s path: the typed binding's values when the
+    /// stack has one, else the internal path.
+    func layers(for container: String) -> [Layer] {
         lock.lock(); defer { lock.unlock() }
         return paths[container] ?? []
+    }
+
+    /// Resolves a layer to the view it shows.
+    func resolve(_ layer: Layer, in container: String) -> AnyView {
+        switch layer {
+        case .view(let view):
+            return view
+        case .value(let value):
+            lock.lock()
+            let builder = destinations[container]?[ObjectIdentifier(type(of: value.base))]
+            lock.unlock()
+            if let builder { return builder(value) }
+            return AnyView(Text(content: "No navigationDestination(for: \(type(of: value.base)).self)").foregroundStyle(.red))
+        }
+    }
+
+    /// Registers the `path:` binding of a stack for this pass (every pass,
+    /// so the coordinator always holds the latest binding).
+    func registerPathBinding(_ binding: PathBinding?, for container: String) {
+        lock.lock(); defer { lock.unlock() }
+        pathBindings[container] = binding
+    }
+
+    /// Registers a `navigationDestination(for:)` builder declared inside
+    /// `container`'s content, for the data type `type`.
+    func registerDestination(for container: String, type: Any.Type, builder: @escaping (AnyHashable) -> AnyView) {
+        lock.lock(); defer { lock.unlock() }
+        destinations[container, default: [:]][ObjectIdentifier(type)] = builder
+    }
+
+    /// Records the layer count `container` shows this frame and reports
+    /// whether it differs from the previous frame — a programmatic path
+    /// change that must rebuild the focus ring.
+    func observeLayerCount(_ count: Int, for container: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        let previous = observedCounts[container]
+        observedCounts[container] = count
+        guard let previous else { return false }
+        return previous != count
     }
 
     // MARK: Title collection (content → container, within one render pass)
@@ -82,6 +184,7 @@ final class NavigationCoordinator: @unchecked Sendable {
         titles[container] = nil
         subtitles[container] = nil
         barConfigs[container] = nil
+        destinations[container] = nil
     }
 
     /// Records the title declared by content inside `container`. The layer
@@ -133,6 +236,62 @@ final class NavigationCoordinator: @unchecked Sendable {
         titles.removeAll()
         subtitles.removeAll()
         barConfigs.removeAll()
+        pathBindings.removeAll()
+        destinations.removeAll()
+        observedCounts.removeAll()
+    }
+}
+
+// MARK: - navigationDestination
+
+/// The modifier behind ``View/navigationDestination(for:destination:)``:
+/// registers the destination builder with the enclosing container while the
+/// content lowers.
+struct NavigationDestinationModifier<D: Hashable>: ViewModifier {
+    let destination: (D) -> AnyView
+
+    func node(for content: RenderNode) -> RenderNode {
+        content
+    }
+
+    func node(lowering content: () -> RenderNode) -> RenderNode {
+        if let container = EnvironmentStack.current.navigationContainerID {
+            let destination = destination
+            NavigationCoordinator.shared.registerDestination(for: container, type: D.self) { value in
+                guard let typed = value.base as? D else { return AnyView(EmptyView()) }
+                return destination(typed)
+            }
+        }
+        return content()
+    }
+}
+
+public extension View {
+    /// Associates a destination view with a data type presented by the
+    /// enclosing ``NavigationStack``, mirroring SwiftUI's
+    /// `navigationDestination(for:destination:)`.
+    ///
+    /// When a value of `data`'s type is pushed — by a ``NavigationLink``
+    /// created with `value:`, or by appending to the stack's `path:` binding
+    /// — the stack shows the view `destination` builds for it.
+    ///
+    /// ```swift
+    /// NavigationStack(path: $path) {
+    ///     List(items, selection: $selection) { ItemRow(item: $0) }
+    ///         .onSubmit { if let id = selection { path.append(Route.detail(id)) } }
+    ///         .navigationDestination(for: Route.self) { route in
+    ///             switch route {
+    ///             case .detail(let id): DetailView(id: id)
+    ///             case .settings: SettingsView()
+    ///             }
+    ///         }
+    /// }
+    /// ```
+    func navigationDestination<D: Hashable, Content: View>(
+        for data: D.Type,
+        @ViewBuilder destination: @escaping (D) -> Content
+    ) -> some View {
+        modifier(NavigationDestinationModifier<D>(destination: { AnyView(destination($0)) }))
     }
 }
 
@@ -169,7 +328,14 @@ public extension View {
     /// }
     /// ```
     func navigationTitle(_ title: LocalizedStringKey) -> some View {
-        NavigationTitleWriter(content: AnyView(self), text: title.resolve(), isSubtitle: false)
+        modifier(NavigationTitleModifier(text: title.resolve(), isSubtitle: false))
+    }
+
+    /// Sets the title shown in the enclosing navigation container's title
+    /// bar from a string value, mirroring SwiftUI's `navigationTitle(_:)`
+    /// for `StringProtocol`.
+    func navigationTitle<S: StringProtocol>(_ title: S) -> some View {
+        modifier(NavigationTitleModifier(text: String(title), isSubtitle: false))
     }
 
     /// Sets the subtitle shown dimmed beneath the enclosing navigation
@@ -177,26 +343,21 @@ public extension View {
     ///
     /// Outside a navigation container the modifier has no effect.
     func navigationSubtitle(_ subtitle: LocalizedStringKey) -> some View {
-        NavigationTitleWriter(content: AnyView(self), text: subtitle.resolve(), isSubtitle: true)
+        modifier(NavigationTitleModifier(text: subtitle.resolve(), isSubtitle: true))
     }
 }
 
 /// Registers a title (or subtitle) with the enclosing navigation container
 /// while its content lowers, then lowers the content unchanged.
-struct NavigationTitleWriter: View {
-    let content: AnyView
+struct NavigationTitleModifier: ViewModifier {
     let text: String
     let isSubtitle: Bool
 
-    public typealias Body = Never
-
-    @_spi(RenderingInternals)
-    public func applyingStyle(_ style: TextStyle) -> Self {
-        NavigationTitleWriter(content: content.applyingStyle(style), text: text, isSubtitle: isSubtitle)
+    func node(for content: RenderNode) -> RenderNode {
+        content
     }
 
-    @_spi(RenderingInternals)
-    public func makeNode() -> RenderNode {
+    func node(lowering content: () -> RenderNode) -> RenderNode {
         if let container = EnvironmentStack.current.navigationContainerID {
             if isSubtitle {
                 NavigationCoordinator.shared.setSubtitle(text, for: container)
@@ -204,7 +365,7 @@ struct NavigationTitleWriter: View {
                 NavigationCoordinator.shared.setTitle(text, for: container)
             }
         }
-        return content.makeNode()
+        return content()
     }
 }
 
@@ -215,12 +376,29 @@ struct NavigationTitleWriter: View {
 /// (display mode, background, forced colour scheme, role). Empty when the
 /// pass collected no title or subtitle.
 enum NavigationChrome {
+    /// The bottom bar rows: a flexible spacer that pushes the bar to the
+    /// last row of the available height, then the `.bottomBar` toolbar items
+    /// in one row. Empty when no item has that placement.
+    static func bottomBar(for container: String) -> [any View] {
+        let config = NavigationCoordinator.shared.barConfig(for: container)
+        let items = config.toolbarItems.filter { $0.placement.segment == .bottom }
+        guard !items.isEmpty else { return [] }
+        var row: [any View] = []
+        for item in items {
+            if !row.isEmpty { row.append(Text(content: "  ")) }
+            row.append(item.view.labelStyle(.iconOnly).buttonStyle(.plain))
+        }
+        let bar = HStack(alignment: .top, spacing: 0, children: row, style: .plain)
+        let styled: any View = config.background.map { AnyView(HStack(spacing: 0) { bar; Spacer() }.background($0)) } ?? AnyView(bar)
+        return [Spacer(minLength: 0), styled]
+    }
+
     static func titleBar(for container: String) -> [any View] {
         let coordinator = NavigationCoordinator.shared
         let title = coordinator.title(for: container)
         let subtitle = coordinator.subtitle(for: container)
         let config = coordinator.barConfig(for: container)
-        guard title != nil || subtitle != nil || !config.toolbarItems.isEmpty else { return [] }
+        guard title != nil || subtitle != nil || config.toolbarItems.contains(where: { $0.placement.segment != .bottom }) else { return [] }
 
         // .editor centres the title the way an editor window names its
         // document; the other roles keep it leading.

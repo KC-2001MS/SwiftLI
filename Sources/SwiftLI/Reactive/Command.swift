@@ -111,6 +111,29 @@ extension Command {
             }
         }
 
+        // A full-screen session reads the keyboard from the start, not just
+        // once a control registers: a `.task`-only loading screen must still
+        // quit on Ctrl-C and still feed its `onKeyPress` handlers. (The
+        // reader is inert when stdin is not an interactive TTY.) An inline
+        // session starts it on demand instead — when a control or an
+        // `onKeyPress` handler is lowered — so a static inline body never
+        // enters raw mode or emits mouse-tracking and cursor-query sequences
+        // into the scrollback.
+        if fullScreen { KeyInputRouter.shared.ensureStarted() }
+        // Whenever the reader is not in raw mode (inline session without
+        // controls, or stdin not a TTY) Ctrl-C is still delivered as SIGINT —
+        // end the session the same graceful way the `.interrupt` key does, so
+        // the alternate screen is left and the terminal restored instead of
+        // the process dying mid-frame. The handler captures nothing so it
+        // converts to a C function pointer; it hops to the main queue before
+        // touching any lock.
+        signal(SIGINT) { _ in
+            DispatchQueue.main.async {
+                BodyRenderingStore.shared.requestExit()
+                AppRuntime.shared?.stop()
+            }
+        }
+
         // Redraw on terminal resize so width-relative views (a full-width
         // ``Divider``, an auto-sized ``ProgressView``) follow the new size.
         #if os(Windows)
@@ -152,6 +175,7 @@ extension Command {
         #else
         signal(SIGWINCH, SIG_DFL)
         #endif
+        signal(SIGINT, SIG_DFL)
         KeyInputRouter.shared.stop()
         StateObserverRegistry.shared.unregister()
         // Disarm observation-tracking handlers from this session so a late
@@ -188,15 +212,17 @@ extension Command {
     }
 
     /// `true` when nothing remains that could ever change the display: no
-    /// `task` still running, no interactive control in the current frame, no
-    /// redraw driver (``CLITimer``/``TimelineView``), and no change
-    /// notification still in flight.
+    /// `task` still running, no interactive control or `onKeyPress` handler
+    /// in the current frame, no redraw driver (``CLITimer``/``TimelineView``),
+    /// and no change notification still in flight.
     var _sessionIsIdle: Bool {
         !SessionLifecycle.shared.hasRunningTasks
             && !FocusCoordinator.shared.hasVisibleControls
+            && !KeyPressRegistry.shared.hasHandlers
             && !SessionLifecycle.shared.hasActiveDrivers
             && !TimelineCoordinator.shared.hasArmedTimers
             && !RenderObservation.shared.hasPendingNotifications
+            && !StateObserverRegistry.shared.hasPendingRender
     }
 
     /// Suspends until the session has nothing left to do (see
@@ -340,8 +366,9 @@ public extension InlineCommand {
     ///
     /// The session stays alive while anything could still change the display:
     /// - a `task` modifier's work is running,
-    /// - an interactive control (``Button``, ``TextField``, ``Toggle``, …) is
-    ///   on screen — the user still has something to do,
+    /// - an interactive control (``Button``, ``TextField``, ``Toggle``, …) or
+    ///   an ``View/onKeyPress(action:)`` handler is on screen —
+    ///   the user still has something to do,
     /// - a redraw driver (``TimelineView``, ``CLITimer``) is active.
     ///
     /// When all of those are gone, the session ends. <kbd>Ctrl-C</kbd> and
@@ -453,10 +480,11 @@ public extension FullScreenCommand {
     /// stay live while there is something to do, restore the screen.
     ///
     /// While anything could still change the display (an interactive control
-    /// is on screen, a `task` is running, a redraw driver is active) the
-    /// session stays live until the user quits (<kbd>Ctrl-C</kbd>) or a view
-    /// calls `dismiss()` — so a command whose processing starts from the view
-    /// itself doesn't need to write `run()` at all:
+    /// or `onKeyPress` handler is on screen, a `task` is running, a redraw
+    /// driver is active) the session stays live until the user quits
+    /// (<kbd>Ctrl-C</kbd>) or a view calls `dismiss()` — so a command whose
+    /// processing starts from the view itself doesn't need to write `run()`
+    /// at all:
     ///
     /// ```swift
     /// struct Dashboard: FullScreenCommand {

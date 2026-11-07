@@ -121,51 +121,42 @@ public extension View {
     ///
     /// The control is focused when `binding` equals `value`; focusing it (via
     /// Tab or a click-through) writes `value` back into the binding.
-    func focused<V: Hashable & Sendable>(_ binding: FocusState<V?>.Binding, equals value: V) -> FocusModifier {
-        FocusModifier(
-            content: self,
+    func focused<V: Hashable & Sendable>(_ binding: FocusState<V?>.Binding, equals value: V) -> some View {
+        modifier(FocusBindingModifier(
             onFocus: { if binding.wrappedValue != value { binding.wrappedValue = value } },
             onUnfocus: { if binding.wrappedValue == value { binding.wrappedValue = nil } },
             isRequested: { binding.wrappedValue == value }
-        )
+        ))
     }
 
     /// Binds this control's focus to a `Bool` `@FocusState`.
-    func focused(_ binding: FocusState<Bool>.Binding) -> FocusModifier {
-        FocusModifier(
-            content: self,
+    func focused(_ binding: FocusState<Bool>.Binding) -> some View {
+        modifier(FocusBindingModifier(
             onFocus: { if !binding.wrappedValue { binding.wrappedValue = true } },
             onUnfocus: { if binding.wrappedValue { binding.wrappedValue = false } },
             isRequested: { binding.wrappedValue }
-        )
+        ))
     }
 }
 
-/// A transparent wrapper that ties the control it contains to a ``FocusState``.
+/// The modifier behind ``SwiftLI/View/focused(_:equals:)``: ties the control
+/// it modifies to a ``FocusState``.
 ///
-/// Created by ``SwiftLI/View/focused(_:equals:)``. During layout it pushes its
-/// focus callbacks onto ``FocusCoordinator`` so the control lowered inside picks
-/// them up when it registers, then pops them.
-public struct FocusModifier: View {
-    let content: any View
+/// While the content lowers it pushes its focus callbacks onto
+/// ``FocusCoordinator`` so the control lowered inside picks them up when it
+/// registers, then pops them.
+struct FocusBindingModifier: ViewModifier {
     let onFocus: @Sendable () -> Void
     let onUnfocus: @Sendable () -> Void
     let isRequested: @Sendable () -> Bool
 
-    /// A rendering primitive: it lowers directly via ``makeNode()`` and has
-    /// no body.
-    public typealias Body = Never
-
-    @_spi(RenderingInternals)
-    public func applyingStyle(_ style: TextStyle) -> FocusModifier {
-        FocusModifier(content: content.applyingStyle(style), onFocus: onFocus, onUnfocus: onUnfocus, isRequested: isRequested)
+    func node(for content: RenderNode) -> RenderNode {
+        content
     }
 
-    @_spi(RenderingInternals)
-    public func makeNode() -> RenderNode {
+    func node(lowering content: () -> RenderNode) -> RenderNode {
         FocusCoordinator.shared.pushFocus(onFocus: onFocus, onUnfocus: onUnfocus, isRequested: isRequested)
-        let node = content.makeNode()
-        FocusCoordinator.shared.popFocus()
-        return node
+        defer { FocusCoordinator.shared.popFocus() }
+        return content()
     }
 }

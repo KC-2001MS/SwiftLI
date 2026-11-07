@@ -153,7 +153,13 @@ struct AnyTextFieldStyle: TextFieldStyle, @unchecked Sendable {
 public struct TextField: View {
     let textStyle: TextStyle
     /// Stable identity used to track focus and cursor position across renders.
-    let id: String
+    /// An identity given explicitly, or `nil` to derive one from the label.
+    let explicitID: String?
+    /// The identity used when none is given — the label, made unique per
+    /// position inside a session (see ``ControlIdentity``).
+    let fallbackID: String
+    /// The identity the control registers under.
+    var id: String { ControlIdentity.resolve(explicitID, default: fallbackID) }
     let placeholder: String
     let text: Binding<String>
     let onSubmit: (() -> Void)?
@@ -175,16 +181,18 @@ public struct TextField: View {
     ) {
         let resolved = placeholder.resolve()
         self.textStyle = .plain
-        self.id = id ?? resolved
+        self.explicitID = id
+        self.fallbackID = resolved.isEmpty ? "TextField" : resolved
         self.placeholder = resolved
         self.text = text
         self.onSubmit = onSubmit
         self.style = nil
     }
 
-    init(textStyle: TextStyle, id: String, placeholder: String, text: Binding<String>, onSubmit: (() -> Void)?, style: AnyTextFieldStyle? = nil) {
+    init(textStyle: TextStyle, explicitID: String?, fallbackID: String, placeholder: String, text: Binding<String>, onSubmit: (() -> Void)?, style: AnyTextFieldStyle? = nil) {
         self.textStyle = textStyle
-        self.id = id
+        self.explicitID = explicitID
+        self.fallbackID = fallbackID
         self.placeholder = placeholder
         self.text = text
         self.onSubmit = onSubmit
@@ -217,7 +225,7 @@ public struct TextField: View {
 
     @_spi(RenderingInternals)
     public func applyingStyle(_ style: TextStyle) -> Self {
-        TextField(textStyle: textStyle.inheriting(style), id: id, placeholder: placeholder, text: text, onSubmit: onSubmit, style: self.style)
+        TextField(textStyle: textStyle.inheriting(style), explicitID: explicitID, fallbackID: fallbackID, placeholder: placeholder, text: text, onSubmit: onSubmit, style: self.style)
     }
 
     /// Registers the field for keyboard handling (every pass, so the
@@ -226,7 +234,7 @@ public struct TextField: View {
     /// own text style cascaded onto it as the field's pointer footprint.
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
-        FocusCoordinator.shared.register(id: id, binding: text, onSubmit: onSubmit, keymap: SingleLineKeymap())
+        FocusCoordinator.shared.register(id: id, binding: text, onSubmit: onSubmit ?? EnvironmentStack.current.submitAction, keymap: SingleLineKeymap())
         KeyInputRouter.shared.ensureStarted()
         let node = body.makeNode()
         return (textStyle.isPlain ? node : node.applyingStyle(textStyle)).asControl(id: id)
@@ -236,6 +244,6 @@ public struct TextField: View {
     ///
     /// - Parameter newStyle: A value conforming to ``TextFieldStyle``.
     public func textFieldStyle(_ newStyle: some TextFieldStyle) -> Self {
-        TextField(textStyle: textStyle, id: id, placeholder: placeholder, text: text, onSubmit: onSubmit, style: AnyTextFieldStyle(newStyle))
+        TextField(textStyle: textStyle, explicitID: explicitID, fallbackID: fallbackID, placeholder: placeholder, text: text, onSubmit: onSubmit, style: AnyTextFieldStyle(newStyle))
     }
 }

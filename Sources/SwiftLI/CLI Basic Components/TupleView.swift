@@ -18,6 +18,10 @@ public struct TupleView<each Content: View>: View {
     /// The children, stored with their concrete types.
     public let value: (repeat each Content)
 
+    /// A style applied to the whole tuple, cascaded onto every child when
+    /// the tuple lowers (so composite children receive it too).
+    var style: TextStyle = .plain
+
     /// Creates a tuple view from a tuple of views.
     public init(_ value: (repeat each Content)) {
         self.value = value
@@ -30,7 +34,9 @@ public struct TupleView<each Content: View>: View {
     /// Cascades a style onto every child.
     @_spi(RenderingInternals)
     public func applyingStyle(_ style: TextStyle) -> Self {
-        TupleView((repeat (each value).applyingStyle(style)))
+        var copy = self
+        copy.style = self.style.inheriting(style)
+        return copy
     }
 
     /// Lowers the children into a transparent ``RenderNode/group`` node.
@@ -40,15 +46,23 @@ public struct TupleView<each Content: View>: View {
         for child in repeat each value {
             children.append(child.lowered(at: children.count))
         }
-        return .group(children: children)
+        let node = RenderNode.group(children: children)
+        return style.isPlain ? node : node.applyingStyle(style)
     }
 
+    /// Each tuple slot's flattened children are keyed by the slot, so a slot
+    /// whose child count changes (an `if` that turns false, a `ForEach` that
+    /// grows) never shifts the identity of the slots after it.
     @_spi(RenderingInternals)
     public func _flattenedChildren() -> [any View] {
         var children: [any View] = []
+        var slot = 0
         for child in repeat each value {
-            children.append(contentsOf: child._flattenedChildren())
+            for (index, flattened) in child._flattenedChildren().enumerated() {
+                children.append(IdentifiedView(id: AnyHashable(slot), index: index, content: flattened))
+            }
+            slot += 1
         }
-        return children
+        return style.isPlain ? children : children.map { $0.styled(style) }
     }
 }

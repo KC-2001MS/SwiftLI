@@ -54,7 +54,13 @@ public struct TextEditor: View {
     }
 
     let style: TextStyle
-    let id: String
+    /// An identity given explicitly, or `nil` to derive one from the label.
+    let explicitID: String?
+    /// The identity used when none is given — the label, made unique per
+    /// position inside a session (see ``ControlIdentity``).
+    let fallbackID: String
+    /// The identity the control registers under.
+    var id: String { ControlIdentity.resolve(explicitID, default: fallbackID) }
     let placeholder: String
     let text: Binding<String>
     let tabBehavior: TabBehavior
@@ -74,15 +80,17 @@ public struct TextEditor: View {
     public init(_ placeholder: LocalizedStringKey = "", text: Binding<String>, id: String? = nil, tabBehavior: TabBehavior = .focus) {
         let resolved = placeholder.resolve()
         self.style = .plain
-        self.id = id ?? (resolved.isEmpty ? "TextEditor" : resolved)
+        self.explicitID = id
+        self.fallbackID = resolved.isEmpty ? "TextEditor" : resolved
         self.placeholder = resolved
         self.text = text
         self.tabBehavior = tabBehavior
     }
 
-    init(style: TextStyle, id: String, placeholder: String, text: Binding<String>, tabBehavior: TabBehavior) {
+    init(style: TextStyle, explicitID: String?, fallbackID: String, placeholder: String, text: Binding<String>, tabBehavior: TabBehavior) {
         self.style = style
-        self.id = id
+        self.explicitID = explicitID
+        self.fallbackID = fallbackID
         self.placeholder = placeholder
         self.text = text
         self.tabBehavior = tabBehavior

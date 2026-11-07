@@ -51,6 +51,15 @@ public struct TextStyle: Equatable, Sendable {
     /// The destination URL of an OSC 8 hyperlink wrapping the run, or `nil`.
     public var link: String?
 
+    /// How wrapped lines of a multi-line text align within the text's width,
+    /// or `nil` to inherit (leading by default). Set by
+    /// ``View/multilineTextAlignment(_:)``.
+    public var textAlignment: TextAlignment?
+
+    /// Where a line-limited text drops characters, or `nil` to inherit (the
+    /// tail by default). Set by ``View/truncationMode(_:)``.
+    public var truncationMode: Text.TruncationMode?
+
     /// Creates a new `TextStyle` with the given attributes.
     ///
     /// All parameters default to their "unspecified" value (`nil` or `false`),
@@ -75,7 +84,9 @@ public struct TextStyle: Equatable, Sendable {
         blink: BlinkStyle? = nil,
         isHidden: Bool = false,
         isStrikethrough: Bool = false,
-        link: String? = nil
+        link: String? = nil,
+        textAlignment: TextAlignment? = nil,
+        truncationMode: Text.TruncationMode? = nil
     ) {
         self.foreground = foreground
         self.background = background
@@ -86,6 +97,8 @@ public struct TextStyle: Equatable, Sendable {
         self.isHidden = isHidden
         self.isStrikethrough = isStrikethrough
         self.link = link
+        self.textAlignment = textAlignment
+        self.truncationMode = truncationMode
     }
 
     /// The style that specifies nothing and inherits everything.
@@ -110,7 +123,9 @@ public struct TextStyle: Equatable, Sendable {
             blink: blink ?? outer.blink,
             isHidden: isHidden || outer.isHidden,
             isStrikethrough: isStrikethrough || outer.isStrikethrough,
-            link: link ?? outer.link
+            link: link ?? outer.link,
+            textAlignment: textAlignment ?? outer.textAlignment,
+            truncationMode: truncationMode ?? outer.truncationMode
         )
     }
 
@@ -121,7 +136,7 @@ public struct TextStyle: Equatable, Sendable {
     ///
     /// Call this inside `makeNode()` and inside `RenderNode.applyingStyle(_:)`
     /// for leaf cases — while the environment scope injected by
-    /// `EnvironmentWritingView` is still on the stack — so that draw-time
+    /// `EnvironmentModifier` is still on the stack — so that draw-time
     /// lowering via ``ansiPrefix`` never reads a stale or empty scope.
     func resolving() -> TextStyle {
         // Only a dynamic (light/dark) color depends on the scheme; every other

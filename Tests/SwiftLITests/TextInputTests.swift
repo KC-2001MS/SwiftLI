@@ -72,6 +72,39 @@ struct TextFieldInputTests {
         #expect(decoder.feed([0x17]) == [.deleteWordBackward]) // Ctrl-W
     }
 
+    @Test("Control chords without an editing meaning decode to .control(letter)")
+    func decodesUnassignedControlChords() {
+        var decoder = KeyDecoder()
+        #expect(decoder.feed([0x13]) == [.control("s")])   // Ctrl-S
+        #expect(decoder.feed([0x12]) == [.control("r")])   // Ctrl-R
+        #expect(decoder.feed([0x1A]) == [.control("z")])   // Ctrl-Z
+        #expect(decoder.feed([0x0C]) == [.control("l")])   // Ctrl-L
+        // Assigned chords keep their editing meaning; NUL and Ctrl-\ are dropped.
+        #expect(decoder.feed([0x01]) == [.home])
+        #expect(decoder.feed([0x03]) == [.interrupt])
+        #expect(decoder.feed([0x00, 0x1C]) == [])
+    }
+
+    @Test("A lone ESC is held for a sequence tail, then flushed as the Escape key")
+    func escapeFlush() {
+        var decoder = KeyDecoder()
+        // Whole sequence in one read: decoded at once.
+        #expect(decoder.feed([0x1B, 0x5B, 0x41]) == [.up])
+        // Split across reads: the ESC waits for its tail.
+        #expect(decoder.feed([0x1B]) == [])
+        #expect(decoder.feed([0x5B, 0x41]) == [.up])
+        // Nothing follows before the read times out: it was the Escape key.
+        #expect(decoder.feed([0x1B]) == [])
+        #expect(decoder.flush() == [.escape])
+        #expect(decoder.flush() == [])
+        // An incomplete CSI at the pause is an Escape followed by plain text.
+        #expect(decoder.feed([0x1B, 0x5B]) == [])
+        #expect(decoder.flush() == [.escape, .character("[")])
+        // Two Escapes in a row resolve in one flush.
+        #expect(decoder.feed([0x1B, 0x1B]) == [.escape])
+        #expect(decoder.flush() == [.escape])
+    }
+
     // MARK: TextInputKeymap (the style that maps keys → commands)
 
     @Test("Shared keys map to the same command regardless of keymap")

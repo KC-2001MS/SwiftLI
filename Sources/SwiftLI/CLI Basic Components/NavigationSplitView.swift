@@ -77,9 +77,15 @@ public struct NavigationSplitView: View {
         let fullScreen = BodyRenderingStore.shared.fullScreenActive
 
         // Scope every layer to this container so links and titles inside
-        // know where they belong.
-        func scoped(_ view: AnyView) -> any View {
-            view.environment(\.navigationContainerID, id)
+        // know where they belong. A pushed layer also gets a `\.dismiss` that
+        // pops it, so a destination can navigate back the SwiftUI way.
+        func scoped(_ view: AnyView, pushed: Bool = false) -> any View {
+            let scopedView = AnyView(view.environment(\.navigationContainerID, id))
+            guard pushed else { return scopedView }
+            let id = id
+            return scopedView.environment(\.dismiss, DismissAction {
+                NavigationCoordinator.shared.pop(from: id)
+            })
         }
 
         let content: RenderNode
@@ -90,7 +96,7 @@ public struct NavigationSplitView: View {
             // a bare `.group` would be flattened into the enclosing hstack
             // and lay them out side by side.
             let sidebarNode = RenderNode.vstack(alignment: .leading, spacing: 0, children: [scoped(sidebar).lowered(at: 0)])
-            let detailNode = RenderNode.vstack(alignment: .leading, spacing: 0, children: [scoped(layers.last ?? detail).lowered(at: 1 + layers.count)])
+            let detailNode = RenderNode.vstack(alignment: .leading, spacing: 0, children: [scoped(layers.last ?? detail, pushed: !layers.isEmpty).lowered(at: 1 + layers.count)])
             let height = Swift.max(NodeLayout.measure(sidebarNode).height, NodeLayout.measure(detailNode).height)
             let rule = VStack(alignment: .leading, spacing: 0, children: (0..<height).map { _ in
                 Text(content: "│").foregroundStyle(.eightBit(240))
@@ -108,9 +114,9 @@ public struct NavigationSplitView: View {
                 nodes.append(FocusCoordinator.shared.withRegistrationSuppressed { scoped(detail).lowered(at: 1) })
                 for (index, layer) in layers.enumerated() {
                     if index == layers.count - 1 {
-                        nodes.append(scoped(layer).lowered(at: 2 + index))
+                        nodes.append(scoped(layer, pushed: true).lowered(at: 2 + index))
                     } else {
-                        nodes.append(FocusCoordinator.shared.withRegistrationSuppressed { scoped(layer).lowered(at: 2 + index) })
+                        nodes.append(FocusCoordinator.shared.withRegistrationSuppressed { scoped(layer, pushed: true).lowered(at: 2 + index) })
                     }
                 }
             }

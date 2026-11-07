@@ -72,7 +72,8 @@ final class InlineRenderer: @unchecked Sendable {
         rootValues.maxWidth = clip
         rootValues.maxHeight = Swift.max(1, size.rows - 1)
         var frame = EnvironmentStack.with(rootValues) {
-            NodeLayout.frame(of: view.lowered(at: 0))
+            // Propose the usable width to the root so text wraps to it.
+            NodeLayout.frame(of: view.lowered(at: 0), proposedWidth: clip)
         }
         frame.lines = frame.lines.map { TextMetrics.truncate($0, toColumns: clip) }
         // Clamp the body to the visible screen (one row is reserved for the

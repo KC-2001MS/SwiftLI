@@ -68,7 +68,7 @@ public struct Group: View {
     /// Used internally by `measure()`, `_drawChildren()`, and the flatten
     /// logic in ``HStack``/``VStack`` — avoids going through the opaque `body`.
     var _resolvedChildren: [any View] {
-        style.isPlain ? contents : contents.map { $0.applyingStyle(style) }
+        style.isPlain ? contents : contents.map { $0.styled(style) }
     }
 
     /// `Group` is transparent: it lowers directly via ``makeNode()`` and has

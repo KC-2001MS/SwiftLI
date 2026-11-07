@@ -160,6 +160,16 @@ public struct ScrollView: View, @unchecked Sendable {
     /// ``makeNode()`` and has no body.
     public typealias Body = Never
 
+    /// A style applied to the whole view, cascaded onto the lowered content.
+    var style: TextStyle = .plain
+
+    @_spi(RenderingInternals)
+    public func applyingStyle(_ style: TextStyle) -> Self {
+        var copy = self
+        copy.style = self.style.inheriting(style)
+        return copy
+    }
+
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
         let childNode = Group(contents: content).lowered(at: 0)
@@ -175,13 +185,38 @@ public struct ScrollView: View, @unchecked Sendable {
         case .managed(let id):
             // The focus coordinator tracks a generic scalar offset; for a
             // horizontal viewport the "viewport"/"content" extents are widths.
+            let environment = EnvironmentStack.current
+            let contentProposal = isHorizontal ? nil : NodeLayout.scrollContentProposal(environment.maxWidth, bar: ScrollView.scrollBar(focused: false), width: environment.maxWidth)
             let contentExtent = isHorizontal
                 ? NodeLayout.measure(childNode).width
-                : NodeLayout.measure(childNode).height
-            FocusCoordinator.shared.registerScroll(id: id, viewportHeight: resolvedExtent, contentHeight: contentExtent, isHorizontal: isHorizontal)
+                : NodeLayout.measure(childNode, proposedWidth: contentProposal).height
+            let coordinator = FocusCoordinator.shared
+            coordinator.registerScroll(id: id, viewportHeight: resolvedExtent, contentHeight: contentExtent, isHorizontal: isHorizontal)
             KeyInputRouter.shared.ensureStarted()
-            offset = FocusCoordinator.shared.scrollOffset(for: id)
-            focused = FocusCoordinator.shared.isFocused(id)
+            if !isHorizontal {
+                // A `scrollTo(_:anchor:)` requested through the enclosing
+                // ScrollViewReader's proxy.
+                if let reader = environment.scrollReaderID, let request = ScrollTargetRegistry.shared.take(reader: reader),
+                   let range = NodeLayout.rowRange(ofControl: ScrollTargetRegistry.markerID(for: request.target), in: childNode, proposedWidth: contentProposal) {
+                    let anchorY = request.anchor?.y ?? 0
+                    let target = range.lowerBound - Int((Double(resolvedExtent - range.count) * anchorY).rounded())
+                    coordinator.setScrollOffset(target, for: id)
+                }
+                // Keep a focused child in view when focus moves to it (and
+                // only then, so a wheel scroll is not undone by a redraw).
+                if let focusedChild = coordinator.focused, focusedChild != id,
+                   coordinator.scrollFocusChanged(focusedChild, for: id),
+                   let range = NodeLayout.rowRange(ofControl: focusedChild, in: childNode, proposedWidth: contentProposal) {
+                    let current = coordinator.scrollOffset(for: id)
+                    if range.lowerBound < current {
+                        coordinator.setScrollOffset(range.lowerBound, for: id)
+                    } else if range.upperBound > current + resolvedExtent {
+                        coordinator.setScrollOffset(range.upperBound - resolvedExtent, for: id)
+                    }
+                }
+            }
+            offset = coordinator.scrollOffset(for: id)
+            focused = coordinator.isFocused(id)
         case .controlled(let o, let f):
             offset = o
             focused = f
@@ -207,10 +242,11 @@ public struct ScrollView: View, @unchecked Sendable {
         }
         // Only a self-managed viewport is a control of its own; a controlled
         // one belongs to its owner (List/Table), which wraps the node itself.
+        let styledNode = style.isPlain ? node : node.applyingStyle(style)
         if case .managed(let id) = driver {
-            return node.asControl(id: id)
+            return styledNode.asControl(id: id)
         }
-        return node
+        return styledNode
     }
 
     /// The scrollbar palette: a cyan thumb while focused (dim white otherwise)

@@ -154,7 +154,7 @@ struct ObservationTests {
         #expect(name.wrappedValue == "Keisuke")
     }
 
-    @Test func nestedStateBindingWriteNotifiesObservers() {
+    @Test func nestedStateBindingWriteNotifiesObservers() async throws {
         struct Form: Sendable {
             var name = ""
         }
@@ -168,6 +168,10 @@ struct ObservationTests {
         state.projectedValue.name.wrappedValue = "abc"
 
         #expect(state.wrappedValue.name == "abc")
+        // Renders are coalesced per main-queue turn, so the notification
+        // arrives asynchronously — exactly once.
+        try await waitUntil { notifications.count >= 1 }
+        try await Task.sleep(nanoseconds: 50_000_000)
         #expect(notifications.count == 1)
     }
 

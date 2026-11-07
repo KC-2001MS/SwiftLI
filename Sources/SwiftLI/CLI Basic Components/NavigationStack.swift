@@ -25,6 +25,20 @@
 /// ``View/navigationSubtitle(_:)`` on the content) renders in bold above the
 /// content with a rule beneath; the active layer's title wins.
 ///
+/// Inside a pushed destination, `@Environment(\.dismiss)` pops that
+/// destination off the stack (as it does in SwiftUI) instead of ending the
+/// session — pair it with ``View/onKeyPress(_:action:)`` for a "back" key:
+///
+/// ```swift
+/// struct DetailView: View {
+///     @Environment(\.dismiss) private var dismiss
+///     var body: some View {
+///         Text("Detail")
+///             .onKeyPress(.escape) { dismiss(); return .handled }
+///     }
+/// }
+/// ```
+///
 /// ```swift
 /// NavigationStack {
 ///     Text("Choose a section")
@@ -39,6 +53,11 @@
 public struct NavigationStack: View {
     let id: String
     let root: AnyView
+    /// The app-owned path when the stack was created with `path:`, erased so
+    /// the coordinator can push and pop through it.
+    let pathBinding: NavigationCoordinator.PathBinding?
+    /// A style applied to the whole stack, cascaded onto its lowered content.
+    var style: TextStyle = .plain
 
     /// Creates a navigation stack presenting `root`.
     ///
@@ -48,6 +67,54 @@ public struct NavigationStack: View {
     public init<Content: View>(id: String = "NavigationStack", @ViewBuilder root: () -> Content) {
         self.id = id
         self.root = AnyView(root())
+        self.pathBinding = nil
+    }
+
+    /// Creates a navigation stack whose pushed destinations are the values
+    /// of `path`, mirroring SwiftUI's `NavigationStack(path:root:)`.
+    ///
+    /// Each value is shown by the `navigationDestination(for:)` declared
+    /// inside the stack for its type. Append to the path to push, remove
+    /// from it to pop; a ``NavigationLink`` created with `value:` appends,
+    /// and `@Environment(\.dismiss)` inside a destination removes the last
+    /// element.
+    ///
+    /// ```swift
+    /// @State private var path: [Route] = []
+    ///
+    /// NavigationStack(path: $path) {
+    ///     ItemList()
+    ///         .navigationDestination(for: Route.self) { route in RouteView(route) }
+    /// }
+    /// .onKeyPress(.escape) { path.removeLast(); return .handled }
+    /// ```
+    public init<Data: Hashable, Content: View>(path: Binding<[Data]>, id: String = "NavigationStack", @ViewBuilder root: () -> Content) {
+        self.id = id
+        self.root = AnyView(root())
+        self.pathBinding = NavigationCoordinator.PathBinding(
+            count: { path.wrappedValue.count },
+            append: { value in
+                guard let typed = value.base as? Data else { return false }
+                path.wrappedValue.append(typed)
+                return true
+            },
+            removeLast: {
+                guard !path.wrappedValue.isEmpty else { return }
+                path.wrappedValue.removeLast()
+            }
+        )
+        self.typedLayers = { path.wrappedValue.map { NavigationCoordinator.Layer.value(AnyHashable($0)) } }
+    }
+
+    /// The layers of a typed path, read each pass; `nil` for a stack with an
+    /// internal path.
+    private var typedLayers: (() -> [NavigationCoordinator.Layer])? = nil
+
+    @_spi(RenderingInternals)
+    public func applyingStyle(_ style: TextStyle) -> Self {
+        var copy = self
+        copy.style = self.style.inheriting(style)
+        return copy
     }
 
     /// The title bar above the stack's layers: the active layer alone in
@@ -58,34 +125,69 @@ public struct NavigationStack: View {
 
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
-        // Titles are re-collected from the layers this pass actually lowers.
-        NavigationCoordinator.shared.clearTitles(for: id)
+        let coordinator = NavigationCoordinator.shared
+        // Titles and destinations are re-collected from the layers this pass
+        // actually lowers.
+        coordinator.clearTitles(for: id)
+        coordinator.registerPathBinding(pathBinding, for: id)
 
-        let layers = NavigationCoordinator.shared.path(for: id)
+        let layers = typedLayers?() ?? coordinator.layers(for: id)
         let fullScreen = BodyRenderingStore.shared.fullScreenActive
 
+        // A path that changed since the last frame without going through a
+        // link (an `append` in a key handler, a `removeLast` from `dismiss`)
+        // rebuilds the focus ring exactly as a link activation does.
+        if coordinator.observeLayerCount(layers.count, for: id) {
+            FocusCoordinator.shared.prepareForNewLayer()
+        }
+
         // Scope every layer to this container so links and titles inside
-        // know where they belong.
-        func scoped(_ view: AnyView) -> any View {
-            view.environment(\.navigationContainerID, id)
+        // know where they belong. A pushed layer also gets a `\.dismiss` that
+        // pops it, so a destination can navigate back the SwiftUI way.
+        func scoped(_ view: AnyView, pushed: Bool) -> any View {
+            let scopedView = AnyView(view.environment(\.navigationContainerID, id))
+            guard pushed else { return scopedView }
+            let id = id
+            return scopedView.environment(\.dismiss, DismissAction {
+                NavigationCoordinator.shared.pop(from: id)
+            })
+        }
+
+        /// Lowers layer `index` (0 is the root) under an identity that
+        /// follows the pushed value, so a destination's `@State` belongs to
+        /// what it shows.
+        func lower(_ view: any View, layerIndex index: Int, layer: NavigationCoordinator.Layer?) -> RenderNode {
+            if case .value(let value)? = layer {
+                return view.lowered(id: AnyHashable([AnyHashable(index), value]))
+            }
+            return view.lowered(at: index)
         }
 
         var contentNodes: [RenderNode] = []
-        if fullScreen {
-            // Full-screen: the newest destination replaces the content.
-            let active = layers.last ?? root
-            contentNodes.append(scoped(active).lowered(at: layers.count))
+        // The root always lowers — inert and discarded when a destination
+        // covers it in full-screen mode — so it stays alive beneath the
+        // stack as in SwiftUI: its `@State` persists, its `task` keeps
+        // running, and the `navigationDestination(for:)` modifiers it
+        // declares are registered before the pushed values resolve.
+        if layers.isEmpty {
+            contentNodes.append(lower(scoped(root, pushed: false), layerIndex: 0, layer: nil))
         } else {
-            // Inline: destinations accumulate below the root. Only the newest
-            // layer's controls stay live; the layers above it render inert.
-            let all = [root] + layers
-            for (index, layer) in all.enumerated() {
-                if index == all.count - 1 {
-                    contentNodes.append(scoped(layer).lowered(at: index))
+            let rootNode = FocusCoordinator.shared.withRegistrationSuppressed {
+                lower(scoped(root, pushed: false), layerIndex: 0, layer: nil)
+            }
+            if !fullScreen { contentNodes.append(rootNode) }
+            for (offset, layer) in layers.enumerated() {
+                let index = offset + 1
+                let view = scoped(coordinator.resolve(layer, in: id), pushed: true)
+                if offset == layers.count - 1 {
+                    contentNodes.append(lower(view, layerIndex: index, layer: layer))
                 } else {
-                    contentNodes.append(FocusCoordinator.shared.withRegistrationSuppressed {
-                        scoped(layer).lowered(at: index)
-                    })
+                    // Older layers render inert inline, and stay alive but
+                    // unseen in full-screen mode.
+                    let node = FocusCoordinator.shared.withRegistrationSuppressed {
+                        lower(view, layerIndex: index, layer: layer)
+                    }
+                    if !fullScreen { contentNodes.append(node) }
                 }
             }
         }
@@ -94,6 +196,10 @@ public struct NavigationStack: View {
         // the active layer's `navigationTitle` registered it.
         var rows: [RenderNode] = NavigationChrome.titleBar(for: id).map { $0.makeNode() }
         rows.append(contentsOf: contentNodes)
-        return .vstack(alignment: .leading, spacing: 0, children: rows)
+        rows.append(contentsOf: NavigationChrome.bottomBar(for: id).map { $0.makeNode() })
+        let node = RenderNode.vstack(alignment: .leading, spacing: 0, children: rows)
+        return style.isPlain ? node : node.applyingStyle(style)
     }
 }
+
+extension NavigationStack: _StyleCarryingView {}

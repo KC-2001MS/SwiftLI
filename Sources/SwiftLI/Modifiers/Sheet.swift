@@ -62,13 +62,12 @@ public extension View {
         column: Int = #column,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        SheetModifier(
-            content: AnyView(self),
+        modifier(SheetModifier(
             isPresented: isPresented,
             id: "\(fileID):\(line):\(column)",
             onDismiss: onDismiss,
             sheet: AnyView(content())
-        )
+        ))
     }
 }
 
@@ -102,22 +101,17 @@ final class SheetPresentationTracker: @unchecked Sendable {
 
 /// Lays a view out with its sheet card appended below (inline) or replacing
 /// it (full-screen) while the sheet is presented.
-struct SheetModifier: View, @unchecked Sendable {
-    let content: AnyView
+struct SheetModifier: ViewModifier {
     let isPresented: Binding<Bool>
     let id: String
     let onDismiss: (() -> Void)?
     let sheet: AnyView
 
-    public typealias Body = Never
-
-    @_spi(RenderingInternals)
-    public func applyingStyle(_ style: TextStyle) -> Self {
-        SheetModifier(content: content.applyingStyle(style), isPresented: isPresented, id: id, onDismiss: onDismiss, sheet: sheet)
+    func node(for content: RenderNode) -> RenderNode {
+        content
     }
 
-    @_spi(RenderingInternals)
-    public func makeNode() -> RenderNode {
+    func node(lowering content: () -> RenderNode) -> RenderNode {
         let presented = isPresented.wrappedValue
 
         // A presentation transition rebuilds the focus ring, so focus moves
@@ -127,7 +121,7 @@ struct SheetModifier: View, @unchecked Sendable {
             if !presented { onDismiss?() }
         }
 
-        guard presented else { return content.makeNode() }
+        guard presented else { return content() }
 
         // The sheet content renders as a rounded-border card.
         let card = AnyView(sheet).padding().border(.primary)
@@ -141,7 +135,7 @@ struct SheetModifier: View, @unchecked Sendable {
         } else {
             // Inline: the card is appended below; the base view stays
             // visible but its controls render inert.
-            let base = FocusCoordinator.shared.withRegistrationSuppressed { content.lowered(at: 0) }
+            let base = FocusCoordinator.shared.withRegistrationSuppressed { content() }
             return .vstack(alignment: .leading, spacing: 0, children: [base, card.lowered(at: 1)])
         }
     }

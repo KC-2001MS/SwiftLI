@@ -9,16 +9,28 @@ import Foundation
 
 // MARK: - Lifecycle identity
 
-/// Identifies a lifecycle modifier (`onAppear`, `task`) by its call site.
+/// Identifies a lifecycle modifier (`onAppear`, `task`, `onChange`) by its
+/// call site and the structural identity of the view it modifies.
 ///
 /// Views are value types recreated on every body evaluation, so an instance
 /// cannot carry "already fired" state across renders. The call site — file,
-/// line, column — is stable across re-evaluations of the same `body`, which
-/// makes it the identity that "once per session" is tracked against.
+/// line, column — is stable across re-evaluations of the same `body`; the
+/// view's identity (see ``RetainedTree``) tells the same call site apart
+/// when it runs once per element of a `ForEach`, so every row gets its own
+/// `task`, exactly as in SwiftUI. Outside a session that retains identities
+/// the identity is the root's, and the call site alone decides.
 struct LifecycleKey: Hashable, Sendable {
     let fileID: String
     let line: Int
     let column: Int
+    var identity: UInt64 = RetainedTree.rootIdentity
+
+    /// The key for the view being lowered right now.
+    var located: LifecycleKey {
+        var key = self
+        key.identity = RenderPassContext.current?.identity ?? RetainedTree.rootIdentity
+        return key
+    }
 }
 
 // MARK: - Session lifecycle registry
@@ -36,6 +48,15 @@ final class SessionLifecycle: @unchecked Sendable {
     private let lock = NSLock()
     private var appeared = Set<LifecycleKey>()
     private var tasks: [LifecycleKey: (id: AnyHashable?, task: Task<Void, Never>)] = [:]
+    /// The `onDisappear` actions of the views in the most recent frame.
+    private var disappearActions: [LifecycleKey: @Sendable () -> Void] = [:]
+    /// The last value each `onChange` modifier observed.
+    private var changeValues: [LifecycleKey: Any] = [:]
+    /// The lifecycle keys lowered by the render pass in progress (`nil`
+    /// outside a pass). At the end of the pass, a `task` whose key was not
+    /// seen belongs to a view that left the tree: it is cancelled, its
+    /// `onAppear` is re-armed, and its `onDisappear` runs.
+    private var seenThisPass: Set<LifecycleKey>?
     /// One token per task that has started but not yet returned. The idle
     /// check consults this: a session with work in flight is never torn down.
     private var runningTaskTokens = Set<UUID>()
@@ -45,12 +66,73 @@ final class SessionLifecycle: @unchecked Sendable {
 
     private init() {}
 
-    /// Runs `action` the first time `key` is seen in the current session.
+    /// Runs `action` the first time `key` is seen since the view appeared.
     func performOnce(key: LifecycleKey, action: () -> Void) {
         lock.lock()
+        seenThisPass?.insert(key)
         let isFirst = appeared.insert(key).inserted
         lock.unlock()
         if isFirst { action() }
+    }
+
+    /// Registers the `onDisappear` action of a view in the current frame.
+    func registerDisappear(key: LifecycleKey, action: @escaping @Sendable () -> Void) {
+        lock.lock()
+        seenThisPass?.insert(key)
+        appeared.insert(key)
+        disappearActions[key] = action
+        lock.unlock()
+    }
+
+    /// Compares `value` with the one `key` observed last frame, running
+    /// `action(old, new)` when it changed — or, with `initial`, once when the
+    /// value is first seen. The action runs after the pass, on the main
+    /// queue, so a state write inside it schedules the next frame instead of
+    /// re-entering the one being drawn.
+    func observeChange<V: Equatable & Sendable>(key: LifecycleKey, value: V, initial: Bool, action: @escaping @Sendable (V, V) -> Void) {
+        lock.lock()
+        seenThisPass?.insert(key)
+        let previous = changeValues[key] as? V
+        let seenBefore = changeValues[key] != nil
+        changeValues[key] = value
+        lock.unlock()
+        if !seenBefore {
+            if initial { DispatchQueue.main.async { action(value, value) } }
+        } else if let previous, previous != value {
+            DispatchQueue.main.async { action(previous, value) }
+        }
+    }
+
+    // MARK: Render-pass bracketing
+
+    /// Starts collecting the lifecycle keys of a frame.
+    func beginPass() {
+        lock.lock()
+        seenThisPass = []
+        lock.unlock()
+    }
+
+    /// Ends a frame: lifecycle state of views that are no longer in the tree
+    /// is released — their tasks cancelled, their `onAppear` re-armed, their
+    /// `onDisappear` run — so a view that comes back later starts afresh.
+    func endPass() {
+        lock.lock()
+        guard let seen = seenThisPass else { lock.unlock(); return }
+        seenThisPass = nil
+        var cancelled: [Task<Void, Never>] = []
+        for (key, entry) in tasks where !seen.contains(key) {
+            cancelled.append(entry.task)
+            tasks[key] = nil
+        }
+        var disappeared: [@Sendable () -> Void] = []
+        for key in appeared where !seen.contains(key) {
+            appeared.remove(key)
+            if let action = disappearActions.removeValue(forKey: key) { disappeared.append(action) }
+        }
+        for key in changeValues.keys where !seen.contains(key) { changeValues[key] = nil }
+        lock.unlock()
+        for task in cancelled { task.cancel() }
+        for action in disappeared { DispatchQueue.main.async { action() } }
     }
 
     /// Starts an async task for `key` unless one with the same `id` is
@@ -63,6 +145,7 @@ final class SessionLifecycle: @unchecked Sendable {
         action: @escaping @Sendable () async -> Void
     ) {
         lock.lock()
+        seenThisPass?.insert(key)
         if let existing = tasks[key] {
             if existing.id == id {
                 lock.unlock()
@@ -122,6 +205,9 @@ final class SessionLifecycle: @unchecked Sendable {
         let running = tasks
         tasks = [:]
         appeared = []
+        disappearActions = [:]
+        changeValues = [:]
+        seenThisPass = nil
         runningTaskTokens = []
         lock.unlock()
         for entry in running.values {
@@ -132,97 +218,93 @@ final class SessionLifecycle: @unchecked Sendable {
 
 // MARK: - onAppear
 
-/// A view wrapper that executes an action the first time it is rendered.
+/// The modifier behind ``View/onAppear(fileID:line:column:perform:)``.
 ///
-/// `OnAppearView` is created by the `onAppear(perform:)` modifier and should
-/// not normally be instantiated directly.
-///
-/// The action is called exactly once per rendering session — on the first
-/// render pass that includes this view — even though `body` is re-evaluated
-/// (and this wrapper recreated) on every state change. This is useful for
-/// starting timers, kicking off animations, or scheduling any work that
-/// should happen only when the view becomes visible.
-///
-/// ```swift
-/// Group {
-///     Text("Loading...").newLine()
-/// }
-/// .onAppear {
-///     myTimer.start { progress += 0.1 }
-/// }
-/// ```
-public struct OnAppearView: View {
-    private let content: [any View]
-    private let action: () -> Void
-    private let key: LifecycleKey
+/// The action fires exactly once per rendering session — on the first
+/// render pass that includes the content — even though `body` is
+/// re-evaluated (and the modifier recreated) on every state change. This is
+/// useful for starting timers, kicking off animations, or scheduling any
+/// work that should happen only when the view becomes visible.
+struct OnAppearModifier: ViewModifier {
+    let action: () -> Void
+    let key: LifecycleKey
 
-    init(content: [any View], action: @escaping () -> Void, key: LifecycleKey) {
-        self.content = content
-        self.action = action
-        self.key = key
+    func node(for content: RenderNode) -> RenderNode {
+        content
     }
 
-    /// A rendering primitive: it lowers directly via ``makeNode()`` and has
-    /// no body.
-    public typealias Body = Never
-
-    /// Lowers the wrapped content, firing the appear action exactly once per
-    /// session.
-    ///
-    /// `makeNode()` is the single point every render pass funnels through, so
+    /// Lowering is the single point every render pass funnels through, so
     /// firing here (guarded by ``SessionLifecycle``) reliably runs the action
     /// the first time the view is drawn.
-    @_spi(RenderingInternals)
-    public func makeNode() -> RenderNode {
-        SessionLifecycle.shared.performOnce(key: key, action: action)
-        return .group(children: content.enumerated().map { $1.lowered(at: $0) })
+    func node(lowering content: () -> RenderNode) -> RenderNode {
+        SessionLifecycle.shared.performOnce(key: key.located, action: action)
+        return content()
     }
 }
 
 // MARK: - task
 
-/// A view wrapper that starts an async task when the view first appears and
-/// cancels it when the rendering session ends.
-///
-/// `TaskView` is created by the ``View/task(priority:fileID:line:column:_:)``
-/// modifier and should not normally be instantiated directly.
-public struct TaskView: View, @unchecked Sendable {
-    private let content: [any View]
-    private let key: LifecycleKey
-    private let id: AnyHashable?
-    private let priority: TaskPriority
-    private let action: @Sendable () async -> Void
+/// The modifier behind ``View/task(priority:fileID:line:column:_:)``: starts
+/// an async task on the first render pass of a reactive session that
+/// includes the content, and cancels it when the session ends.
+struct TaskModifier: ViewModifier {
+    let key: LifecycleKey
+    let id: AnyHashable?
+    let priority: TaskPriority
+    let action: @Sendable () async -> Void
 
-    init(
-        content: [any View],
-        key: LifecycleKey,
-        id: AnyHashable?,
-        priority: TaskPriority,
-        action: @escaping @Sendable () async -> Void
-    ) {
-        self.content = content
-        self.key = key
-        self.id = id
-        self.priority = priority
-        self.action = action
+    func node(for content: RenderNode) -> RenderNode {
+        content
     }
 
-    /// A rendering primitive: it lowers directly via ``makeNode()`` and has
-    /// no body.
-    public typealias Body = Never
-
-    /// Lowers the wrapped content, starting the task on the first render pass
-    /// of a reactive session that includes this view.
-    ///
     /// Outside a reactive session (a one-shot `render()`), no task is started:
     /// nothing would keep the process alive to await it, and nothing would
     /// ever cancel it.
-    @_spi(RenderingInternals)
-    public func makeNode() -> RenderNode {
+    func node(lowering content: () -> RenderNode) -> RenderNode {
         if BodyRenderingStore.shared.sessionActive || AppRuntime.shared != nil {
-            SessionLifecycle.shared.startTask(key: key, id: id, priority: priority, action: action)
+            SessionLifecycle.shared.startTask(key: key.located, id: id, priority: priority, action: action)
         }
-        return .group(children: content.enumerated().map { $1.lowered(at: $0) })
+        return content()
+    }
+}
+
+// MARK: - onDisappear
+
+/// The modifier behind ``View/onDisappear(fileID:line:column:perform:)``:
+/// registers an action that ``SessionLifecycle`` runs once a frame no
+/// longer contains the content.
+struct OnDisappearModifier: ViewModifier {
+    let action: @Sendable () -> Void
+    let key: LifecycleKey
+
+    func node(for content: RenderNode) -> RenderNode {
+        content
+    }
+
+    func node(lowering content: () -> RenderNode) -> RenderNode {
+        SessionLifecycle.shared.registerDisappear(key: key.located, action: action)
+        return content()
+    }
+}
+
+// MARK: - onChange
+
+/// The modifier behind ``View/onChange(of:initial:fileID:line:column:_:)``:
+/// hands the current value to ``SessionLifecycle`` every frame, which runs
+/// the action (after the frame, on the main queue) when it changed.
+struct OnChangeModifier<V: Equatable & Sendable>: ViewModifier {
+    let value: V
+    let initial: Bool
+    let action: @Sendable (V, V) -> Void
+    let key: LifecycleKey
+
+    func node(for content: RenderNode) -> RenderNode {
+        content
+    }
+
+    func node(lowering content: () -> RenderNode) -> RenderNode {
+        SessionLifecycle.shared.observeChange(key: key.located, value: value, initial: initial, action: action)
+        return content()
     }
 }
 
@@ -242,12 +324,73 @@ public extension View {
         line: Int = #line,
         column: Int = #column,
         perform action: @escaping () -> Void
-    ) -> OnAppearView {
-        OnAppearView(
-            content: [self],
+    ) -> some View {
+        modifier(OnAppearModifier(action: action, key: LifecycleKey(fileID: fileID, line: line, column: column)))
+    }
+
+    /// Adds an action to perform when this view leaves the tree, mirroring
+    /// SwiftUI's `onDisappear(perform:)`.
+    ///
+    /// The view leaves the tree when a frame no longer contains it — a
+    /// branch of an `if` switched, a `ForEach` row removed, a pushed
+    /// destination popped. The action runs after that frame, on the main
+    /// queue.
+    func onDisappear(
+        fileID: String = #fileID,
+        line: Int = #line,
+        column: Int = #column,
+        perform action: @escaping @Sendable () -> Void
+    ) -> some View {
+        modifier(OnDisappearModifier(action: action, key: LifecycleKey(fileID: fileID, line: line, column: column)))
+    }
+
+    /// Runs an action when `value` changes, mirroring SwiftUI's
+    /// `onChange(of:initial:_:)`.
+    ///
+    /// The value is compared between consecutive frames of a rendering
+    /// session; when it differs the action receives the old and the new
+    /// value. With `initial: true` the action also runs once with the first
+    /// value seen. The action runs after the frame, on the main queue, so it
+    /// may freely write `@State`.
+    ///
+    /// ```swift
+    /// List(items, selection: $selection) { Text($0.title) }
+    ///     .onChange(of: selection) { _, newValue in
+    ///         model.preview(newValue)
+    ///     }
+    /// ```
+    func onChange<V: Equatable & Sendable>(
+        of value: V,
+        initial: Bool = false,
+        fileID: String = #fileID,
+        line: Int = #line,
+        column: Int = #column,
+        _ action: @escaping @Sendable (V, V) -> Void
+    ) -> some View {
+        modifier(OnChangeModifier(
+            value: value,
+            initial: initial,
             action: action,
             key: LifecycleKey(fileID: fileID, line: line, column: column)
-        )
+        ))
+    }
+
+    /// Runs an action when `value` changes, mirroring SwiftUI's
+    /// zero-parameter `onChange(of:initial:_:)`.
+    func onChange<V: Equatable & Sendable>(
+        of value: V,
+        initial: Bool = false,
+        fileID: String = #fileID,
+        line: Int = #line,
+        column: Int = #column,
+        _ action: @escaping @Sendable () -> Void
+    ) -> some View {
+        modifier(OnChangeModifier(
+            value: value,
+            initial: initial,
+            action: { _, _ in action() },
+            key: LifecycleKey(fileID: fileID, line: line, column: column)
+        ))
     }
 
     /// Starts an async task when this view first appears in a rendering
@@ -281,14 +424,8 @@ public extension View {
         line: Int = #line,
         column: Int = #column,
         _ action: @escaping @Sendable () async -> Void
-    ) -> TaskView {
-        TaskView(
-            content: [self],
-            key: LifecycleKey(fileID: fileID, line: line, column: column),
-            id: nil,
-            priority: priority,
-            action: action
-        )
+    ) -> some View {
+        modifier(TaskModifier(key: LifecycleKey(fileID: fileID, line: line, column: column), id: nil, priority: priority, action: action))
     }
 
     /// Starts an async task tied to `id`: when the view reappears with a
@@ -306,13 +443,7 @@ public extension View {
         line: Int = #line,
         column: Int = #column,
         _ action: @escaping @Sendable () async -> Void
-    ) -> TaskView {
-        TaskView(
-            content: [self],
-            key: LifecycleKey(fileID: fileID, line: line, column: column),
-            id: AnyHashable(id),
-            priority: priority,
-            action: action
-        )
+    ) -> some View {
+        modifier(TaskModifier(key: LifecycleKey(fileID: fileID, line: line, column: column), id: AnyHashable(id), priority: priority, action: action))
     }
 }

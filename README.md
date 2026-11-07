@@ -209,8 +209,21 @@ VStack {
 
 Presentation and lifecycle modifiers are SwiftUI's too: `.sheet(isPresented:onDismiss:content:)`,
 `.inspector(isPresented:content:)`, `.onAppear(perform:)`, `.task(_:)`,
-`.task(id:_:)`, `.focused(_:equals:)`, `.navigationTitle(_:)`, `.toolbar { … }`,
+`.task(id:_:)`, `.onDisappear(perform:)`, `.onChange(of:initial:_:)`,
+`.focused(_:equals:)`, `.onKeyPress(_:action:)`,
+`.onKeyPress(keys:action:)`, `.onKeyPress(characters:action:)`,
+`.onKeyPress(action:)`, `.onSubmit(_:)`, `.navigationTitle(_:)`,
+`.navigationDestination(for:destination:)`, `.toolbar { … }`,
+`.alert(_:isPresented:actions:message:)`, `.confirmationDialog(…)`,
+`.overlay(alignment:content:)`, `.safeAreaInset(edge:content:)`, `.badge(_:)`,
 `.environment(_:_:)`, and `.preference(key:value:)`.
+
+Keys go to the focused control first; whatever it leaves unhandled reaches
+the `.onKeyPress` handlers on screen as a `KeyPress` (`key`, `characters`,
+`modifiers` — Ctrl chords carry `.control`), innermost first, until one
+returns `.handled` — so a screen-wide shortcut needs no focusable control at
+all. Inside a pushed `NavigationStack` destination, `@Environment(\.dismiss)`
+pops the destination, as it does in SwiftUI.
 
 Where the terminal cannot do what SwiftUI does, the API differs — and only
 there:
@@ -221,6 +234,108 @@ there:
 | `.shadow(color:radius:x:y:)` | `radius` defaults to `0` and widens the shadow band instead of blurring it | Terminals cannot blur |
 | `.blink(_:)`, `Divider().lineStyle(_:)` | Terminal-only additions | No SwiftUI counterpart |
 | `Color.eightBit(_:)`, `Color.rgb(r:g:b:)` | 256-color palette and 24-bit colors by index/component | SwiftUI has no palette colors |
+
+### Building a full-screen app
+Everything an interactive, keyboard-driven app needs is in the library, with
+SwiftUI's shape: a tab bar, a typed navigation path, a list that selects by id
+and keeps a multi-line row in view, text input, a confirmation alert, an
+overlay for toasts, and a key-hint line pinned to the bottom. `sclt app` is
+the complete sample; its skeleton is:
+
+```swift
+@main
+struct ExampleApp: FullScreenCommand {
+    @State private var model = AppModel()          // @Observable
+    private enum CodingKeys: CodingKey {}
+
+    var body: some Scene {
+        RootView()
+            .environment(model)
+            .onKeyPress { press in                  // keys no control consumed
+                guard press.key == "?" else { return .ignored }
+                model.showsHelp.toggle()
+                return .handled
+            }
+    }
+}
+
+struct RootView: View {
+    @Environment(AppModel.self) private var model
+    var body: some View {
+        if model.isLoading {
+            ProgressView("Loading…").task { await model.load() }   // spins by itself
+        } else {
+            TabView(selection: Bindable(model).screen) {
+                Tab("Items", value: Screen.items) { ItemListView() }.badge(model.unread)
+                Tab("Settings", value: Screen.settings) { SettingsView() }
+            }
+            .overlay(alignment: .bottomTrailing) { if let toast = model.toast { Text(" \(toast) ").background(.green) } }
+            .safeAreaInset(edge: .bottom) { Text(" j/k move  ⏎ open  q quit ").foregroundStyle(.secondary) }
+        }
+    }
+}
+
+struct ItemListView: View {
+    @Environment(AppModel.self) private var model
+    @State private var selection: Item.ID?
+    @State private var path: [Route] = []
+    @State private var confirmDelete = false
+
+    var body: some View {
+        NavigationStack(path: $path) {
+            List(model.items, selection: $selection) { item in
+                ItemRow(item: item)                 // several wrapped lines per row
+            }
+            .onReachEnd { model.loadMore() }
+            .onSubmit { if let id = selection { path.append(.detail(id)) } }
+            .onKeyPress("d") { confirmDelete = selection != nil; return .handled }
+            .alert("Delete this item?", isPresented: $confirmDelete) {
+                Button("Delete", role: .destructive) { model.delete(selection) }
+                Button("Cancel", role: .cancel) {}
+            }
+            .navigationTitle("Items")
+            .navigationDestination(for: Route.self) { route in
+                switch route {
+                case .detail(let id): DetailView(id: id)   // Escape → dismiss() pops
+                case .settings: SettingsView()
+                }
+            }
+        }
+    }
+}
+```
+
+What makes this work, all SwiftUI semantics:
+
+- **Text wraps by default** to the width it is given (the terminal at the root,
+  a frame, a list row), including `Text(AttributedString)` and `Text + Text`
+  with differently styled pieces; the wrap follows a terminal resize.
+  `.lineLimit`, `.truncationMode`, `.multilineTextAlignment`,
+  `Text(date, style: .relative)` and `Text(value, format:)` are there too.
+- **Style modifiers work on any view** — `MyRow().bold()`, or `.foregroundStyle`
+  after `.padding()` / `.task {}` — by cascading onto the lowered content.
+- **State and lifecycle follow structural identity.** A child view's `@State`
+  survives its parent's re-render; `ForEach` over `Identifiable` data (or with
+  `id:`) keys rows by id; `.task` / `.onAppear` / `.onDisappear` / `.onChange`
+  run once per row and a vanished row's task is cancelled. State writes made
+  in one turn coalesce into a single frame.
+- **Navigation:** `NavigationStack(path:)` + `navigationDestination(for:)` +
+  `NavigationLink(value:)`; `path.append` pushes, `removeLast` or
+  `@Environment(\.dismiss)` pops. `TabView` keeps every tab's state, scroll
+  position, selection and focused control across switches.
+- **Lists and scrolling:** `List(data, selection:)` selects by id, keeps the
+  whole selected row visible, pages with Page Up/Down, submits with Return
+  (`onSubmit`) and reports the end for paging (`onReachEnd`). `ScrollView`
+  keeps a focused child in view; `ScrollViewReader` + `.id(_:)` scroll
+  programmatically.
+- **Presentation:** `.alert`, `.confirmationDialog` (any action dismisses),
+  `ZStack`, `.overlay`, `.background { }`, `.safeAreaInset`, `.badge`,
+  `.toolbar` with `.bottomBar`.
+- **The focus ring is rebuilt every frame** from the controls actually on
+  screen; a control hidden by an `if`, a tab switch or a pop never keeps focus.
+- **Exit is always clean:** Ctrl-C is offered to `onKeyPress` first, then ends
+  the session; even a crash or `exit()` leaves the alternate screen, shows the
+  cursor and restores the terminal mode.
 
 ### Styles
 Controls resolve their styles from the environment, so a style applied to a

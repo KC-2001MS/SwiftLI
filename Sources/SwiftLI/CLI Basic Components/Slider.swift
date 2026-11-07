@@ -166,7 +166,13 @@ struct AnySliderStyle: SliderStyle, @unchecked Sendable {
 /// > several share the same label.
 public struct Slider: View, @unchecked Sendable {
     let textStyle: TextStyle
-    let id: String
+    /// An identity given explicitly, or `nil` to derive one from the label.
+    let explicitID: String?
+    /// The identity used when none is given — the label, made unique per
+    /// position inside a session (see ``ControlIdentity``).
+    let fallbackID: String
+    /// The identity the control registers under.
+    var id: String { ControlIdentity.resolve(explicitID, default: fallbackID) }
     let label: AnyView?
     let value: Binding<Double>
     let range: ClosedRange<Double>
@@ -201,7 +207,8 @@ public struct Slider: View, @unchecked Sendable {
     ) {
         let resolved = label.resolve()
         self.textStyle = .plain
-        self.id = id ?? (resolved.isEmpty ? "Slider" : resolved)
+        self.explicitID = id
+        self.fallbackID = resolved.isEmpty ? "Slider" : resolved
         self.label = resolved.isEmpty ? nil : AnyView(Text(content: resolved))
         self.value = value
         self.range = bounds
@@ -226,11 +233,12 @@ public struct Slider: View, @unchecked Sendable {
         in bounds: ClosedRange<Double> = 0...1,
         step: Double? = nil,
         width: Int? = nil,
-        id: String = "Slider",
+        id: String? = nil,
         @ViewBuilder label: () -> Label
     ) {
         self.textStyle = .plain
-        self.id = id
+        self.explicitID = id
+        self.fallbackID = "Slider"
         self.label = AnyView(label())
         self.value = value
         self.range = bounds
@@ -239,9 +247,10 @@ public struct Slider: View, @unchecked Sendable {
         self.style = nil
     }
 
-    init(textStyle: TextStyle, id: String, label: AnyView?, value: Binding<Double>, range: ClosedRange<Double>, step: Double?, width: Int?, style: AnySliderStyle?) {
+    init(textStyle: TextStyle, explicitID: String?, fallbackID: String, label: AnyView?, value: Binding<Double>, range: ClosedRange<Double>, step: Double?, width: Int?, style: AnySliderStyle?) {
         self.textStyle = textStyle
-        self.id = id
+        self.explicitID = explicitID
+        self.fallbackID = fallbackID
         self.label = label
         self.value = value
         self.range = range
@@ -285,7 +294,7 @@ public struct Slider: View, @unchecked Sendable {
 
     @_spi(RenderingInternals)
     public func applyingStyle(_ style: TextStyle) -> Self {
-        Slider(textStyle: textStyle.inheriting(style), id: id, label: label, value: value, range: range, step: step, width: width, style: self.style)
+        Slider(textStyle: textStyle.inheriting(style), explicitID: explicitID, fallbackID: fallbackID, label: label, value: value, range: range, step: step, width: width, style: self.style)
     }
 
     /// The per-keypress step: the explicit one, else 1/20th of the range.
@@ -309,6 +318,6 @@ public struct Slider: View, @unchecked Sendable {
     /// Sets the style used to render this slider.
     /// - Parameter newStyle: A value conforming to ``SliderStyle``.
     public func sliderStyle(_ newStyle: some SliderStyle) -> Self {
-        Slider(textStyle: textStyle, id: id, label: label, value: value, range: range, step: step, width: width, style: AnySliderStyle(newStyle))
+        Slider(textStyle: textStyle, explicitID: explicitID, fallbackID: fallbackID, label: label, value: value, range: range, step: step, width: width, style: AnySliderStyle(newStyle))
     }
 }

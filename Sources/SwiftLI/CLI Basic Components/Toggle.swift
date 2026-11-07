@@ -171,7 +171,13 @@ struct AnyToggleStyle: ToggleStyle, @unchecked Sendable {
 /// ```
 public struct Toggle: View {
     let textStyle: TextStyle
-    let id: String
+    /// An identity given explicitly, or `nil` to derive one from the label.
+    let explicitID: String?
+    /// The identity used when none is given — the label, made unique per
+    /// position inside a session (see ``ControlIdentity``).
+    let fallbackID: String
+    /// The identity the control registers under.
+    var id: String { ControlIdentity.resolve(explicitID, default: fallbackID) }
     let label: AnyView?
     let isOn: Binding<Bool>
     /// The explicitly applied style, or `nil` to resolve from the environment.
@@ -193,7 +199,8 @@ public struct Toggle: View {
     ) {
         let resolved = label.resolve()
         self.textStyle = .plain
-        self.id = id ?? (resolved.isEmpty ? "Toggle" : resolved)
+        self.explicitID = id
+        self.fallbackID = resolved.isEmpty ? "Toggle" : resolved
         self.label = resolved.isEmpty ? nil : AnyView(Text(content: resolved))
         self.isOn = isOn
         self.style = nil
@@ -207,19 +214,21 @@ public struct Toggle: View {
     ///   - label: A ``ViewBuilder`` producing the toggle's label.
     public init<Label: View>(
         isOn: Binding<Bool>,
-        id: String = "Toggle",
+        id: String? = nil,
         @ViewBuilder label: () -> Label
     ) {
         self.textStyle = .plain
-        self.id = id
+        self.explicitID = id
+        self.fallbackID = "Toggle"
         self.label = AnyView(label())
         self.isOn = isOn
         self.style = nil
     }
 
-    init(textStyle: TextStyle, id: String, label: AnyView?, isOn: Binding<Bool>, style: AnyToggleStyle?) {
+    init(textStyle: TextStyle, explicitID: String?, fallbackID: String, label: AnyView?, isOn: Binding<Bool>, style: AnyToggleStyle?) {
         self.textStyle = textStyle
-        self.id = id
+        self.explicitID = explicitID
+        self.fallbackID = fallbackID
         self.label = label
         self.isOn = isOn
         self.style = style
@@ -243,7 +252,7 @@ public struct Toggle: View {
 
     @_spi(RenderingInternals)
     public func applyingStyle(_ style: TextStyle) -> Self {
-        Toggle(textStyle: textStyle.inheriting(style), id: id, label: label, isOn: isOn, style: self.style)
+        Toggle(textStyle: textStyle.inheriting(style), explicitID: explicitID, fallbackID: fallbackID, label: label, isOn: isOn, style: self.style)
     }
 
     /// Registers the toggle for keyboard handling, then lowers ``body`` with
@@ -260,6 +269,6 @@ public struct Toggle: View {
     /// Sets the style used to render this toggle.
     /// - Parameter newStyle: A value conforming to ``ToggleStyle``.
     public func toggleStyle(_ newStyle: some ToggleStyle) -> Self {
-        Toggle(textStyle: textStyle, id: id, label: label, isOn: isOn, style: AnyToggleStyle(newStyle))
+        Toggle(textStyle: textStyle, explicitID: explicitID, fallbackID: fallbackID, label: label, isOn: isOn, style: AnyToggleStyle(newStyle))
     }
 }

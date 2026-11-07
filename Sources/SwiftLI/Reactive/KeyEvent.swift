@@ -35,6 +35,10 @@ public enum KeyEvent: Equatable, Sendable {
     case home
     /// End — move the cursor to the end of the field.
     case end
+    /// Page Up (`ESC [ 5 ~`).
+    case pageUp
+    /// Page Down (`ESC [ 6 ~`).
+    case pageDown
     /// Return / Enter.
     case enter
     /// Tab — advance focus to the next field.
@@ -45,6 +49,11 @@ public enum KeyEvent: Equatable, Sendable {
     case escape
     /// Ctrl-C — request application shutdown.
     case interrupt
+    /// A Control-key chord with no editing meaning of its own — Ctrl-S
+    /// arrives as `.control("s")` — for `onKeyPress` shortcuts. The chords
+    /// the line editor uses (Ctrl-A/B/D/E/F/K/U/W) decode to their editing
+    /// events instead, and Ctrl-C to ``interrupt``.
+    case control(Character)
     /// A pointing-device event (click, drag, scroll wheel), decoded from the
     /// same input stream as keystrokes. See ``MouseEvent``.
     case mouse(MouseEvent)

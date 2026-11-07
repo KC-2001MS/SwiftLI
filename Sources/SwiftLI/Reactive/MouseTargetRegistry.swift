@@ -282,6 +282,10 @@ struct HitRegion: View, @unchecked Sendable {
 
     typealias Body = Never
 
+    func applyingStyle(_ style: TextStyle) -> HitRegion {
+        HitRegion(controlID: controlID, role: role, content: content.styled(style))
+    }
+
     func makeNode() -> RenderNode {
         let node = content.makeNode()
         guard let controlID else { return node }

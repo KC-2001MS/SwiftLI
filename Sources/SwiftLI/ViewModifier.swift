@@ -28,10 +28,24 @@ public protocol ViewModifier {
     /// inside the content reflect the space actually available. The default
     /// leaves the environment untouched.
     func adjustEnvironment(_ values: inout EnvironmentValues)
+
+    /// Lowers the content and returns the node that replaces it.
+    ///
+    /// `content()` lowers the modified view (inside the environment
+    /// ``adjustEnvironment(_:)`` produced). The default calls it and hands
+    /// the result to ``node(for:)``; a modifier that must do bookkeeping
+    /// *around* the lowering — register something before the content's
+    /// descendants lower and finish after, like ``View/onKeyPress(action:)``
+    /// — overrides this instead.
+    func node(lowering content: () -> RenderNode) -> RenderNode
 }
 
 public extension ViewModifier {
     func adjustEnvironment(_ values: inout EnvironmentValues) {}
+
+    func node(lowering content: () -> RenderNode) -> RenderNode {
+        node(for: content())
+    }
 }
 
 /// The single view that applies a ``ViewModifier`` by transforming its
@@ -54,10 +68,13 @@ struct ModifiedContent: View, @unchecked Sendable {
     func makeNode() -> RenderNode {
         var values = EnvironmentStack.current
         modifier.adjustEnvironment(&values)
-        let node = EnvironmentStack.with(values) {
-            modifier.node(for: content.makeNode())
+        // The cascaded style is applied inside the modifier's environment
+        // scope, so a dynamic colour resolves against the environment the
+        // content itself saw (an `.environment(\.colorScheme, …)` included).
+        return EnvironmentStack.with(values) {
+            let node = modifier.node(lowering: { content.makeNode() })
+            return style.isPlain ? node : node.applyingStyle(style)
         }
-        return style.isPlain ? node : node.applyingStyle(style)
     }
 }
 

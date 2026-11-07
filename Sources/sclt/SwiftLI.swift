@@ -57,7 +57,9 @@ struct scltCommand: AsyncParsableCommand {
             SliderCommand.self,
             FormCommand.self,
             NavigationCommand.self,
-            SheetCommand.self
+            SheetCommand.self,
+            KeyPressCommand.self,
+            AppCommand.self
         ],
         defaultSubcommand: TextCommand.self,
         helpNames: [.long, .short]

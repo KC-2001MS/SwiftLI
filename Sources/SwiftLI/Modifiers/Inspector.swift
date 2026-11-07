@@ -35,47 +35,41 @@ public extension View {
     ///   - isPresented: A binding that controls whether the pane is shown.
     ///   - content: A ``ViewBuilder`` producing the inspector's content.
     func inspector<Content: View>(isPresented: Binding<Bool>, @ViewBuilder content: () -> Content) -> some View {
-        InspectorModifier(content: AnyView(self), isPresented: isPresented, inspector: AnyView(content()))
+        modifier(InspectorModifier(isPresented: isPresented, inspector: AnyView(content())))
     }
 }
 
 /// Lays a view out beside (full-screen) or above (inline) its inspector pane
 /// while the pane is presented.
-struct InspectorModifier: View, @unchecked Sendable {
-    let content: AnyView
+struct InspectorModifier: ViewModifier {
     let isPresented: Binding<Bool>
     let inspector: AnyView
 
-    public var body: some View {
-        if isPresented.wrappedValue {
-            if isFullScreen {
-                // Trailing column, separated by a vertical rule that spans
-                // the taller of the two (a divider stretches to its row).
-                HStack(alignment: .top, spacing: 1) {
-                    content
-                    Divider(character: "-", verticalCharacter: "│").foregroundStyle(.eightBit(240))
-                    inspector
-                }
-            } else {
-                // Below the content, separated by a horizontal rule.
-                VStack(alignment: .leading, spacing: 0) {
-                    content
-                    Text(repeating: "─", count: Swift.max(0, EnvironmentStack.current.maxWidth))
-                        .foregroundStyle(.eightBit(240))
-                    inspector
-                }
-            }
+    func node(for content: RenderNode) -> RenderNode {
+        content
+    }
+
+    func node(lowering content: () -> RenderNode) -> RenderNode {
+        guard isPresented.wrappedValue else { return content() }
+        let ruleColor = Color.eightBit(240)
+        if BodyRenderingStore.shared.fullScreenActive {
+            // Trailing column, separated by a vertical rule that spans the
+            // taller of the two (a divider stretches to its row).
+            let rule = Divider(character: "-", verticalCharacter: "│").foregroundStyle(ruleColor)
+            return .hstack(alignment: .top, spacing: 1, children: [
+                content(),
+                rule.makeNode(),
+                inspector.lowered(at: 2),
+            ])
         } else {
-            content
+            // Below the content, separated by a horizontal rule.
+            let rule = Text(repeating: "─", count: Swift.max(0, EnvironmentStack.current.maxWidth))
+                .foregroundStyle(ruleColor)
+            return .vstack(alignment: .leading, spacing: 0, children: [
+                content(),
+                rule.makeNode(),
+                inspector.lowered(at: 2),
+            ])
         }
-    }
-
-    private var isFullScreen: Bool {
-        BodyRenderingStore.shared.fullScreenActive
-    }
-
-    @_spi(RenderingInternals)
-    public func applyingStyle(_ style: TextStyle) -> Self {
-        InspectorModifier(content: content.applyingStyle(style), isPresented: isPresented, inspector: inspector)
     }
 }

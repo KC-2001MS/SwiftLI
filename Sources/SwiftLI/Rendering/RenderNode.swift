@@ -190,6 +190,17 @@ public indirect enum RenderNode: Equatable, Sendable {
     /// under the pointer.
     case control(id: String, child: RenderNode)
 
+    /// Children drawn on top of one another, each positioned by `alignment`
+    /// inside a footprint the size of the largest child; later children paint
+    /// over earlier ones, and the cells a child never writes stay transparent.
+    case zstack(alignment: Alignment, children: [RenderNode])
+
+    /// A secondary layer positioned by `alignment` inside `base`'s footprint
+    /// — on top of it, or behind it when `behind` is `true` — without
+    /// changing the base's size. Produced by `overlay(alignment:content:)`
+    /// and the view form of `background(alignment:content:)`.
+    case overlay(alignment: Alignment, base: RenderNode, layer: RenderNode, behind: Bool)
+
     /// Returns a copy of the tree with every styled leaf resolved against
     /// `style`.
     ///
@@ -211,7 +222,7 @@ public indirect enum RenderNode: Equatable, Sendable {
     /// cover as a whole.
     private var paintsFootprint: Bool {
         switch self {
-        case .hstack, .vstack, .padding, .frame, .lineLimit, .scroll, .hscroll, .shadow, .viewThatFits, .control:
+        case .hstack, .vstack, .padding, .frame, .lineLimit, .scroll, .hscroll, .shadow, .viewThatFits, .control, .zstack, .overlay:
             return true
         case .empty, .raw, .text, .spacer, .divider, .group, .border, .background:
             return false
@@ -266,6 +277,10 @@ public indirect enum RenderNode: Equatable, Sendable {
             return .viewThatFits(checkWidth: cw, checkHeight: ch, candidates: candidates.map { $0.inheriting(style) })
         case .control(let id, let child):
             return .control(id: id, child: child.inheriting(style))
+        case .zstack(let alignment, let children):
+            return .zstack(alignment: alignment, children: children.map { $0.inheriting(style) })
+        case .overlay(let alignment, let base, let layer, let behind):
+            return .overlay(alignment: alignment, base: base.inheriting(style), layer: layer.inheriting(style), behind: behind)
         }
     }
 

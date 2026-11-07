@@ -174,7 +174,13 @@ struct AnyButtonStyle: ButtonStyle, @unchecked Sendable {
 /// ```
 public struct Button: View {
     let textStyle: TextStyle
-    let id: String
+    /// An identity given explicitly, or `nil` to derive one from the label.
+    let explicitID: String?
+    /// The identity used when none is given — the label, made unique per
+    /// position inside a session (see ``ControlIdentity``).
+    let fallbackID: String
+    /// The identity the control registers under.
+    var id: String { ControlIdentity.resolve(explicitID, default: fallbackID) }
     let label: AnyView
     let role: ButtonRole?
     let action: () -> Void
@@ -197,7 +203,8 @@ public struct Button: View {
     ) {
         let resolved = title.resolve()
         self.textStyle = .plain
-        self.id = id ?? (resolved.isEmpty ? "Button" : resolved)
+        self.explicitID = id
+        self.fallbackID = resolved.isEmpty ? "Button" : resolved
         self.label = AnyView(Text(content: resolved))
         self.role = role
         self.action = action
@@ -214,21 +221,23 @@ public struct Button: View {
     ///   - label: A ``ViewBuilder`` producing the button's label.
     public init<Label: View>(
         role: ButtonRole? = nil,
-        id: String = "Button",
+        id: String? = nil,
         action: @escaping () -> Void,
         @ViewBuilder label: () -> Label
     ) {
         self.textStyle = .plain
-        self.id = id
+        self.explicitID = id
+        self.fallbackID = "Button"
         self.label = AnyView(label())
         self.role = role
         self.action = action
         self.style = nil
     }
 
-    init(textStyle: TextStyle, id: String, label: AnyView, role: ButtonRole?, action: @escaping () -> Void, style: AnyButtonStyle?) {
+    init(textStyle: TextStyle, explicitID: String?, fallbackID: String, label: AnyView, role: ButtonRole?, action: @escaping () -> Void, style: AnyButtonStyle?) {
         self.textStyle = textStyle
-        self.id = id
+        self.explicitID = explicitID
+        self.fallbackID = fallbackID
         self.label = label
         self.role = role
         self.action = action
@@ -251,7 +260,7 @@ public struct Button: View {
 
     @_spi(RenderingInternals)
     public func applyingStyle(_ style: TextStyle) -> Self {
-        Button(textStyle: textStyle.inheriting(style), id: id, label: label, role: role, action: action, style: self.style)
+        Button(textStyle: textStyle.inheriting(style), explicitID: explicitID, fallbackID: fallbackID, label: label, role: role, action: action, style: self.style)
     }
 
     /// Registers the button for keyboard handling (every pass, so the
@@ -260,7 +269,14 @@ public struct Button: View {
     /// footprint.
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
-        FocusCoordinator.shared.registerButton(id: id, action: action)
+        // Inside an alert or confirmation dialog, activating any button also
+        // dismisses the presentation.
+        let action = action
+        if let autoDismiss = EnvironmentStack.current.presentationAutoDismiss {
+            FocusCoordinator.shared.registerButton(id: id) { action(); autoDismiss() }
+        } else {
+            FocusCoordinator.shared.registerButton(id: id, action: action)
+        }
         KeyInputRouter.shared.ensureStarted()
         let node = body.makeNode()
         return (textStyle.isPlain ? node : node.applyingStyle(textStyle)).asControl(id: id)
@@ -269,6 +285,6 @@ public struct Button: View {
     /// Sets the style used to render this button.
     /// - Parameter newStyle: A value conforming to ``ButtonStyle``.
     public func buttonStyle(_ newStyle: some ButtonStyle) -> Self {
-        Button(textStyle: textStyle, id: id, label: label, role: role, action: action, style: AnyButtonStyle(newStyle))
+        Button(textStyle: textStyle, explicitID: explicitID, fallbackID: fallbackID, label: label, role: role, action: action, style: AnyButtonStyle(newStyle))
     }
 }

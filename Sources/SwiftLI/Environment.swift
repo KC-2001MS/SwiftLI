@@ -216,6 +216,11 @@ public extension EnvironmentValues {
 /// is restored, and the default `run()` returns. For a ``CLIApp`` it stops
 /// the app's run loop.
 ///
+/// Presenters inject a narrower action for their content: inside a
+/// full-screen ``View/sheet(isPresented:onDismiss:content:)`` it closes the
+/// sheet, and inside a destination pushed onto a ``NavigationStack`` (or
+/// ``NavigationSplitView``) it pops that destination — exactly as in SwiftUI.
+///
 /// Together with ``View/task(priority:fileID:line:column:_:)`` this lets a
 /// command finish by itself when its work is done — no `run()` needed:
 ///
@@ -236,7 +241,8 @@ public extension EnvironmentValues {
 public struct DismissAction: Sendable {
     /// A presentation-specific dismissal, when the action was injected by a
     /// presenter (a full-screen ``View/sheet(isPresented:onDismiss:content:)``
-    /// closes the sheet); `nil` falls back to ending the session.
+    /// closes the sheet; a navigation container pops the pushed layer);
+    /// `nil` falls back to ending the session.
     private let handler: (@Sendable () -> Void)?
 
     init(handler: (@Sendable () -> Void)? = nil) {
@@ -431,24 +437,17 @@ public struct Environment<Value>: @unchecked Sendable {
 
 // MARK: - environment modifier
 
-/// The view produced by ``View/environment(_:_:)``: pushes a modified
-/// environment around its content's lowering.
-struct EnvironmentWritingView: View, @unchecked Sendable {
-    let content: any View
+/// The modifier behind ``View/environment(_:_:)``: lowers its content in a
+/// modified environment scope.
+struct EnvironmentModifier: ViewModifier {
     let transform: (inout EnvironmentValues) -> Void
 
-    typealias Body = Never
-
-    func applyingStyle(_ style: TextStyle) -> Self {
-        EnvironmentWritingView(content: content.applyingStyle(style), transform: transform)
+    func adjustEnvironment(_ values: inout EnvironmentValues) {
+        transform(&values)
     }
 
-    func makeNode() -> RenderNode {
-        var values = EnvironmentStack.current
-        transform(&values)
-        return EnvironmentStack.with(values) {
-            content.makeNode()
-        }
+    func node(for content: RenderNode) -> RenderNode {
+        content
     }
 }
 
@@ -463,12 +462,12 @@ public extension View {
     /// The nearest injection wins: a value set deeper in the tree overrides
     /// one set further out.
     func environment<V>(_ keyPath: WritableKeyPath<EnvironmentValues, V>, _ value: V) -> some View {
-        EnvironmentWritingView(content: self) { $0[keyPath: keyPath] = value }
+        modifier(EnvironmentModifier { $0[keyPath: keyPath] = value })
     }
 
     /// Transforms an environment value for this view and its descendants.
     func transformEnvironment<V>(_ keyPath: WritableKeyPath<EnvironmentValues, V>, transform: @escaping (inout V) -> Void) -> some View {
-        EnvironmentWritingView(content: self) { transform(&$0[keyPath: keyPath]) }
+        modifier(EnvironmentModifier { transform(&$0[keyPath: keyPath]) })
     }
 
     /// Stores an `@Observable` object in the environment for this view and
@@ -487,6 +486,6 @@ public extension View {
     /// - Parameter object: The object to inject, or `nil` to remove one
     ///   injected further out.
     func environment<T: AnyObject & Observable>(_ object: T?) -> some View {
-        EnvironmentWritingView(content: self) { $0[T.self] = object }
+        modifier(EnvironmentModifier { $0[T.self] = object })
     }
 }

@@ -168,7 +168,13 @@ struct AnyPickerStyle: PickerStyle, @unchecked Sendable {
 /// ```
 public struct Picker: View {
     let textStyle: TextStyle
-    let id: String
+    /// An identity given explicitly, or `nil` to derive one from the label.
+    let explicitID: String?
+    /// The identity used when none is given — the label, made unique per
+    /// position inside a session (see ``ControlIdentity``).
+    let fallbackID: String
+    /// The identity the control registers under.
+    var id: String { ControlIdentity.resolve(explicitID, default: fallbackID) }
     let label: AnyView?
     let options: [String]
     let selection: Binding<Int>
@@ -193,7 +199,8 @@ public struct Picker: View {
     ) {
         let resolved = label.resolve()
         self.textStyle = .plain
-        self.id = id ?? (resolved.isEmpty ? "Picker" : resolved)
+        self.explicitID = id
+        self.fallbackID = resolved.isEmpty ? "Picker" : resolved
         self.label = resolved.isEmpty ? nil : AnyView(Text(content: resolved))
         self.options = options
         self.selection = selection
@@ -210,20 +217,22 @@ public struct Picker: View {
     public init<Label: View>(
         selection: Binding<Int>,
         options: [String],
-        id: String = "Picker",
+        id: String? = nil,
         @ViewBuilder label: () -> Label
     ) {
         self.textStyle = .plain
-        self.id = id
+        self.explicitID = id
+        self.fallbackID = "Picker"
         self.label = AnyView(label())
         self.options = options
         self.selection = selection
         self.style = nil
     }
 
-    init(textStyle: TextStyle, id: String, label: AnyView?, options: [String], selection: Binding<Int>, style: AnyPickerStyle?) {
+    init(textStyle: TextStyle, explicitID: String?, fallbackID: String, label: AnyView?, options: [String], selection: Binding<Int>, style: AnyPickerStyle?) {
         self.textStyle = textStyle
-        self.id = id
+        self.explicitID = explicitID
+        self.fallbackID = fallbackID
         self.label = label
         self.options = options
         self.selection = selection
@@ -255,7 +264,7 @@ public struct Picker: View {
 
     @_spi(RenderingInternals)
     public func applyingStyle(_ style: TextStyle) -> Self {
-        Picker(textStyle: textStyle.inheriting(style), id: id, label: label, options: options, selection: selection, style: self.style)
+        Picker(textStyle: textStyle.inheriting(style), explicitID: explicitID, fallbackID: fallbackID, label: label, options: options, selection: selection, style: self.style)
     }
 
     /// Registers the picker for keyboard handling, then lowers ``body`` with
@@ -272,6 +281,6 @@ public struct Picker: View {
     /// Sets the style used to render this picker.
     /// - Parameter newStyle: A value conforming to ``PickerStyle``.
     public func pickerStyle(_ newStyle: some PickerStyle) -> Self {
-        Picker(textStyle: textStyle, id: id, label: label, options: options, selection: selection, style: AnyPickerStyle(newStyle))
+        Picker(textStyle: textStyle, explicitID: explicitID, fallbackID: fallbackID, label: label, options: options, selection: selection, style: AnyPickerStyle(newStyle))
     }
 }
