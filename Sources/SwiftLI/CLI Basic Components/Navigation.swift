@@ -67,8 +67,27 @@ final class NavigationCoordinator: @unchecked Sendable {
     /// path that changed programmatically (an `append` from a key handler)
     /// rebuilds the focus ring exactly as a link activation does.
     private var observedCounts: [String: Int] = [:]
+    /// The rows each container's title bar and bottom bar took in its last
+    /// frame, reserved out of `\.maxHeight` when its content lowers.
+    private var chromeHeights: [String: Int] = [:]
 
     private init() {}
+
+    /// The rows `container`'s bars took in its last frame (0 before the
+    /// first).
+    func chromeHeight(for container: String) -> Int {
+        lock.lock(); defer { lock.unlock() }
+        return chromeHeights[container] ?? 0
+    }
+
+    /// Records the rows `container`'s bars take this frame; `true` when that
+    /// differs from what its content was laid out against.
+    func recordChromeHeight(_ height: Int, for container: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        let previous = chromeHeights[container] ?? 0
+        chromeHeights[container] = height
+        return previous != height
+    }
 
     /// Pushes `destination` onto `container`'s path and schedules a redraw.
     func push(_ destination: AnyView, onto container: String) {
@@ -239,6 +258,7 @@ final class NavigationCoordinator: @unchecked Sendable {
         pathBindings.removeAll()
         destinations.removeAll()
         observedCounts.removeAll()
+        chromeHeights.removeAll()
     }
 }
 

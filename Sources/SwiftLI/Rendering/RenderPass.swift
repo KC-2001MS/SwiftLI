@@ -180,6 +180,11 @@ final class LayoutMeasureCache {
         let size: Size
         let childSizes: [Size]
         let structure: Structure
+        /// For a row whose children overflowed its proposal and were divided
+        /// (see `NodeLayout.divideRow`): the width proposed to each child,
+        /// `nil` for a child that kept its natural width. `nil` for other
+        /// containers and rows that fit.
+        var childProposals: [Int?]? = nil
         var lineLimit: Int?
         var maxWidth = 0
         var maxHeight = 0

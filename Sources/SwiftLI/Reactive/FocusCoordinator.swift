@@ -682,8 +682,15 @@ final class FocusCoordinator: @unchecked Sendable {
             }
         }
 
-        // Escape releases focus from any control.
-        if key == .escape { blur(); return true }
+        // Escape leaves a text control — it means "stop typing" there, and
+        // Tab brings the control back. Any other control lets it through to
+        // the `onKeyPress` handlers on screen, where it usually means "back"
+        // or "close": a focused list must not swallow the first press.
+        if key == .escape {
+            guard textBinding != nil else { return false }
+            blur()
+            return true
+        }
 
         // Text controls let their keymap decide *every* key — including Tab, so
         // a multi-line editor can indent (and leave only via Escape) while a

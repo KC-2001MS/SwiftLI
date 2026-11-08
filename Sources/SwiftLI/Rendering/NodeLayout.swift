@@ -61,9 +61,15 @@ public enum NodeLayout {
     /// The children's sizes recorded when the container was measured in this
     /// pass, or `nil` when it hasn't been (or no pass is active).
     private static func cachedChildSizes(_ children: [RenderNode], kind: UInt8, spacing: Int, proposedWidth: Int?, lineLimit: Int?) -> [Size]? {
+        cachedEntry(children, kind: kind, spacing: spacing, proposedWidth: proposedWidth, lineLimit: lineLimit)?.childSizes
+    }
+
+    /// The container's whole measurement from this pass, or `nil` when it
+    /// hasn't been measured (or no pass is active).
+    private static func cachedEntry(_ children: [RenderNode], kind: UInt8, spacing: Int, proposedWidth: Int?, lineLimit: Int?) -> LayoutMeasureCache.Entry? {
         guard let cache = RenderPassContext.current?.layoutCache else { return nil }
         let key = LayoutMeasureCache.key(for: children, kind: kind, spacing: spacing, proposedWidth: proposedWidth)
-        return cache.entry(for: key, lineLimit: lineLimit)?.childSizes
+        return cache.entry(for: key, lineLimit: lineLimit)
     }
 
     /// What `node`'s measurement is sensitive to: whether a flexible spacer
@@ -88,8 +94,11 @@ public enum NodeLayout {
         case .hstack(_, _, let children):
             if let known = RenderPassContext.current?.layoutCache.structure(of: children) { return known }
             var merged = LayoutMeasureCache.Structure()
-            // A row proposes no width to its children (see `measureRow`).
-            for child in children { merged.merge(structure(of: child, proposedWidth: nil)) }
+            // A row divides its proposal among the children only when their
+            // natural widths overflow it (see `measureRow`, which records the
+            // exact structure); unmeasured, the proposal bounds what any
+            // child can get.
+            for child in children { merged.merge(structure(of: child, proposedWidth: proposedWidth)) }
             return merged
         case .lineLimit(_, let child):
             // The limit inside applies instead of the one outside.
@@ -875,13 +884,82 @@ public enum NodeLayout {
             if i < children.count - 1 { totalWidth += spacing }
             if size.height > maxHeight { maxHeight = size.height }
         }
+        // Natural widths that overflow the proposal are divided among the
+        // children (see `divideRow`) so a `Text` wraps inside the row
+        // instead of running past it; the sizes and proposals that result
+        // are what the row draws with.
+        var childProposals: [Int?]? = nil
+        if let proposedWidth, proposedWidth > 0, totalWidth > proposedWidth {
+            let divided = divideRow(children, naturalSizes: childSizes, spacing: spacing, width: proposedWidth, lineLimit: lineLimit)
+            childSizes = divided.sizes
+            childProposals = divided.proposals
+            totalWidth = 0
+            maxHeight = 0
+            for (i, size) in childSizes.enumerated() {
+                totalWidth += size.width
+                if i < children.count - 1 { totalWidth += spacing }
+                if size.height > maxHeight { maxHeight = size.height }
+                if let proposal = divided.proposals[i] {
+                    structure.merge(Self.structure(of: children[i], proposedWidth: proposal))
+                }
+            }
+        }
         // Flexible spacers expand the row to the proposed width — or the
         // current `maxWidth` environment (the terminal width at the top
         // level) when nothing is proposed — mirroring SwiftUI's Spacer.
         if hasSpacer {
             totalWidth = Swift.max(totalWidth, proposedWidth ?? EnvironmentStack.current.maxWidth)
         }
-        return LayoutMeasureCache.Entry(size: Size(width: totalWidth, height: maxHeight), childSizes: childSizes, structure: structure)
+        return LayoutMeasureCache.Entry(size: Size(width: totalWidth, height: maxHeight), childSizes: childSizes, structure: structure, childProposals: childProposals)
+    }
+
+    /// Divides `width` among a row whose natural widths overflow it, the way
+    /// SwiftUI lays out an `HStack`: spacers (at their minimum length) and
+    /// dividers keep their width, and the other children are offered the
+    /// remaining width least flexible first — each takes what it needs up to
+    /// an even share of what is left — so short labels keep their width and
+    /// long text wraps into the rest.
+    ///
+    /// Returns each child's size and, for the children that were
+    /// constrained, the width proposed to them (`nil` for the others).
+    private static func divideRow(_ children: [RenderNode], naturalSizes: [Size], spacing: Int, width: Int, lineLimit: Int?) -> (sizes: [Size], proposals: [Int?]) {
+        var sizes = naturalSizes
+        var proposals = [Int?](repeating: nil, count: children.count)
+        var remaining = width - spacing * Swift.max(0, children.count - 1)
+        // Flexibility is how far a child can shrink from its natural width:
+        // text can wrap down to a single column; anything else is probed
+        // with a one-column proposal, which a fixed-width frame ignores.
+        var flexible: [(index: Int, slack: Int)] = []
+        for (i, child) in children.enumerated() {
+            let natural = naturalSizes[i].width
+            switch child {
+            case .spacer, .divider, .empty, .raw:
+                remaining -= natural
+            case .text:
+                flexible.append((i, Swift.max(0, natural - 1)))
+            default:
+                let minimum = measure(child, axis: .horizontal, proposedWidth: 1, lineLimit: lineLimit).width
+                if minimum >= natural {
+                    remaining -= natural
+                } else {
+                    flexible.append((i, natural - minimum))
+                }
+            }
+        }
+        flexible.sort { $0.slack != $1.slack ? $0.slack < $1.slack : $0.index < $1.index }
+        for (k, item) in flexible.enumerated() {
+            let share = Swift.max(1, remaining / (flexible.count - k))
+            let natural = naturalSizes[item.index].width
+            if natural <= share {
+                remaining -= natural
+                continue
+            }
+            let size = measure(children[item.index], axis: .horizontal, proposedWidth: share, lineLimit: lineLimit)
+            sizes[item.index] = size
+            proposals[item.index] = share
+            remaining -= size.width
+        }
+        return (sizes, proposals)
     }
 
     private static func drawColumn(
@@ -1041,8 +1119,12 @@ public enum NodeLayout {
         // The sizes recorded when the row was measured (reused for the stack
         // height, spacer allocation and drawing); measured here only if the
         // row somehow wasn't measured in this pass.
-        let childSizes = cachedChildSizes(original, kind: 2, spacing: spacing, proposedWidth: proposedWidth, lineLimit: lineLimit)
-            ?? children.map { measure($0, axis: .horizontal, lineLimit: lineLimit) }
+        let entry = cachedEntry(original, kind: 2, spacing: spacing, proposedWidth: proposedWidth, lineLimit: lineLimit)
+            ?? measureRow(children, spacing: spacing, proposedWidth: proposedWidth, lineLimit: lineLimit)
+        let childSizes = entry.childSizes
+        // The widths proposed to children the row had to constrain, so each
+        // draws wrapped exactly as it was measured.
+        let childProposals = entry.childProposals
 
         // Dividers stretch to the stack height, so they don't participate in it.
         let stackHeight = zip(children, childSizes).map { child, size in
@@ -1104,7 +1186,7 @@ public enum NodeLayout {
                 if let culled, !culled.overlaps(childOrigin.row..<(childOrigin.row + Swift.max(size.height, 1))) {
                     // Off-window: nothing it draws can show, so don't draw it.
                 } else {
-                    draw(child, into: canvas, at: childOrigin, axis: .horizontal, lineLimit: lineLimit)
+                    draw(child, into: canvas, at: childOrigin, axis: .horizontal, proposedWidth: childProposals?[i], lineLimit: lineLimit)
                 }
             }
             x += advance

@@ -290,13 +290,20 @@ public struct TabView<SelectionValue: Hashable & Sendable>: View {
         let rule = Text(repeating: "─", count: Swift.max(0, EnvironmentStack.current.maxWidth)).foregroundStyle(.eightBit(240)).lowered(at: tabs.count + 1)
 
         // Every tab lowers — the unselected ones inert and unseen — so each
-        // keeps its state and its running work across switches.
+        // keeps its state and its running work across switches. The bar and
+        // its rule take two rows, so the tabs lay out in the rows that
+        // remain: a `List` bounded by `\.maxHeight` then stops short of
+        // pushing whatever follows the tab view off the screen.
+        var contentValues = EnvironmentStack.current
+        contentValues.maxHeight = Swift.max(1, contentValues.maxHeight - 2)
         var contentNode: RenderNode = .empty
-        for (index, tab) in tabs.enumerated() {
-            if index == selectedIndex {
-                contentNode = tab.content.lowered(at: index)
-            } else {
-                _ = FocusCoordinator.shared.withRegistrationSuppressed { tab.content.lowered(at: index) }
+        EnvironmentStack.with(contentValues) {
+            for (index, tab) in tabs.enumerated() {
+                if index == selectedIndex {
+                    contentNode = tab.content.lowered(at: index)
+                } else {
+                    _ = FocusCoordinator.shared.withRegistrationSuppressed { tab.content.lowered(at: index) }
+                }
             }
         }
 

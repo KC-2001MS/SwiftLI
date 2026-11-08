@@ -163,40 +163,67 @@ public struct NavigationStack: View {
             return view.lowered(at: index)
         }
 
+        // The title bar and bottom bar take rows the content cannot have, so
+        // the layers lay out in `\.maxHeight` less those rows — a `List`
+        // bounded by it then leaves the bars (and anything below the stack)
+        // on screen. How many rows the bars take is only known once the
+        // content has lowered (that is when the active layer's
+        // `navigationTitle` registers), so the reservation is the previous
+        // frame's; when this frame's bars differ, a follow-up frame is
+        // queued and lays the content out against the right number.
+        let reservedRows = coordinator.chromeHeight(for: id)
+        var contentValues = EnvironmentStack.current
+        contentValues.maxHeight = Swift.max(1, contentValues.maxHeight - reservedRows)
+
         var contentNodes: [RenderNode] = []
-        // The root always lowers — inert and discarded when a destination
-        // covers it in full-screen mode — so it stays alive beneath the
-        // stack as in SwiftUI: its `@State` persists, its `task` keeps
-        // running, and the `navigationDestination(for:)` modifiers it
-        // declares are registered before the pushed values resolve.
-        if layers.isEmpty {
-            contentNodes.append(lower(scoped(root, pushed: false), layerIndex: 0, layer: nil))
-        } else {
-            let rootNode = FocusCoordinator.shared.withRegistrationSuppressed {
-                lower(scoped(root, pushed: false), layerIndex: 0, layer: nil)
-            }
-            if !fullScreen { contentNodes.append(rootNode) }
-            for (offset, layer) in layers.enumerated() {
-                let index = offset + 1
-                let view = scoped(coordinator.resolve(layer, in: id), pushed: true)
-                if offset == layers.count - 1 {
-                    contentNodes.append(lower(view, layerIndex: index, layer: layer))
-                } else {
-                    // Older layers render inert inline, and stay alive but
-                    // unseen in full-screen mode.
-                    let node = FocusCoordinator.shared.withRegistrationSuppressed {
-                        lower(view, layerIndex: index, layer: layer)
+        EnvironmentStack.with(contentValues) {
+            // The root always lowers — inert and discarded when a destination
+            // covers it in full-screen mode — so it stays alive beneath the
+            // stack as in SwiftUI: its `@State` persists, its `task` keeps
+            // running, and the `navigationDestination(for:)` modifiers it
+            // declares are registered before the pushed values resolve.
+            if layers.isEmpty {
+                contentNodes.append(lower(scoped(root, pushed: false), layerIndex: 0, layer: nil))
+            } else {
+                let rootNode = FocusCoordinator.shared.withRegistrationSuppressed {
+                    lower(scoped(root, pushed: false), layerIndex: 0, layer: nil)
+                }
+                if !fullScreen { contentNodes.append(rootNode) }
+                for (offset, layer) in layers.enumerated() {
+                    let index = offset + 1
+                    let view = scoped(coordinator.resolve(layer, in: id), pushed: true)
+                    if offset == layers.count - 1 {
+                        contentNodes.append(lower(view, layerIndex: index, layer: layer))
+                    } else {
+                        // Older layers render inert inline, and stay alive but
+                        // unseen in full-screen mode.
+                        let node = FocusCoordinator.shared.withRegistrationSuppressed {
+                            lower(view, layerIndex: index, layer: layer)
+                        }
+                        if !fullScreen { contentNodes.append(node) }
                     }
-                    if !fullScreen { contentNodes.append(node) }
                 }
             }
         }
 
         // The title bar is built *after* the content lowers — that is when
         // the active layer's `navigationTitle` registered it.
-        var rows: [RenderNode] = NavigationChrome.titleBar(for: id).map { $0.makeNode() }
+        let titleRows = NavigationChrome.titleBar(for: id).map { $0.makeNode() }
+        let bottomRows = NavigationChrome.bottomBar(for: id).map { $0.makeNode() }
+        let proposedWidth = EnvironmentStack.current.maxWidth
+        var chromeRows = titleRows.reduce(0) { $0 + NodeLayout.measure($1, proposedWidth: proposedWidth).height }
+        // The bottom bar's leading spacer only pushes it down; the bar row
+        // itself is what takes space.
+        if let bar = bottomRows.last {
+            chromeRows += NodeLayout.measure(bar, proposedWidth: proposedWidth).height
+        }
+        if coordinator.recordChromeHeight(chromeRows, for: id) {
+            StateObserverRegistry.shared.notifyChange()
+        }
+
+        var rows = titleRows
         rows.append(contentsOf: contentNodes)
-        rows.append(contentsOf: NavigationChrome.bottomBar(for: id).map { $0.makeNode() })
+        rows.append(contentsOf: bottomRows)
         let node = RenderNode.vstack(alignment: .leading, spacing: 0, children: rows)
         return style.isPlain ? node : node.applyingStyle(style)
     }

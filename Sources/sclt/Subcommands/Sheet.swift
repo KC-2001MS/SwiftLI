@@ -47,7 +47,8 @@ struct SheetCommand: FullScreenCommand {
 }
 
 /// The sheet's content: an editable field plus a Done button that closes the
-/// sheet through `\.dismiss` (captured while the sheet is up).
+/// sheet through `\.dismiss` — the sheet's own dismiss, as in SwiftUI, even
+/// though the action runs outside rendering.
 private struct SheetContent: View {
     @Environment(\.dismiss) var dismiss
     let name: Binding<String>
@@ -55,6 +56,6 @@ private struct SheetContent: View {
     var body: some View {
         Text("Edit name").bold()
         TextField("Name", text: name)
-        Button("Done") { [dismiss] in dismiss() }
+        Button("Done") { dismiss() }
     }
 }

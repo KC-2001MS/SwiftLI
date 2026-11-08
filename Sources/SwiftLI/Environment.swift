@@ -231,7 +231,7 @@ public extension EnvironmentValues {
 ///
 ///     var body: some Scene {
 ///         ProgressView(min: 0, value: .constant(model.progress), max: 1)
-///             .task { [dismiss] in
+///             .task {
 ///                 await model.fetch()
 ///                 dismiss()      // ends the session; run() returns
 ///             }
@@ -321,6 +321,13 @@ enum EnvironmentStack {
         box.stack.last ?? EnvironmentValues()
     }
 
+    /// Whether a view tree is being walked on this thread — an environment
+    /// scope is pushed, or a render pass is in progress — so `current` is
+    /// the scope of the view being lowered rather than the root default.
+    static var isActive: Bool {
+        !box.stack.isEmpty || RenderPassContext.current != nil
+    }
+
     // The stack lives in a reference-type box so reads and pushes mutate it in
     // place, and the box sits in a per-thread slot (see `ThreadLocalSlot`),
     // which is read in nanoseconds. Storing the array itself in
@@ -389,6 +396,29 @@ enum EnvironmentStack {
 ///
 /// RootView().environment(AppModel())
 /// ```
+///
+/// ## Reading from actions and tasks
+///
+/// The value is resolved while the view renders — in `body`, or in an
+/// ``View/onKeyPress(_:action:)`` handler, which runs in the view's scope —
+/// and the wrapper remembers what it resolved. A closure that runs outside
+/// any render pass (a ``Button`` action, `onSubmit`, `onChange`, `.task`)
+/// reads that remembered value, as in SwiftUI, where a view's environment
+/// is fixed when its body is evaluated:
+///
+/// ```swift
+/// struct LoadingView: View {
+///     @Environment(AppModel.self) private var model
+///
+///     var body: some View {
+///         ProgressView(model.status)
+///             .task { await model.load() }   // the injected model
+///     }
+/// }
+/// ```
+///
+/// A value never read during rendering has nothing to remember, and reads
+/// the root default from such a closure instead.
 @propertyWrapper
 public struct Environment<Value>: @unchecked Sendable {
     // The stored closure only captures immutable key paths or object types
@@ -396,6 +426,27 @@ public struct Environment<Value>: @unchecked Sendable {
     // wrapper is safe to send across threads — this keeps views and commands
     // that hold `@Environment` properties `Sendable`, which `.task` requires.
     private let read: () -> Value
+
+    /// The value resolved the last time the wrapper was read while its view
+    /// rendered. A reference type, so every copy of the view struct — the
+    /// one `body` ran on and the ones its closures captured — shares it.
+    private let resolved = Resolved()
+
+    private final class Resolved: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value: Value?
+
+        var stored: Value? {
+            lock.lock(); defer { lock.unlock() }
+            return value
+        }
+
+        func store(_ newValue: Value) {
+            lock.lock()
+            value = newValue
+            lock.unlock()
+        }
+    }
 
     /// Creates the wrapper for the given ``EnvironmentValues`` key path.
     public init(_ keyPath: KeyPath<EnvironmentValues, Value>) {
@@ -415,7 +466,9 @@ public struct Environment<Value>: @unchecked Sendable {
                 fatalError(
                     "No @Observable object of type \(Value.self) found. "
                     + "Inject one with .environment(_:) above the view that reads it, "
-                    + "or read it as @Environment(\(Value.self)?.self) to allow nil."
+                    + "or read it as @Environment(\(Value.self)?.self) to allow nil. "
+                    + "A closure that runs outside rendering (an action, onSubmit, onChange, task) "
+                    + "sees the object only if the view's body read it."
                 )
             }
             return object
@@ -429,9 +482,19 @@ public struct Environment<Value>: @unchecked Sendable {
     }
 
     /// The current environment value for the key path or object type this
-    /// wrapper was initialised with, read from the active environment scope.
+    /// wrapper was initialised with.
+    ///
+    /// While the view renders this is the value of the active environment
+    /// scope, and it is remembered; read from a closure that runs outside
+    /// any render pass, it is the remembered value (see
+    /// "Reading from actions and tasks" above).
     public var wrappedValue: Value {
-        read()
+        if EnvironmentStack.isActive {
+            let value = read()
+            resolved.store(value)
+            return value
+        }
+        return resolved.stored ?? read()
     }
 }
 

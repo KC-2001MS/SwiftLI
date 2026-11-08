@@ -28,10 +28,10 @@ public extension View {
     ///
     /// In a full-screen session, `@Environment(\.dismiss)` read inside the
     /// sheet **closes the sheet** (sets the binding to `false`) instead of
-    /// ending the session — capture it in the action that uses it:
+    /// ending the session, from a key handler or a control's action alike:
     ///
     /// ```swift
-    /// Button("Done") { [dismiss] in dismiss() }
+    /// Button("Done") { dismiss() }
     /// ```
     ///
     /// ```swift
