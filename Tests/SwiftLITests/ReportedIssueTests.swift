@@ -118,6 +118,26 @@ private struct HeightProbe: View {
     }
 }
 
+private final class PathHolder: @unchecked Sendable {
+    var values: [Int] = []
+}
+
+private final class DismissHolder: @unchecked Sendable {
+    var action: DismissAction?
+}
+
+/// A pushed page that hands its `\.dismiss` to the test.
+private struct DismissProbe: View {
+    @Environment(\.dismiss) private var dismiss
+    let value: Int
+    let holder: DismissHolder
+
+    var body: some View {
+        let _ = { holder.action = dismiss }()
+        Text("detail-\(value)")
+    }
+}
+
 extension ControlSingletonTests {
 @Suite("Bars reserve rows out of maxHeight", .serialized)
 struct ChromeHeightTests {
@@ -173,6 +193,50 @@ struct ChromeHeightTests {
         let lines = frameLines(view, tree: tree, width: 30, height: 12)
         #expect(lines.count == 12)
         #expect(lines.last == "footer")
+    }
+
+    @Test("Two stacks without an explicit id, one per tab, keep separate bar rows and path bindings")
+    func stacksInTabsStaySeparate() {
+        let coord = FocusCoordinator.shared
+        let store = BodyRenderingStore.shared
+        coord.reset(); NavigationCoordinator.shared.reset(); store.fullScreenActive = true
+        defer { coord.reset(); NavigationCoordinator.shared.reset(); store.fullScreenActive = false }
+        let tree = RetainedTree()
+        let path = PathHolder()
+        let binding = Binding<[Int]>(get: { path.values }, set: { path.values = $0 })
+        let box = HeightBox()
+        let dismissed = DismissHolder()
+        let view = TabView {
+            Tab("Items", value: 0) {
+                NavigationStack(path: binding) {
+                    HeightProbe(box: box)
+                        .navigationTitle("Items")
+                        .navigationSubtitle("subtitle")
+                        .navigationDestination(for: Int.self) { value in DismissProbe(value: value, holder: dismissed) }
+                }
+            }
+            Tab("Settings", value: 1) {
+                NavigationStack { Text("settings").navigationTitle("Settings") }
+            }
+        }
+        _ = frameLines(view, tree: tree, width: 30, height: 12)
+        var lines = frameLines(view, tree: tree, width: 30, height: 12)
+        #expect(lines.first?.contains("Items") == true)
+        // Bar (2) + title, subtitle, rule (3) — not the inert Settings
+        // stack's two rows, which used to be recorded under the same id.
+        #expect(box.value == 7)
+        lines = frameLines(view, tree: tree, width: 30, height: 12)
+        #expect(box.value == 7)   // and it stays put, frame after frame
+
+        // dismiss() inside the pushed value pops through the binding, even
+        // though the Settings stack registers no binding every pass.
+        path.values = [7]
+        lines = frameLines(view, tree: tree, width: 30, height: 12)
+        #expect(lines.contains { $0.contains("detail-7") })
+        dismissed.action?()
+        #expect(path.values.isEmpty)
+        lines = frameLines(view, tree: tree, width: 30, height: 12)
+        #expect(lines.contains { $0.contains("probe") })
     }
 
     fileprivate final class SelectionBox: @unchecked Sendable {

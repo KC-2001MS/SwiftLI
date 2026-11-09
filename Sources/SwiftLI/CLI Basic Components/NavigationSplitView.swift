@@ -36,27 +36,32 @@
 /// }
 /// ```
 ///
-/// > Note: Identity is keyed by `id` (defaults to `"NavigationSplitView"`).
-/// > Give each split view a distinct `id` when a screen shows more than one.
+/// > Note: A split view's navigation state is keyed by its position in the
+/// > view tree, so several on screen stay independent without
+/// > configuration. Pass `id:` only to share a path between split views
+/// > that take turns at the same position.
 public struct NavigationSplitView: View {
-    let id: String
+    /// The identity given at creation, or `nil` to derive one from the
+    /// split view's position in the view tree when it lowers.
+    let explicitID: String?
     let sidebar: AnyView
     let detail: AnyView
 
     /// Creates a split view from a sidebar and an initial detail view.
     ///
     /// - Parameters:
-    ///   - id: A stable identity for the split view's navigation path.
+    ///   - id: An explicit identity for the split view's navigation path; by
+    ///     default its position in the view tree identifies it.
     ///   - sidebar: A ``ViewBuilder`` producing the sidebar — typically
     ///     ``NavigationLink``s.
     ///   - detail: A ``ViewBuilder`` producing the detail shown before any
     ///     link is activated.
     public init<Sidebar: View, Detail: View>(
-        id: String = "NavigationSplitView",
+        id: String? = nil,
         @ViewBuilder sidebar: () -> Sidebar,
         @ViewBuilder detail: () -> Detail
     ) {
-        self.id = id
+        self.explicitID = id
         self.sidebar = AnyView(sidebar())
         self.detail = AnyView(detail())
     }
@@ -70,6 +75,7 @@ public struct NavigationSplitView: View {
 
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
+        let id = NavigationStack.containerID(explicit: explicitID, fallback: "NavigationSplitView")
         // Titles are re-collected from the layers this pass actually lowers.
         NavigationCoordinator.shared.clearTitles(for: id)
 

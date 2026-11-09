@@ -48,10 +48,14 @@
 /// }
 /// ```
 ///
-/// > Note: Identity is keyed by `id` (defaults to `"NavigationStack"`). Give
-/// > each stack a distinct `id` when a screen shows more than one.
+/// > Note: A stack's navigation state (path, titles, destinations) is keyed
+/// > by its position in the view tree, so two stacks — one per tab, say —
+/// > stay independent without any configuration. Pass `id:` only to share
+/// > a path between stacks that take turns at the same position.
 public struct NavigationStack: View {
-    let id: String
+    /// The identity given at creation, or `nil` to derive one from the
+    /// stack's position in the view tree when it lowers.
+    let explicitID: String?
     let root: AnyView
     /// The app-owned path when the stack was created with `path:`, erased so
     /// the coordinator can push and pop through it.
@@ -62,10 +66,11 @@ public struct NavigationStack: View {
     /// Creates a navigation stack presenting `root`.
     ///
     /// - Parameters:
-    ///   - id: A stable identity for the stack's navigation path.
+    ///   - id: An explicit identity for the stack's navigation path; by
+    ///     default the stack's position in the view tree identifies it.
     ///   - root: A ``ViewBuilder`` producing the stack's root content.
-    public init<Content: View>(id: String = "NavigationStack", @ViewBuilder root: () -> Content) {
-        self.id = id
+    public init<Content: View>(id: String? = nil, @ViewBuilder root: () -> Content) {
+        self.explicitID = id
         self.root = AnyView(root())
         self.pathBinding = nil
     }
@@ -88,8 +93,8 @@ public struct NavigationStack: View {
     /// }
     /// .onKeyPress(.escape) { path.removeLast(); return .handled }
     /// ```
-    public init<Data: Hashable, Content: View>(path: Binding<[Data]>, id: String = "NavigationStack", @ViewBuilder root: () -> Content) {
-        self.id = id
+    public init<Data: Hashable, Content: View>(path: Binding<[Data]>, id: String? = nil, @ViewBuilder root: () -> Content) {
+        self.explicitID = id
         self.root = AnyView(root())
         self.pathBinding = NavigationCoordinator.PathBinding(
             count: { path.wrappedValue.count },
@@ -123,9 +128,22 @@ public struct NavigationStack: View {
     /// directly (older ones with registration suppressed) and has no body.
     public typealias Body = Never
 
+    /// The key under which the coordinator holds a container's state: the
+    /// explicit `id`, or else one derived from the container's structural
+    /// identity in the current pass — stable from frame to frame, and
+    /// distinct for every container on screen, so an inert stack in another
+    /// tab never overwrites this one's path binding, titles or bar rows.
+    /// Outside a pass (a one-shot render) the type name serves.
+    static func containerID(explicit: String?, fallback: String) -> String {
+        if let explicit { return explicit }
+        guard let pass = RenderPassContext.current else { return fallback }
+        return "\(fallback)@\(pass.identity)"
+    }
+
     @_spi(RenderingInternals)
     public func makeNode() -> RenderNode {
         let coordinator = NavigationCoordinator.shared
+        let id = Self.containerID(explicit: explicitID, fallback: "NavigationStack")
         // Titles and destinations are re-collected from the layers this pass
         // actually lowers.
         coordinator.clearTitles(for: id)
